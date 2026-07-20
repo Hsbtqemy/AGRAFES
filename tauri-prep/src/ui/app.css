@@ -1676,7 +1676,7 @@ table .prep-meta-doc-row.is-active {
 /* Actions form */
 .prep-actions-screen label { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.5rem; font-size: 0.85rem; }
 .prep-actions-screen select, .prep-actions-screen input[type=text], .prep-actions-screen input[type=number],
-.prep-actions-screen textarea:not(.prep-meta-inline-textarea):not(.prep-raw-unit-textarea) {
+.prep-actions-screen textarea:not(.prep-meta-inline-textarea):not(.prep-raw-unit-textarea):not(.prep-conv-unit-editor) {
   font-size: 0.85rem; padding: 0.3rem 0.5rem; border: 1px solid var(--color-border);
   border-radius: var(--radius); width: 100%; max-width: 420px; }
 .prep-actions-screen textarea { resize: vertical; }
@@ -1715,7 +1715,7 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 /* Named widths to replace inline styles */
 #act-audit-extid { width: 7rem; }
 #act-audit-text-filter { min-width: 14rem; flex: 1; }
-.prep-actions-screen textarea:not(.prep-meta-inline-textarea):not(.prep-raw-unit-textarea) {
+.prep-actions-screen textarea:not(.prep-meta-inline-textarea):not(.prep-raw-unit-textarea):not(.prep-conv-unit-editor) {
   font-size: 0.85rem; padding: 0.3rem 0.5rem; border: 1px solid var(--color-border);
   border-radius: var(--radius); width: 100%; max-width: 480px; resize: vertical; }
 .prep-curation-quick-rules {
@@ -6975,6 +6975,55 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
   margin-top: 2px;
 }
 
+/* -- Stylo : correction de texte en place (D-C8) -- */
+.prep-conv-unit-edit {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+}
+.prep-conv-unit-row:hover .prep-conv-unit-edit { opacity: 1; }
+.prep-conv-unit-edit:hover { color: #0c4a46; background: #e8f5f3; }
+.prep-conv-unit-editor-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+/* Flush : la ligne "devient" éditable à sa place — même largeur, même position, même flux
+   que l'affichage lecture (.prep-conv-unit-text : flex:1, pré-wrap, sans padding ni bordure).
+   L'état d'édition est porté par le fond + le liseré de la ligne et les boutons, pas par une boîte. */
+.prep-conv-unit-editor {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 1.45;
+  color: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  padding: 0;
+  border: none;
+  background: transparent;
+  resize: vertical;
+  min-height: 2.6em;
+  max-height: 12rem;       /* ~8 lignes puis scroll interne : ouverture bornée */
+  overflow-y: auto;
+}
+.prep-conv-unit-editor:focus { outline: none; }
+.prep-conv-unit-editor-actions { display: flex; gap: 0.4rem; }
+.prep-conv-unit-row--editing {
+  cursor: default;
+  background: #f5f7ff;
+  border-left-color: #6366f1; /* liseré : marque la ligne en cours d'édition */
+}
+
 /* -- R2.3 : grain grossier (paragraphe ⊃ phrase) -- */
 .prep-conv-para-sep {
   display: flex;
@@ -7414,42 +7463,6 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 }
 .prep-cur-diff-panel .diff-mark { background: #dcfce7; color: #14532d; text-decoration: none; padding: 0 1px; border-radius: 2px; }
 .prep-cur-diff-panel .diff-del { background: #fee2e2; color: #7f1d1d; text-decoration: line-through; padding: 0 1px; border-radius: 2px; }
-
-/* Lot 1 (parité gap #9) — édition inline / override (couche manuelle, indigo pour la
-   distinguer de l'ambre des règles). Bouton d'édition discret (révélé au survol de la ligne). */
-.prep-cur-edit-btn {
-  flex-shrink: 0; margin-left: auto;
-  background: none; border: 1px solid #c7d2fe; border-radius: 4px;
-  color: #4338ca; font-size: 0.7rem; padding: 0 0.35rem; cursor: pointer; white-space: nowrap;
-  opacity: 0.35; transition: opacity 0.12s;
-}
-.prep-conv-unit-row:hover .prep-cur-edit-btn,
-.prep-cur-edit-btn:focus-visible { opacity: 1; }
-.prep-cur-edit-btn:hover { background: #eef2ff; opacity: 1; }
-.prep-conv-unit-row--overridden { border-left-color: #6366f1; background: #f5f5ff; }
-.prep-conv-unit-row--overridden:hover { background: #ececff; }
-.prep-conv-unit-row--overridden .prep-cur-edit-btn { opacity: 1; }
-.prep-cur-override-note {
-  margin: 0.1rem 0 0.4rem 1.4rem; padding: 0.3rem 0.55rem;
-  background: #f5f5ff; border: 1px solid #e0e0fb; border-left: 3px solid #6366f1; border-radius: 5px;
-  font-size: 0.82rem; line-height: 1.45; display: flex; gap: 0.6rem; align-items: baseline;
-}
-.prep-cur-override-text { flex: 1 1 auto; word-break: break-word; color: #312e81; }
-.prep-cur-override-revert {
-  flex-shrink: 0; background: none; border: 1px solid #c7d2fe; border-radius: 4px;
-  color: #4338ca; font-size: 0.7rem; padding: 0 0.4rem; cursor: pointer; white-space: nowrap;
-}
-.prep-cur-override-revert:hover { background: #eef2ff; }
-.prep-cur-editor-panel {
-  margin: 0.1rem 0 0.5rem 1.4rem; padding: 0.4rem 0.55rem;
-  background: #fbfbff; border: 1px solid #e0e0fb; border-left: 3px solid #6366f1; border-radius: 5px;
-}
-.prep-cur-editor-textarea {
-  width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.85rem;
-  line-height: 1.5; padding: 0.35rem 0.45rem; border: 1px solid #c7d2fe; border-radius: 4px;
-}
-.prep-cur-editor-textarea:focus { outline: 2px solid #6366f1; outline-offset: 1px; border-color: #6366f1; }
-.prep-cur-editor-actions { display: flex; gap: 0.4rem; margin-top: 0.35rem; }
 
 /* ───────────────────────────────────────────────────────────────────────────
    R6.4 · T4a — Responsive du canvas (container query ; modèle = AlignPanel).

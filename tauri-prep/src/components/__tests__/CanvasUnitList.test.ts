@@ -132,3 +132,64 @@ describe("decor + text-start hooks", () => {
     expect(cleared).toBe(1);
   });
 });
+
+describe("stylo — édition en place (D-C8)", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("n'ajoute le ✎ que si onEditText est fourni", () => {
+    const bare = new CanvasUnitList(host);
+    bare.setData({ docId: 1, units: [unit(1)] });
+    bare.render();
+    expect(host.querySelector(".prep-conv-unit-edit")).toBeNull();
+
+    host.innerHTML = "";
+    const list = new CanvasUnitList(host, { onEditText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1), unit(2)] });
+    list.render();
+    expect(host.querySelectorAll(".prep-conv-unit-edit").length).toBe(2);
+  });
+
+  it("✎ ouvre une textarea en place seedée du text_norm, Enregistrer appelle onEditText", async () => {
+    const saved: Array<[number, string]> = [];
+    const list = new CanvasUnitList(host, { onEditText: async (id, t) => { saved.push([id, t]); } });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "avant" })] });
+    list.render();
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click();
+    const ta = host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!;
+    expect(ta.value).toBe("avant");
+    ta.value = "après";
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-editor-actions .btn-primary")!.click();
+    await flush();
+    expect(saved).toEqual([[10, "après"]]);
+    expect(host.querySelector(".prep-conv-unit-editor")).toBeNull(); // fermé
+    expect(host.querySelector(".prep-conv-unit-text")?.textContent).toBe("après"); // reflété
+  });
+
+  it("garde l'éditeur ouvert si onEditText échoue", async () => {
+    const list = new CanvasUnitList(host, { onEditText: async () => { throw new Error("boom"); } });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "x" })] });
+    list.render();
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click();
+    const ta = host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!;
+    ta.value = "y";
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-editor-actions .btn-primary")!.click();
+    await flush();
+    expect(host.querySelector(".prep-conv-unit-editor")).not.toBeNull(); // reste ouvert
+    expect(host.querySelector(".prep-conv-unit-text")).toBeNull(); // texte non remplacé
+  });
+
+  it("cliquer une ligne pendant l'édition ne change pas la sélection", async () => {
+    const seen: number[] = [];
+    const list = new CanvasUnitList(host, {
+      onEditText: async () => {},
+      onSelectionChange: (s) => seen.push(s.size),
+    });
+    list.setData({ docId: 1, units: [unit(1), unit(2)] });
+    list.render();
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click(); // entre en édition
+    const rows = host.querySelectorAll<HTMLElement>(".prep-conv-unit-row");
+    rows[1].click(); // clic sur une autre ligne pendant l'édition
+    expect(seen).toEqual([]); // aucune sélection émise
+    expect(list.getSelection().size).toBe(0);
+  });
+});

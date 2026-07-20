@@ -32,6 +32,11 @@ export interface CanvasUnitListOptions {
   onClearTextStart?: () => void;
   /** Emits the search/summary line for the host to place in its toolbar. */
   onStats?: (text: string) => void;
+  /** The "stylo" in-place text correction (DESIGN_inline_text_correction.md, D-C8).
+   *  When provided, each row gets a ✎ affordance; editing swaps the text for an
+   *  auto-sized textarea in place and persists ``newTextNorm`` via this callback (β,
+   *  immediate). Reject to keep the editor open (the host surfaces the error). */
+  onEditText?: (unitId: number, newTextNorm: string) => Promise<void>;
 }
 
 export class CanvasUnitList {
@@ -45,6 +50,8 @@ export class CanvasUnitList {
   private _selected = new Set<number>();
   private _searchQuery = "";
   private _lastClickedIdx = -1;
+  /** The unit whose in-place editor is open (single editor at a time), or null. */
+  private _editingUid: number | null = null;
 
   constructor(host: HTMLElement, opts: CanvasUnitListOptions = {}) {
     this._host = host;
@@ -87,6 +94,7 @@ export class CanvasUnitList {
   clearSelectionQuiet(): void {
     this._selected.clear();
     this._lastClickedIdx = -1;
+    this._editingUid = null; // a context change closes any open editor (F1)
   }
 
   /** Update the role of the given units in-place (after an assign) + re-render. */
@@ -105,6 +113,7 @@ export class CanvasUnitList {
     this._selected.clear();
     this._searchQuery = "";
     this._lastClickedIdx = -1;
+    this._editingUid = null;
   }
 
   private get _filteredUnits(): UnitRecord[] {
@@ -191,6 +200,9 @@ export class CanvasUnitList {
     const rows = area.querySelectorAll<HTMLElement>(".prep-conv-unit-row");
     rows.forEach((el, idx) => {
       el.addEventListener("click", (e) => {
+        // While a row is being edited, clicks never change the selection — the user
+        // must save/cancel first (avoids losing the edit to an accidental select).
+        if (this._editingUid !== null) return;
         const uid = parseInt(el.dataset.uid!, 10);
         if ((e as MouseEvent).shiftKey && this._lastClickedIdx >= 0) {
           const lo = Math.min(this._lastClickedIdx, idx);
@@ -215,9 +227,103 @@ export class CanvasUnitList {
       });
     }
 
+    // The "stylo" in-place editor (D-C8), only where the host wired persistence.
+    if (this._opts.onEditText) {
+      rows.forEach((el) => {
+        const uid = parseInt(el.dataset.uid!, 10);
+        const u = this._units.find((x) => x.unit_id === uid);
+        if (!u) return;
+        if (this._editingUid === uid) this._mountEditor(el, u);
+        else this._mountPen(el, u);
+      });
+    }
+
     area.querySelector<HTMLButtonElement>(".prep-conv-text-start-clear")?.addEventListener("click", (e) => {
       e.stopPropagation();
       this._opts.onClearTextStart?.();
     });
+  }
+
+  // ─── Stylo: in-place text correction (D-C8) ───────────────────────────────
+
+  /** Add the discreet ✎ affordance (revealed on hover) + double-click to edit. */
+  private _mountPen(el: HTMLElement, u: UnitRecord): void {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "prep-conv-unit-edit";
+    btn.textContent = "✎";
+    btn.title = "Corriger le texte de cette unité";
+    btn.addEventListener("click", (e) => { e.stopPropagation(); this._openEditor(u.unit_id); });
+    el.appendChild(btn);
+    el.querySelector<HTMLElement>(".prep-conv-unit-text")?.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      this._openEditor(u.unit_id);
+    });
+  }
+
+  private _openEditor(uid: number): void {
+    this._editingUid = uid;
+    this.render();
+    this._host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")?.focus();
+  }
+
+  private _cancelEdit(): void {
+    this._editingUid = null;
+    this.render();
+  }
+
+  /** Swap the text span for an auto-sized textarea in place (port of legacy A). */
+  private _mountEditor(el: HTMLElement, u: UnitRecord): void {
+    const current = u.text_norm ?? "";
+    const wrap = document.createElement("div");
+    wrap.className = "prep-conv-unit-editor-wrap";
+    const ta = document.createElement("textarea");
+    ta.className = "prep-conv-unit-editor";
+    ta.value = current;
+    // Auto-grow to fit the content, but CAP at the CSS max-height so a huge unit (a whole
+    // non-segmented doc) never gets an absurd inline height like 43160px — beyond the cap the
+    // textarea scrolls internally. A modest, predictable layout change on open.
+    const autoGrow = (): void => {
+      ta.style.height = "auto";
+      const maxH = parseFloat(getComputedStyle(ta).maxHeight);
+      const h = Number.isFinite(maxH) ? Math.min(ta.scrollHeight, maxH) : ta.scrollHeight;
+      ta.style.height = `${h}px`;
+    };
+    const actions = document.createElement("div");
+    actions.className = "prep-conv-unit-editor-actions";
+    const save = document.createElement("button");
+    save.type = "button"; save.className = "btn btn-primary btn-xs"; save.textContent = "Enregistrer"; save.title = "Ctrl+Entrée";
+    const cancel = document.createElement("button");
+    cancel.type = "button"; cancel.className = "btn btn-ghost btn-xs"; cancel.textContent = "Annuler"; cancel.title = "Échap";
+    actions.append(save, cancel);
+    wrap.append(ta, actions);
+    const textSpan = el.querySelector<HTMLElement>(".prep-conv-unit-text");
+    if (textSpan) textSpan.replaceWith(wrap); else el.appendChild(wrap);
+    el.classList.add("prep-conv-unit-row--editing");
+    autoGrow(); // size to content now that the textarea is in the DOM
+
+    const commit = (): void => { void this._saveEdit(u, ta.value); };
+    save.addEventListener("click", (e) => { e.stopPropagation(); commit(); });
+    cancel.addEventListener("click", (e) => { e.stopPropagation(); this._cancelEdit(); });
+    ta.addEventListener("click", (e) => e.stopPropagation());
+    ta.addEventListener("input", autoGrow);
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); }
+      else if (e.key === "Escape") { e.preventDefault(); this._cancelEdit(); }
+    });
+  }
+
+  private async _saveEdit(u: UnitRecord, text: string): Promise<void> {
+    const cb = this._opts.onEditText;
+    if (!cb) { this._cancelEdit(); return; }
+    if (text === (u.text_norm ?? "")) { this._cancelEdit(); return; } // no real change
+    try {
+      await cb(u.unit_id, text);
+    } catch {
+      return; // persistence failed — keep the editor open; the host surfaced the error
+    }
+    u.text_norm = text; // reflect the saved text locally (β edits text_norm, D-C1)
+    this._editingUid = null;
+    this.render();
   }
 }

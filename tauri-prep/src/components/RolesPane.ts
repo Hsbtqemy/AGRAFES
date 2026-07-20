@@ -22,6 +22,7 @@ import {
   setDocumentTextStart,
   listUnits,
   liftMarkers,
+  updateUnitTextNorm,
 } from "../lib/sidecarClient.ts";
 import {
   liftSummaryLine,
@@ -144,6 +145,8 @@ export class RolesPane {
       this._list = new CanvasUnitList(area, {
         onSelectionChange: () => this._renderActionBar(),
         onClearTextStart: () => void this._setTextStart(null),
+        // Stylo: transversal in-place text correction (β immediate).
+        onEditText: (uid, textNorm) => this._saveText(uid, textNorm),
         onStats: (t) => {
           const s = this._q("#prep-conv-search-stats");
           if (s) s.textContent = t;
@@ -158,6 +161,19 @@ export class RolesPane {
     // provided, so borne/rôle stay reachable without scrolling (R5.3). Else it stays in-pane.
     this._actionBarEl = this._q<HTMLElement>("#prep-conv-action-bar");
     if (this._dock && this._actionBarEl) this._dock.appendChild(this._actionBarEl);
+  }
+
+  /** onEditText callback for the shared list: persist a stylo correction (β immediate).
+   *  Throws on failure so CanvasUnitList keeps the editor open. */
+  private async _saveText(unitId: number, textNorm: string): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) throw new Error("Non connecté.");
+    try {
+      await updateUnitTextNorm(conn, unitId, textNorm);
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   /**

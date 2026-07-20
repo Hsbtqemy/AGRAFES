@@ -2482,3 +2482,14 @@ export async function updateUnitText(
   if (text_norm !== undefined) body.text_norm = text_norm;
   return conn.post("/units/update_text", body) as Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }>;
 }
+
+/** The "stylo" inline correction (DESIGN_inline_text_correction.md, D-C1): edit
+ *  text_norm only, keeping text_raw as the verbatim import provenance. Immediate (β),
+ *  flags aligned translations stale + records an undoable action server-side. */
+export async function updateUnitTextNorm(
+  conn: Conn,
+  unitId: number,
+  text_norm: string,
+): Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }> {
+  return conn.post("/units/update_text", { unit_id: unitId, text_norm }) as Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }>;
+}
