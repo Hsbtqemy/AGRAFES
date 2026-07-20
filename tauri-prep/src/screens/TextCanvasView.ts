@@ -277,6 +277,16 @@ export class TextCanvasView {
     }
   }
 
+  /** Deep-link (Explorer→Prep, #23): open the Annotation layer on a document and one of its
+   *  tokens, ready to correct it. Awaits the doc load so the editor binds to loaded tokens.
+   *  Setting `_docId` first makes `_setMode`'s own (fire-and-forget) sync target the right doc. */
+  async focusAnnotationToken(docId: number, tokenId?: number): Promise<void> {
+    this._docId = docId;
+    this._setMode("annoter");
+    await this._focusDoc(docId);
+    if (tokenId != null) this._annotationPane?.focusToken(tokenId);
+  }
+
   private async _focusDoc(docId: number | null): Promise<void> {
     this._docId = docId;
     this._stats = null;

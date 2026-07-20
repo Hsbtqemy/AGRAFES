@@ -164,8 +164,10 @@ export class App {
         const nav = JSON.parse(raw) as { doc_id: number; unit_id: number; token_id: number };
         if (nav.doc_id && nav.unit_id) {
           this._switchTab("actions");
-          this._actions.setSubView("annoter");
-          setTimeout(() => this._actions.annotFocusDoc(nav.doc_id, nav.token_id), 200);
+          // #23 — le pont de correction Explorer→Prep vise désormais le canvas (couche
+          // Annotation), pas l'écran legacy : sélection doc + éditeur du token, prêt à corriger.
+          this._actions.setSubView("texte");
+          setTimeout(() => void this._actions.canvasFocusAnnotationToken(nav.doc_id, nav.token_id), 200);
         }
       }
     } catch { /* ignore */ }

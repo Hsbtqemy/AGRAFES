@@ -548,6 +548,12 @@ export class ActionsScreen {
     this._annotationView?.focusDoc(docId, tokenId);
   }
 
+  /** Deep-link (Explorer→Prep, #23): route a token edit to the canvas Annotation layer
+   *  instead of the legacy AnnotationView (the read-only concordancier can't edit). */
+  canvasFocusAnnotationToken(docId: number, tokenId?: number): void {
+    void this._textCanvasView?.focusAnnotationToken(docId, tokenId);
+  }
+
   /** Public API: called from app.ts after Conventions→Prep navigation. */
   curationFocusDoc(docId: number): void {
     this._curationView?.focusDoc(docId);

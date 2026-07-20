@@ -461,4 +461,21 @@ describe("AnnotationPane", () => {
     expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(1);
     expect(host.querySelector("#prep-annot-search-count")?.textContent).toBe("1 / 1");
   });
+
+  it("focusToken opens the editor for a loaded token; no-op for an unknown id (#23)", async () => {
+    const pane = new AnnotationPane(host, () => fakeConn({
+      units: [unit(1)], tokens: [token(10, 1, 1, "chat", "NOUN")],
+    }), () => {});
+    await pane.setDocument(1, null);
+    const editor = host.querySelector<HTMLElement>("#prep-annot-token-editor")!;
+    expect(editor.style.display).toBe("none");
+    // Unknown token id → no-op (doc not annotated / stale deep-link).
+    pane.focusToken(999999);
+    expect(editor.style.display).toBe("none");
+    // Loaded token → the editor opens on it, ready to correct (Explorer→Prep bridge).
+    pane.focusToken(1001);
+    expect(editor.style.display).not.toBe("none");
+    expect(editor.querySelector<HTMLSelectElement>('[data-field="upos"]')!.value).toBe("NOUN");
+    expect(host.querySelector('[data-token-id="1001"]')!.classList.contains("annot-editing-token")).toBe(true);
+  });
 });

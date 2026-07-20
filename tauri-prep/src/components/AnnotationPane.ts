@@ -510,6 +510,15 @@ export class AnnotationPane {
     this._closeTokenEditor();
   }
 
+  /** Deep-link target (Explorer→Prep, #23): open the token editor to correct this token,
+   *  scrolling it into view. No-op if it isn't loaded (doc not annotated / unknown id). */
+  focusToken(tokenId: number): void {
+    if (!this._tokenById.has(tokenId)) return;
+    this._openTokenEditor(tokenId); // opens the editor + highlights the token (R5.2d)
+    this._root.querySelector<HTMLElement>(`[data-token-id="${tokenId}"]`)
+      ?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  }
+
   private async _saveToken(tokenId: number): Promise<void> {
     const conn = this._getConn();
     const editor = this._editorEl;
