@@ -72,6 +72,14 @@ describe("detectFamilyGroups", () => {
   it("liste vide → aucune famille", () => {
     expect(detectFamilyGroups([])).toEqual([]);
   });
+
+  it("IMP-13 : deux fichiers de MÊME langue (radical commun) → pas de famille", () => {
+    // `book_en` dans deux dossiers → même langue → pas une famille source↔traduction
+    // (sans le garde-fou langues-distinctes, le cross-dossier les groupait à tort).
+    expect(detectFamilyGroups(["drafts/book_en.docx", "final/book_en.docx"])).toEqual([]);
+    // Un mélange à ≥2 langues distinctes reste une famille (non-régression).
+    expect(detectFamilyGroups(["drafts/book_en.docx", "final/book_fr.docx"])).toHaveLength(1);
+  });
 });
 
 // ─── pickDefaultPivot ─────────────────────────────────────────────────────────

@@ -63,7 +63,13 @@ export function detectFamilyGroups(names: string[]): FamilyGroup[] {
 
   const groups: FamilyGroup[] = [];
   for (const [stem, files] of byStem) {
-    if (files.length >= 2) groups.push({ stem, files });
+    // IMP-13 : exiger ≥ 2 langues DISTINCTES (la docstring le promettait, le code ne testait
+    // que le nombre). Deux copies de MÊME langue au radical commun (ex. `book_en` dans deux
+    // dossiers) ne sont pas une famille source↔traduction — sans ce garde-fou, `pickDefaultPivot`
+    // en faisait la « traduction » de l'autre.
+    if (files.length >= 2 && new Set(files.map((f) => f.lang)).size >= 2) {
+      groups.push({ stem, files });
+    }
   }
   return groups;
 }
