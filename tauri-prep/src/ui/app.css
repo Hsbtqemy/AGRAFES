@@ -7444,6 +7444,37 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-cur-editor-textarea:focus { outline: 2px solid #6366f1; outline-offset: 1px; border-color: #6366f1; }
 .prep-cur-editor-actions { display: flex; gap: 0.4rem; margin-top: 0.35rem; }
 
+/* ───────────────────────────────────────────────────────────────────────────
+   R6.4 · T4a — Responsive du canvas (container query ; modèle = AlignPanel).
+   .prep-canvas-root déclare déjà `container-type: inline-size` ; il manquait toute
+   règle `@container`. Les panes sont bâties `flex-wrap: wrap` (token-editor, docks,
+   et l'interlinéaire Étendu qui wrappe déjà ses cellules — `overflow-x: visible`) →
+   rien ne déborde en largeur. Le seul écueil résiduel en conteneur étroit = l'idiome
+   `margin-left:auto` de fin de barre : une fois la ligne repliée, il isole l'élément
+   à l'extrême droite de sa propre ligne. En étroit on neutralise le pousseur (les
+   barres se lisent comme des piles alignées à gauche) et on laisse les onglets de
+   couche prendre la pleine largeur sous la ligne doc/recharger. Additif, zéro
+   régression au-dessus du seuil. NB : les pousseurs *intra-ligne* (boutons d'action
+   par unité, toggle diff/édition, fermeture d'éditeur) restent inchangés — leur ligne
+   ne se replie pas, l'alignement à droite y est voulu. */
+@container (max-width: 560px) {
+  /* Onglets de couche : pleine largeur sous la ligne doc/recharger, alignés à gauche. */
+  .prep-canvas-modes { margin-left: 0; width: 100%; flex-wrap: wrap; }
+  /* Le sélecteur de doc peut occuper toute la barre étroite (ellipsis déjà en place). */
+  .prep-canvas-doc-trigger { max-width: 100%; }
+  /* Barres Curation/Annotation/Rôles : elles ne wrappent pas et le champ de recherche a
+     `min-width: 200px` (non-rétrécissable) → sous ~310px, champ + toggle Prose/Étendu
+     débordent à l'horizontale. On lève le plancher pour laisser le champ rétrécir (flex:1) ;
+     le toggle reste aligné à droite (son `margin-left:auto` est un pousseur intra-ligne voulu,
+     comme les boutons par-unité). Le plancher de 200px est préservé au-dessus du seuil. */
+  .prep-conv-search { min-width: 0; }
+  /* Pousseurs de fin de barre (niveau dock/barre repliable) neutralisés. */
+  .prep-cur-summary,
+  .prep-annot-status,
+  .prep-annot-model-manage,
+  .prep-seg-canvas-undo { margin-left: 0; }
+}
+
 /* -- Dialog modal (catalogue CRUD) -- */
 .prep-conv-overlay {
   position: fixed; inset: 0;
