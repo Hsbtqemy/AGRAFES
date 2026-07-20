@@ -637,6 +637,12 @@ summary:focus-visible,
   width: 4.25rem;
   flex: 0 0 auto;
 }
+/* IMP-11 : langue prise par défaut (non détectée dans le nom) — bordure ambre pour que
+   l'utilisateur la remarque au lieu d'un « fr » silencieux ; disparaît dès qu'il l'édite. */
+.prep-import-screen .imp-lang-inp.imp-lang-guessed {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
 .prep-import-screen .imp-col-inp {
   width: 3.5rem;
   flex: 0 0 auto;

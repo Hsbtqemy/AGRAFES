@@ -27,6 +27,8 @@ import {
   deriveModeFromExt,
   normalizeModeForExt,
   detectLanguageForMode,
+  detectLanguageToken,
+  isKnownImportExt,
 } from "../lib/importDetect.ts";
 import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
 import { buildFamilyDetectionBannerHtml } from "../lib/importFamilyDetectionTemplate.ts";
@@ -44,6 +46,13 @@ interface FileItem {
   title: string;
   status: "pending" | "importing" | "done" | "error";
   message: string;
+  /**
+   * IMP-11 : la langue a été prise par DÉFAUT (aucun code de langue dans le nom), pas
+   * détectée — signalé dans la liste pour que l'utilisateur vérifie plutôt qu'un `fr`
+   * silencieux. Effacé dès qu'il édite le champ langue. Faux pour TEI (le `xml:lang`
+   * décide, champ vide).
+   */
+  langGuessed?: boolean;
   /**
    * For `docx_numbered_lines` ONLY — 1-based index of the column to extract
    * from tables (DOCX bilingue 2-col). Undefined = legacy behavior (tables
@@ -164,11 +173,16 @@ export class ImportScreen {
         const defaultLang = (this._root.querySelector<HTMLInputElement>("#imp-default-lang"))!.value.trim() || "fr";
         let added = 0;
         let skippedDup = 0;
+        let skippedUnknown = 0;
         for (const file of Array.from(files)) {
           // Tauri WebView exposes native path via non-standard File.path property
           const path = (file as File & { path?: string }).path;
           if (!path) continue;
           const name = file.name;
+          // IMP-15 : filtrer les extensions non prises en charge (converge avec ShareDocs,
+          // qui filtre déjà via isKnownImportExt) — sinon un .doc/.pdf/sans-ext entrerait
+          // dans la liste avec un mode bidon qui n'échoue qu'au dispatch.
+          if (!isKnownImportExt(extFromFileName(name))) { skippedUnknown++; continue; }
           const r = this._tryAddSingle(path, name, defaultMode, defaultLang);
           if (r === "added") added++;
           else skippedDup++;
@@ -181,6 +195,11 @@ export class ImportScreen {
         if (skippedDup > 0) {
           this._showToast?.(
             `${skippedDup} fichier${skippedDup > 1 ? "s" : ""} ignoré${skippedDup > 1 ? "s" : ""} (déjà dans la liste).`,
+          );
+        }
+        if (skippedUnknown > 0) {
+          this._showToast?.(
+            `${skippedUnknown} fichier${skippedUnknown > 1 ? "s" : ""} ignoré${skippedUnknown > 1 ? "s" : ""} — extension non prise en charge (DOCX, ODT, TXT, TEI/XML, CoNLL-U).`,
           );
         }
       });
@@ -279,6 +298,8 @@ export class ImportScreen {
       // TEI sans token de langue → champ vide = le xml:lang du document fait foi
       // (DESIGN §11.8, aligné sur ShareDocs). Les autres formats : détecté ou défaut.
       language: detectLanguageForMode(mode, fileName, defaultLang) ?? "",
+      // IMP-11 : marquer un défaut non détecté (nom sans code de langue), hors TEI.
+      langGuessed: mode !== "tei" && detectLanguageToken(fileName) === null,
       title: fileName,
       status: "pending",
       message: "",
@@ -346,6 +367,7 @@ export class ImportScreen {
       // Ne pas imposer le défaut à un TEI sans token : laisser le xml:lang décider
       // (champ vide), cohérent avec _tryAddSingle (DESIGN §11.8).
       file.language = detectLanguageForMode(file.mode, base, defaultLang) ?? "";
+      file.langGuessed = file.mode !== "tei" && detectLanguageToken(base) === null; // IMP-11
       touched += 1;
     }
     this._renderList();
@@ -404,9 +426,13 @@ export class ImportScreen {
               .join("")}
           </select>
           ${colCtrl}
-          <input class="imp-lang-inp" type="text" value="${_escHtml(f.language)}" maxlength="10"
+          <input class="imp-lang-inp${f.langGuessed ? " imp-lang-guessed" : ""}" type="text" value="${_escHtml(f.language)}" maxlength="10"
                  placeholder="${f.mode === "tei" ? "xml:lang" : "lang"}"
-                 title="${f.mode === "tei" ? "TEI : laisser vide pour conserver le xml:lang du document ; renseigner pour forcer une langue." : "Code de langue (ex. fr, en)."}"
+                 title="${f.mode === "tei"
+                   ? "TEI : laisser vide pour conserver le xml:lang du document ; renseigner pour forcer une langue."
+                   : f.langGuessed
+                     ? "⚠ Langue par défaut (aucun code détecté dans le nom de fichier) — vérifiez."
+                     : "Code de langue (ex. fr, en)."}"
                  data-i="${i}" />
           <input class="imp-title-inp" type="text" value="${_escHtml(f.title)}" placeholder="titre" data-i="${i}" />
           <button class="btn btn-sm imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
@@ -446,6 +472,11 @@ export class ImportScreen {
       (el as HTMLInputElement).addEventListener("input", (e) => {
         const i = parseInt((e.target as HTMLElement).dataset.i!);
         this._files[i].language = (e.target as HTMLInputElement).value;
+        // IMP-11 : l'utilisateur a revu la langue → ne plus la signaler comme devinée.
+        if (this._files[i].langGuessed) {
+          this._files[i].langGuessed = false;
+          (e.target as HTMLElement).classList.remove("imp-lang-guessed");
+        }
       });
     });
     this._listEl.querySelectorAll(".imp-title-inp").forEach(el => {
