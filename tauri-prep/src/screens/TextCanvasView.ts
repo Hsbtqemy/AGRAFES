@@ -287,6 +287,11 @@ export class TextCanvasView {
     if (tokenId != null) this._annotationPane?.focusToken(tokenId);
   }
 
+  /** Open the Annotation layer keeping the current document (nav entry point, R6.5-A). */
+  showAnnotationLayer(): void {
+    this._setMode("annoter");
+  }
+
   private async _focusDoc(docId: number | null): Promise<void> {
     this._docId = docId;
     this._stats = null;

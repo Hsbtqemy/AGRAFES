@@ -23,7 +23,6 @@ import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AlignMatrixView } from "./AlignMatrixView.ts";
-import { AnnotationView } from "./AnnotationView.ts";
 import { SegmentationView } from "./SegmentationView.ts";
 import { CurationView } from "./CurationView.ts";
 import { TextCanvasView } from "./TextCanvasView.ts";
@@ -59,7 +58,7 @@ interface ActionsExportPrefill {
 
 // ─── Sub-view type ────────────────────────────────────────────────
 
-type SubView = "hub" | "texte" | "curation" | "segmentation" | "alignement" | "matrice" | "annoter";
+type SubView = "hub" | "texte" | "curation" | "segmentation" | "alignement" | "matrice";
 
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
@@ -77,8 +76,6 @@ export class ActionsScreen {
   private _alignPanel: AlignPanel | null = null;
   // Matrice (grille ancrée-source, lecture — tranche 2c)
   private _matrixView: AlignMatrixView | null = null;
-  // AnnotationView (extracted)
-  private _annotationView: AnnotationView | null = null;
   // SegmentationView (extracted)
   private _segmentationView: SegmentationView | null = null;
   // CurationView (extracted)
@@ -152,10 +149,6 @@ export class ActionsScreen {
     matricePanel.dataset.panel = "matrice";
     matricePanel.style.display = this._activeSubView === "matrice" ? "" : "none";
 
-    const annoterPanel = this._renderAnnoterPanel(root);
-    annoterPanel.dataset.panel = "annoter";
-    annoterPanel.style.display = this._activeSubView === "annoter" ? "" : "none";
-
     const textePanel = this._renderTexteCanvasPanel(root);
     textePanel.dataset.panel = "texte";
     textePanel.style.display = this._activeSubView === "texte" ? "" : "none";
@@ -165,7 +158,6 @@ export class ActionsScreen {
     panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
     panelSlot.appendChild(matricePanel);
-    panelSlot.appendChild(annoterPanel);
     panelSlot.appendChild(textePanel);
 
     root.appendChild(panelSlot);
@@ -246,7 +238,7 @@ export class ActionsScreen {
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
-      if (saved === "hub" || saved === "texte" || saved === "curation" || saved === "segmentation" || saved === "alignement" || saved === "matrice" || saved === "annoter") {
+      if (saved === "hub" || saved === "texte" || saved === "curation" || saved === "segmentation" || saved === "alignement" || saved === "matrice") {
         this._activeSubView = saved;
       }
     } catch { /* ignore */ }
@@ -283,7 +275,7 @@ export class ActionsScreen {
   }
 
   private _setSubViewClass(root: HTMLElement, view: SubView): void {
-    root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement", "actions-sub-matrice", "actions-sub-annoter");
+    root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement", "actions-sub-matrice");
     root.classList.add(`actions-sub-${view}`);
     const content = root.closest<HTMLElement>(".content");
     if (content) content.classList.toggle("prep-curation-wide", view === "curation");
@@ -299,8 +291,10 @@ export class ActionsScreen {
     // Workflow card primary buttons → navigate to sub-view
     el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-wf-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const target = btn.dataset.target as SubView;
-        this._switchSubViewDOM(root, target);
+        const target = btn.dataset.target ?? "";
+        // R6.5-A : « Annotation » ouvre le canvas (couche Annotation), l'écran legacy retiré.
+        if (target === "annoter") { this.openAnnotationLayer(); return; }
+        this._switchSubViewDOM(root, target as SubView);
       });
     });
 
@@ -362,10 +356,11 @@ export class ActionsScreen {
         jobCenter: () => this._jobCenter,
         onNavigate: (target, context) => {
           if (!this._wfRoot) return;
+          // R6.5-A : « annoter » ouvre le canvas (couche Annotation), l'écran legacy retiré.
+          if (target === "annoter") { this.openAnnotationLayer(context?.docId ?? undefined); return; }
           this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
           if (context?.docId != null) {
             if (target === "segmentation") this._segmentationView?.focusDoc(context.docId);
-            if (target === "annoter") this._annotationView?.focusDoc(context.docId);
           }
         },
         onReloadDocs: () => { void this._loadDocs(); },
@@ -396,10 +391,9 @@ export class ActionsScreen {
         jobCenter: () => this._jobCenter,
         onNavigate: (target, context) => {
           if (!this._wfRoot) return;
+          // R6.5-A : « annoter » ouvre le canvas (couche Annotation), l'écran legacy retiré.
+          if (target === "annoter") { this.openAnnotationLayer(context?.docId ?? undefined); return; }
           this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
-          if (context?.docId != null) {
-            if (target === "annoter") this._annotationView?.focusDoc(context.docId);
-          }
         },
         onOpenDocuments: () => this._openDocumentsTab?.(),
         onOpenExporter: (prefill) => this._openExporterTab?.(prefill),
@@ -539,28 +533,26 @@ export class ActionsScreen {
       this._matrixView?.refreshDocs();
     }
     this._refreshRuntimeState();
-    // Refresh annotation panel if it was rendered before conn was available.
-    if (conn) this._annotRefreshIfVisible();
-  }
-
-  /** Public API: called from app.ts after RG→Prep token navigation. */
-  annotFocusDoc(docId: number, tokenId?: number): void {
-    this._annotationView?.focusDoc(docId, tokenId);
   }
 
   /** Deep-link (Explorer→Prep, #23): route a token edit to the canvas Annotation layer
-   *  instead of the legacy AnnotationView (the read-only concordancier can't edit). */
+   *  (the read-only concordancier can't edit; the legacy AnnotationView is retired). */
   canvasFocusAnnotationToken(docId: number, tokenId?: number): void {
     void this._textCanvasView?.focusAnnotationToken(docId, tokenId);
+  }
+
+  /** R6.5-A retrait : « Annotation » (hub, sidebar, étape-suivante) ouvre désormais le canvas
+   *  sur la couche Annotation, l'écran legacy ayant été retiré. Avec `docId`, focalise ce doc ;
+   *  sinon garde le doc courant du canvas. */
+  openAnnotationLayer(docId?: number): void {
+    this.setSubView("texte");
+    if (docId != null) void this._textCanvasView?.focusAnnotationToken(docId);
+    else this._textCanvasView?.showAnnotationLayer();
   }
 
   /** Public API: called from app.ts after Conventions→Prep navigation. */
   curationFocusDoc(docId: number): void {
     this._curationView?.focusDoc(docId);
-  }
-
-  private _annotRefreshIfVisible(): void {
-    this._annotationView?.refreshIfConnected();
   }
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
@@ -689,7 +681,6 @@ export class ActionsScreen {
       this._alignPanel?.refreshDocs();
       this._matrixView?.refreshDocs();
       this._segmentationView?.refreshDocs();
-      this._annotationView?.refreshIfConnected();
       this._textCanvasView?.refreshDocs();
       this._log(`${this._docs.length} document(s) chargé(s).`);
       this._refreshRuntimeState();
@@ -926,26 +917,12 @@ export class ActionsScreen {
   }
 
 
-  // ─── Annotation panel (delegated to AnnotationView) ──────────────────────
-
-  private _renderAnnoterPanel(_root: HTMLElement): HTMLElement {
-    const wrapper = document.createElement("div");
-    wrapper.setAttribute("role", "main");
-    wrapper.setAttribute("aria-label", "Vue Annotation");
-    this._annotationView = new AnnotationView(() => this._conn);
-    this._annotationView.render(wrapper);
-    return wrapper;
-  }
-
-
   /**
    * Release all resources held by this screen.
    * Safe to call multiple times (idempotent).
    */
   dispose(): void {
     // Dispose extracted views
-    this._annotationView?.dispose();
-    this._annotationView = null;
     this._segmentationView?.dispose();
     this._segmentationView = null;
     this._curationView?.dispose();
