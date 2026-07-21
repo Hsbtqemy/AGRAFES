@@ -7463,6 +7463,66 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 }
 .prep-cur-diff-panel .diff-mark { background: #dcfce7; color: #14532d; text-decoration: none; padding: 0 1px; border-radius: 2px; }
 .prep-cur-diff-panel .diff-del { background: #fee2e2; color: #7f1d1d; text-decoration: line-through; padding: 0 1px; border-radius: 2px; }
+/* Char-level diff (R6.5-B) — rend les changements d'invisibles lisibles. */
+.prep-cur-diff-panel .diff-char-ins { background: #dcfce7; color: #14532d; text-decoration: none; padding: 0 1px; border-radius: 2px; }
+.prep-cur-diff-panel .diff-char-del { background: #fee2e2; color: #7f1d1d; text-decoration: line-through; padding: 0 1px; border-radius: 2px; }
+/* Glyphe d'un invisible (NBSP ·, fine insécable ˙, tab →, etc.) : ambre pour signaler
+   « caractère spécial ». L'espace ordinaire (diff-special-space, plus bas) repasse en gris. */
+.prep-cur-diff-panel .diff-special-char { color: #b45309; text-decoration: none; }
+.prep-cur-diff-panel .diff-special-space { color: #64748b; opacity: .75; }
+.prep-cur-diff-panel .diff-special-invisible { outline: 1px dotted #b45309; border-radius: 2px; }
+
+/* R6.5-B Lot A — exceptions par unité (badge 🔒/🔒✏ + actions Ignorer/Épingler/Rétablir).
+   Namespacé prep-cur-* ; l'état d'exception prime visuellement sur le marqueur --curated. */
+.prep-conv-unit-row--exc-ignore { border-left-color: #94a3b8; background: #f8fafc; }
+.prep-conv-unit-row--exc-ignore:hover { background: #f1f5f9; }
+.prep-conv-unit-row--exc-override { border-left-color: #6366f1; background: #f5f7ff; }
+.prep-conv-unit-row--exc-override:hover { background: #eef1ff; }
+.prep-cur-exc-badge {
+  flex-shrink: 0; margin-left: auto;
+  font-size: 0.7rem; color: #475569; white-space: nowrap;
+  padding: 0 0.35rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;
+}
+.prep-cur-exc-btn {
+  flex-shrink: 0;
+  background: none; border: 1px solid #cbd5e1; border-radius: 4px;
+  color: #475569; font-size: 0.7rem; padding: 0 0.35rem; cursor: pointer; white-space: nowrap;
+}
+.prep-cur-exc-btn:hover { background: #eef2f7; border-color: #94a3b8; }
+
+/* R6.5-B Lot B — "relu" review marker (progress only). */
+.prep-cur-relu-btn {
+  flex-shrink: 0;
+  background: none; border: 1px solid #cbd5e1; border-radius: 4px;
+  color: #64748b; font-size: 0.7rem; padding: 0 0.35rem; cursor: pointer; white-space: nowrap;
+}
+.prep-cur-relu-btn:hover { background: #eef2f7; border-color: #94a3b8; }
+.prep-cur-relu-btn--on { background: #dcfce7; border-color: #86efac; color: #15803d; }
+.prep-cur-relu-btn--on:hover { background: #bbf7d0; }
+/* A reviewed unit's text dims to signal "done" without hiding it (buttons stay full opacity). */
+.prep-conv-unit-row--relu .prep-conv-unit-text { opacity: 0.55; }
+
+/* While the stylo editor is open on a row, hide the row's review/exception/diff controls so a
+   stray click can't discard the in-progress edit (Enregistrer/Annuler stay). */
+.prep-conv-unit-row--editing .prep-cur-exc-btn,
+.prep-conv-unit-row--editing .prep-cur-relu-btn,
+.prep-conv-unit-row--editing .prep-cur-diff-toggle { display: none; }
+
+/* R6.5-B Lot B — review filter bar (status + by-rule chips + bulk). */
+.prep-cur-review-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 0 0 0.4rem;
+}
+.prep-cur-review-bar:empty { display: none; }
+.prep-cur-chip {
+  background: #fff; border: 1px solid #cbd5e1; border-radius: 999px;
+  color: #475569; font-size: 0.72rem; padding: 1px 0.5rem; cursor: pointer; white-space: nowrap;
+}
+.prep-cur-chip:hover { background: #f1f5f9; border-color: #94a3b8; }
+.prep-cur-chip--on { background: #0f766e; border-color: #0f766e; color: #fff; }
+.prep-cur-chip--on:hover { background: #0c5f58; }
+.prep-cur-chip--bulk { border-style: dashed; }
+.prep-cur-chip-sep { width: 1px; height: 1rem; background: #e2e8f0; margin: 0 2px; }
+.prep-cur-bar-spacer { flex: 1 1 auto; }
 
 /* ───────────────────────────────────────────────────────────────────────────
    R6.4 · T4a — Responsive du canvas (container query ; modèle = AlignPanel).

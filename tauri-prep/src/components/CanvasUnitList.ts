@@ -32,6 +32,10 @@ export interface CanvasUnitListOptions {
   onClearTextStart?: () => void;
   /** Emits the search/summary line for the host to place in its toolbar. */
   onStats?: (text: string) => void;
+  /** Optional extra row predicate ANDed with the text search (e.g. the curation review
+   *  filter). Returning false hides the unit. Re-evaluated on every render, so the host
+   *  just calls render() after changing whatever the predicate closes over. */
+  rowFilter?: (unit: UnitRecord) => boolean;
   /** The "stylo" in-place text correction (DESIGN_inline_text_correction.md, D-C8).
    *  When provided, each row gets a ✎ affordance; editing swaps the text for an
    *  auto-sized textarea in place and persists ``newTextNorm`` via this callback (β,
@@ -117,7 +121,8 @@ export class CanvasUnitList {
   }
 
   private get _filteredUnits(): UnitRecord[] {
-    return filterUnits(this._units, this._searchQuery);
+    const bySearch = filterUnits(this._units, this._searchQuery);
+    return this._opts.rowFilter ? bySearch.filter((u) => this._opts.rowFilter!(u)) : bySearch;
   }
 
   /** Explicit "start of text" marker shown before the boundary unit (and as a
@@ -137,8 +142,11 @@ export class CanvasUnitList {
 
     const filtered = this._filteredUnits;
     const summary = summarizeUnits(this._units, filtered);
+    // Show matched/total whenever anything narrows the list — a text search OR a mode's
+    // rowFilter (e.g. the curation review filter). Keying off searchQuery alone made the count
+    // lie under a rowFilter (showed the full total while fewer rows were rendered).
     this._opts.onStats?.(
-      this._searchQuery.trim()
+      summary.matched !== summary.total
         ? `${summary.matched}/${summary.total} unités · ${summary.withRole} avec rôle`
         : `${summary.total} unités · ${summary.withRole} avec rôle`,
     );
