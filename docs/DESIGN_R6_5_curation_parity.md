@@ -189,7 +189,17 @@ de la note de parité :
    assumé vs D2** : clé localStorage **`agrafes.prep.curate.review.canvas.<docId>`** (suffixe `canvas`)
    — évite de clobberer le blob legacy (`statuses`/`overrides`, même préfixe) tant que `CurationView`
    coexiste. +7 tests (staleness ×2, statut, règle, bulk).
-3. **Lot C — Règles avancées (#1)** : Find/Replace + Trouver (D3).
+3. **Lot C — Règles avancées (#1)** ✅ *(livré 2026-07-21)* : sous-section repliable `<details>` dans
+   le dock (Chercher / Remplacer + cases regex/casse). **Activer** → `_frRule` (une `CurateRule`
+   `{pattern, replacement, flags, description:"R/R:…"}`) ajoutée en fin de `_rulesWithLabels()` : elle
+   traverse **automatiquement** aperçu/apply/`rulesSignature`/filtre-par-règle (label « Règle F/R »),
+   invalide le preview comme un preset. Échappement sûr si regex décoché
+   (`[.*+?^${}()|[\]\\]→\\$&`), try/catch sur regex invalide. **Trouver** : count des occurrences sur
+   `_units[].text_norm` + nav unité-par-unité (◄►/pos, surlignage `--found`/`--found-active`,
+   `scrollIntoView`) — **révèle toutes les unités** (reset filtres/recherche) pour que chaque hit soit
+   atteignable. **⚠ Divergence acceptée** : Trouver utilise `RegExp` **JS** (aperçu best-effort),
+   l'apply utilise le `regex.V0` **Python** — un motif avancé (`\p{L}`, POSIX) peut différer/échouer en
+   JS. +6 tests. **Abandonné** : la textarea JSON brute (D3).
 4. **Lot D — Undo Apply (D5)** : port mécanique du bouton.
 5. **Lot E — Tiroir Avancé T3 (D6)** : reloger les 2 composants + diag/export/réindex.
 
@@ -254,6 +264,12 @@ pytest inchangés, vitest + build pour le front.
   + CSS `.prep-cur-diff-panel` : espace ordinaire **gris**, insécable/fine/tab **ambre** (distingue les
   deux). Front pur, +6 tests. **Limite connue** : au-delà de 600 car., `highlightChanges` retombe en
   mot-à-mot (perf) → les blancs y restent invisibles (unités-pavé ; à améliorer si un cas réel le réclame).
+- **Passe adverse Lot C (2026-07-21)** : 1 piège UX corrigé — une règle F/R **active** dans un
+  `<details>` **replié** n'avait aucun indicateur visible (le badge « règle active » est dedans) → un
+  Aperçu pouvait subir une règle cachée. Fix : `_frSetActiveUI` toggle `.prep-cur-fr--active` sur le
+  `<details>`, dont le `<summary>` (toujours visible) affiche « — règle active » en `::after`. +1 test.
+  Pas de bug franc par ailleurs (la règle F/R traverse bien aperçu/apply/signature/filtre ; le pattern
+  n'atteint jamais le DOM en HTML → pas d'XSS ; nav bornée).
 - **Bug d'alignement LCS corrigé (2026-07-21, révélé par la QA du diff)** : dans `highlightChanges`
   **et** `highlightChangesWordLevel`, la branche insertion/suppression était **inversée** — sous
   `dp[i+1][j] >= dp[i][j+1]` (supprimer `bChars[i]` est le bon choix) le code **insérait** `aChars[j]`.
