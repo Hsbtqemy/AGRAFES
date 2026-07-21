@@ -57,6 +57,22 @@ describe("renderSpecialChars", () => {
     expect(out).toContain("ZWJ");
     expect(out).toContain("diff-special-invisible");
   });
+
+  it("showSpace rend l'espace ordinaire (U+0020) en glyphe", () => {
+    const out = renderSpecialChars("a b", true);
+    expect(out).toContain("diff-special-space");
+    expect(out).toContain("U+0020");
+  });
+
+  it("sans showSpace, l'espace ordinaire reste inchang\u00e9", () => {
+    expect(renderSpecialChars("a b")).toBe("a b");
+  });
+
+  it("showSpace n'alt\u00e8re pas le markup d'un autre invisible (pas de double-remplacement)", () => {
+    const out = renderSpecialChars("\u00a0", true); // NBSP seul
+    expect(out).toContain("U+00A0");         // rendu comme ins\u00e9cable
+    expect(out).not.toContain("U+0020");     // et PAS comme espace ordinaire
+  });
 });
 
 // ─── highlightChanges ─────────────────────────────────────────────────────────
@@ -108,6 +124,33 @@ describe("highlightChanges", () => {
     expect(out).toContain("&lt;");
     expect(out).toContain("&gt;");
     expect(out).not.toContain("<b>");
+  });
+
+  it("changement d'espaces seul (double → simple) est visible", () => {
+    const out = highlightChanges("a  b", "a b"); // deux espaces → un
+    expect(out).toContain('<del class="diff-char-del">'); // l'espace en trop est supprimé…
+    expect(out).toContain("diff-special-space");          // …et rendu en glyphe visible
+  });
+
+  it("espace ordinaire → fine insécable : les deux glyphes distincts apparaissent", () => {
+    const out = highlightChanges("mot !", "mot !"); // U+0020 → U+202F
+    expect(out).toContain('<del class="diff-char-del">'); // espace ordinaire supprimé
+    expect(out).toContain('<mark class="diff-char-ins">'); // fine insécable insérée
+    expect(out).toContain("U+202F");                       // glyphe de la fine insécable
+    expect(out).toContain("diff-special-space");           // et le glyphe de l'espace supprimé
+  });
+
+  it("suppression simple -> diff minimal (1 seul <del>, aucune insertion)", () => {
+    const out = highlightChanges("ab", "b"); // supprime 'a', garde 'b'
+    expect((out.match(/<del/g) || []).length).toBe(1);
+    expect(out).not.toContain("<mark");
+  });
+
+  it("espace au milieu supprime ne duplique PAS le texte qui suit (alignement)", () => {
+    // Avant le fix, la fin commune etait rendue en insert-tout + delete-tout.
+    const out = highlightChanges("a.  b c", "a. b c"); // double -> simple espace
+    expect(out).not.toContain("<mark");                 // pure suppression
+    expect((out.match(/<del/g) || []).length).toBe(1);  // seul l'espace en trop
   });
 });
 

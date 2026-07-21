@@ -20,8 +20,14 @@ export function escHtml(s: string): string {
  * Rend les caractères spéciaux/invisibles sous forme de glyphes visibles avec infobulle.
  * À appeler sur du texte déjà échappé HTML (& < > remplacés).
  */
-export function renderSpecialChars(escaped: string): string {
-  return escaped
+export function renderSpecialChars(escaped: string, showSpace = false): string {
+  // showSpace: also glyph the ordinary space (U+0020) as a middle dot. Reserved for the
+  // *changed* spans of a diff (mark/del) — otherwise the whole context would be dotted. Runs
+  // FIRST: the replacements below emit markup whose attribute spaces a late pass would mangle.
+  const base = showSpace
+    ? escaped.replace(/ /g, '<span class="diff-special-char diff-special-space" title="espace (U+0020)">·</span>')
+    : escaped;
+  return base
     .replace(/\u00a0/g,  '<span class="diff-special-char" title="espace ins\u00e9cable (U+00A0)">\u00b7</span>')
     .replace(/\u202f/g,  '<span class="diff-special-char" title="espace fine ins\u00e9cable (U+202F)">\u02d9</span>')
     .replace(/\u00ad/g,  '<span class="diff-special-char diff-special-invisible" title="tiret conditionnel (U+00AD)">\u2e17</span>')
@@ -63,12 +69,16 @@ export function highlightChanges(before: string, after: string): string {
     if (i < m && j < n && bChars[i] === aChars[j]) {
       parts.push(renderSpecialChars(escHtml(aChars[j])));
       i++; j++;
-    } else if (j < n && (i >= m || dp[i + 1][j] >= dp[i][j + 1])) {
-      parts.push(`<mark class="diff-char-ins">${renderSpecialChars(escHtml(aChars[j]))}</mark>`);
-      j++;
-    } else {
-      parts.push(`<del class="diff-char-del">${renderSpecialChars(escHtml(bChars[i]))}</del>`);
+    } else if (i < m && (j >= n || dp[i + 1][j] >= dp[i][j + 1])) {
+      // dp[i+1][j] ≥ dp[i][j+1] ⇒ dropping bChars[i] keeps the LCS at least as long ⇒ deletion.
+      // (This branch was previously the *insertion*, which inverted the choice and produced
+      // non-minimal "insert-all-then-delete-all" runs on any mid-string change — e.g. a lone
+      // removed space made the whole trailing text duplicate.)
+      parts.push(`<del class="diff-char-del">${renderSpecialChars(escHtml(bChars[i]), true)}</del>`);
       i++;
+    } else {
+      parts.push(`<mark class="diff-char-ins">${renderSpecialChars(escHtml(aChars[j]), true)}</mark>`);
+      j++;
     }
   }
   return parts.join("");
@@ -97,12 +107,13 @@ export function highlightChangesWordLevel(before: string, after: string): string
     if (i < m && j < n && bWords[i].toLowerCase() === aWords[j].toLowerCase()) {
       parts.push(renderSpecialChars(escHtml(aWords[j])));
       i++; j++;
-    } else if (j < n && (i >= m || dp[i + 1][j] >= dp[i][j + 1])) {
-      parts.push(`<mark class="diff-mark">${renderSpecialChars(escHtml(aWords[j]))}</mark>`);
-      j++;
-    } else {
+    } else if (i < m && (j >= n || dp[i + 1][j] >= dp[i][j + 1])) {
+      // Same alignment fix as highlightChanges: this is the deletion branch.
       parts.push(`<del class="diff-del">${renderSpecialChars(escHtml(bWords[i]))}</del>`);
       i++;
+    } else {
+      parts.push(`<mark class="diff-mark">${renderSpecialChars(escHtml(aWords[j]))}</mark>`);
+      j++;
     }
   }
   return parts.join(" ");
