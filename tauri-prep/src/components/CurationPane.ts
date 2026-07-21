@@ -73,6 +73,14 @@ export class CurationPane {
   private _statusFilter: "all" | "todo" | "relu" | "ignore" | "override" = "all";
   private _ruleFilter: string | null = null;
   private _ruleLabels: string[] = [];
+  /** R6.5-B Lot C — advanced Find/Replace rule: a single custom CurateRule appended after the
+   *  presets, so it flows through preview/apply/rulesSignature/by-rule-filter automatically.
+   *  `_frHits` are the unit_ids matching the current "Trouver" pattern (nav order), `_frHitSet`
+   *  the same for O(1) row decoration, `_frHitIdx` the nav cursor. */
+  private _frRule: CurateRule | null = null;
+  private _frHits: number[] = [];
+  private _frHitSet = new Set<number>();
+  private _frHitIdx = -1;
 
   constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void) {
     this._root = root;
@@ -105,6 +113,31 @@ export class CurationPane {
             title="Appliquer la curation au document (r&#233;&#233;crit le texte de recherche ; l'original est conserv&#233;)">Appliquer</button>
           <span class="prep-cur-summary" id="prep-cur-summary" aria-live="polite"></span>
         </div>
+        <details class="prep-cur-fr">
+          <summary>R&#232;gle avanc&#233;e &#8212; chercher / remplacer</summary>
+          <div class="prep-cur-fr-body">
+            <div class="prep-cur-fr-row">
+              <input type="text" id="prep-cur-fr-find" class="prep-cur-fr-input" placeholder="Chercher&#8230;" autocomplete="off" />
+              <input type="text" id="prep-cur-fr-replace" class="prep-cur-fr-input" placeholder="Remplacer par&#8230;" autocomplete="off" />
+            </div>
+            <div class="prep-cur-fr-row prep-cur-fr-opts">
+              <label><input type="checkbox" id="prep-cur-fr-regex" /> expression r&#233;guli&#232;re</label>
+              <label><input type="checkbox" id="prep-cur-fr-nocase" /> ignorer la casse</label>
+              <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-fr-find-btn"
+                title="Compter et parcourir les occurrences du motif (sans &#233;crire)">Trouver</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="prep-cur-fr-apply-btn"
+                title="Ajouter cette r&#232;gle chercher/remplacer aux r&#232;gles de curation">Activer la r&#232;gle</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-fr-clear-btn" style="display:none">Effacer</button>
+              <span class="prep-cur-fr-badge" id="prep-cur-fr-badge" style="display:none">r&#232;gle active</span>
+              <span class="prep-cur-fr-nav" id="prep-cur-fr-nav" style="display:none">
+                <button type="button" class="btn btn-ghost btn-xs" id="prep-cur-fr-prev" title="Occurrence pr&#233;c&#233;dente">&#9664;</button>
+                <span id="prep-cur-fr-pos"></span>
+                <button type="button" class="btn btn-ghost btn-xs" id="prep-cur-fr-next" title="Occurrence suivante">&#9654;</button>
+              </span>
+            </div>
+            <span class="prep-cur-fr-feedback" id="prep-cur-fr-feedback" aria-live="polite"></span>
+          </div>
+        </details>
         <div class="prep-cur-review-bar" id="prep-cur-review-bar" role="group" aria-label="Filtres de revue"></div>
         <div class="prep-conv-units-area prep-cur-units" id="prep-cur-units">
           <div class="prep-conv-empty">S&#233;lectionnez un document.</div>
@@ -130,6 +163,15 @@ export class CurationPane {
       this._list?.render();
     });
     this._q("#prep-cur-apply-btn")?.addEventListener("click", () => void this._apply());
+
+    // Lot C — advanced Find/Replace + Trouver.
+    this._q("#prep-cur-fr-find-btn")?.addEventListener("click", () => this._frFind());
+    this._q("#prep-cur-fr-apply-btn")?.addEventListener("click", () => this._frActivate());
+    this._q("#prep-cur-fr-clear-btn")?.addEventListener("click", () => this._frClear());
+    this._q("#prep-cur-fr-prev")?.addEventListener("click", () => { if (this._frHitIdx > 0) this._frScrollToHit(this._frHitIdx - 1); });
+    this._q("#prep-cur-fr-next")?.addEventListener("click", () => { if (this._frHitIdx < this._frHits.length - 1) this._frScrollToHit(this._frHitIdx + 1); });
+    // Editing the pattern invalidates a stale "Trouver" result.
+    this._q("#prep-cur-fr-find")?.addEventListener("input", () => { if (this._frHits.length) this._frClearHits(); });
 
     const area = this._q<HTMLElement>("#prep-cur-units");
     if (area) {
@@ -166,6 +208,7 @@ export class CurationPane {
     this._statusFilter = "all";
     this._ruleFilter = null;
     this._ruleLabels = [];
+    this._frReset(); // Lot C — drop any staged F/R rule + Trouver hits (no render)
     this._renderSummary();
     this._renderReviewBar();
     this._renderToggleAll();
@@ -195,6 +238,10 @@ export class CurationPane {
     this._statusFilter = "all";
     this._ruleFilter = null;
     this._ruleLabels = [];
+    this._frRule = null;
+    this._frHits = [];
+    this._frHitSet = new Set();
+    this._frHitIdx = -1;
     this._list?.reset();
     this._docId = null;
     this._loaded = false;
@@ -270,7 +317,26 @@ export class CurationPane {
         for (const r of p.rules) { rules.push(r); labels.push(p.label); }
       }
     }
+    // Lot C — the advanced Find/Replace rule rides at the end (after the presets), so it flows
+    // through preview/apply/signature and shows up as its own by-rule filter chip.
+    if (this._frRule) { rules.push(this._frRule); labels.push("Règle F/R"); }
     return { rules, labels };
+  }
+
+  /** Build the JS RegExp from the F/R inputs (escape the pattern when "regex" is off; try/catch
+   *  → null on an invalid pattern). NB: best-effort *preview* engine — the apply uses the Python
+   *  `regex` module (regex.V0), so an advanced pattern (\p{L}, POSIX) may differ or fail here. */
+  private _frGetRegex(): RegExp | null {
+    const pattern = this._q<HTMLInputElement>("#prep-cur-fr-find")?.value.trim() ?? "";
+    if (!pattern) return null;
+    const isRegex = this._q<HTMLInputElement>("#prep-cur-fr-regex")?.checked ?? false;
+    const noCase = this._q<HTMLInputElement>("#prep-cur-fr-nocase")?.checked ?? false;
+    const flags = "g" + (noCase ? "i" : "");
+    try {
+      return new RegExp(isRegex ? pattern : pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
+    } catch {
+      return null;
+    }
   }
 
   private _currentRules(): CurateRule[] {
@@ -594,6 +660,12 @@ export class CurationPane {
    *  exceptions. Text editing itself is the transversal stylo, owned by CanvasUnitList
    *  (onEditText → _saveText). */
   private _decorateRow(u: UnitRecord, el: HTMLElement): void {
+    // Lot C — "Trouver" highlight (orthogonal to everything else): rows matching the current
+    // Find pattern, with the nav cursor emphasised.
+    if (this._frHitSet.has(u.unit_id)) {
+      el.classList.add(this._frHits[this._frHitIdx] === u.unit_id
+        ? "prep-conv-unit-row--found-active" : "prep-conv-unit-row--found");
+    }
     // Exception state wins over the "would be curated" marker: an ignored/pinned unit is
     // no longer a pending rule change. Badge + Rétablir are always shown (even when the
     // unit is outside the current changed set — an ignored unit is not in _changed at all).
@@ -746,6 +818,129 @@ export class CurationPane {
     this._renderSummary();
     this._renderReviewBar();
     this._list?.render();
+  }
+
+  // ─── Règle avancée : chercher / remplacer + Trouver (R6.5-B Lot C) ─────────
+
+  private _frFeedback(msg: string, ok = true): void {
+    const fb = this._q<HTMLElement>("#prep-cur-fr-feedback");
+    if (!fb) return;
+    fb.textContent = msg;
+    fb.classList.toggle("prep-cur-fr-feedback--err", !ok);
+  }
+
+  /** Trouver: count the pattern's occurrences across ALL units + set up unit-level navigation.
+   *  Reveals every unit (resets the review filters/search) so each hit is reachable — a whole-doc
+   *  pattern search overrides the review view. */
+  private _frFind(): void {
+    const pattern = this._q<HTMLInputElement>("#prep-cur-fr-find")?.value.trim() ?? "";
+    if (!pattern) { this._frFeedback("Saisir un motif à chercher.", false); return; }
+    const re = this._frGetRegex();
+    if (!re) { this._frFeedback("Expression régulière invalide.", false); return; }
+    if (this._units.length === 0) { this._frFeedback("Aucune unité chargée.", false); return; }
+
+    const hits: number[] = [];
+    let totalOcc = 0;
+    for (const u of this._units) {
+      re.lastIndex = 0;
+      const matches = (u.text_norm ?? "").match(re);
+      if (matches) { hits.push(u.unit_id); totalOcc += matches.length; }
+    }
+    if (hits.length === 0) {
+      this._frClearHits();
+      this._frFeedback(`Aucune occurrence dans ${this._units.length} unité${this._units.length > 1 ? "s" : ""}.`, false);
+      return;
+    }
+    // Reveal all units so every hit is navigable.
+    this._statusFilter = "all";
+    this._ruleFilter = null;
+    const searchEl = this._q<HTMLInputElement>("#prep-cur-search");
+    if (searchEl) searchEl.value = "";
+    this._list?.setSearch("");
+    this._renderReviewBar();
+
+    this._frHits = hits;
+    this._frHitSet = new Set(hits);
+    this._frFeedback(`${totalOcc} occurrence${totalOcc > 1 ? "s" : ""} dans ${hits.length} unité${hits.length > 1 ? "s" : ""} sur ${this._units.length}.`);
+    const nav = this._q<HTMLElement>("#prep-cur-fr-nav");
+    if (nav) nav.style.display = "";
+    this._frScrollToHit(0);
+  }
+
+  private _frScrollToHit(idx: number): void {
+    this._frHitIdx = idx;
+    this._list?.render(); // decorateRow paints --found / --found-active
+    const uid = this._frHits[idx];
+    const row = uid !== undefined ? this._q<HTMLElement>(`.prep-conv-unit-row[data-uid="${uid}"]`) : null;
+    if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({ behavior: "smooth", block: "center" });
+    const pos = this._q<HTMLElement>("#prep-cur-fr-pos");
+    if (pos) pos.textContent = this._frHits.length ? `${idx + 1} / ${this._frHits.length}` : "";
+    const prev = this._q<HTMLButtonElement>("#prep-cur-fr-prev");
+    const next = this._q<HTMLButtonElement>("#prep-cur-fr-next");
+    if (prev) prev.disabled = idx <= 0;
+    if (next) next.disabled = idx >= this._frHits.length - 1;
+  }
+
+  private _frClearHits(): void {
+    if (this._frHits.length === 0) return;
+    this._frHits = [];
+    this._frHitSet = new Set();
+    this._frHitIdx = -1;
+    const nav = this._q<HTMLElement>("#prep-cur-fr-nav");
+    if (nav) nav.style.display = "none";
+    this._list?.render();
+  }
+
+  /** Activer: build the custom rule from the inputs and stage it. Like toggling a preset, this
+   *  invalidates the last preview — the user clicks Aperçu to see it. */
+  private _frActivate(): void {
+    const pattern = this._q<HTMLInputElement>("#prep-cur-fr-find")?.value.trim() ?? "";
+    const replaceVal = this._q<HTMLInputElement>("#prep-cur-fr-replace")?.value ?? "";
+    if (!pattern) { this._frFeedback("Saisir un motif à chercher.", false); return; }
+    if (!this._frGetRegex()) { this._frFeedback("Expression régulière invalide.", false); return; }
+    const isRegex = this._q<HTMLInputElement>("#prep-cur-fr-regex")?.checked ?? false;
+    const noCase = this._q<HTMLInputElement>("#prep-cur-fr-nocase")?.checked ?? false;
+    const flags = "g" + (noCase ? "i" : "");
+    const safePattern = isRegex ? pattern : pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    this._frRule = { pattern: safePattern, replacement: replaceVal, flags, description: `R/R: ${pattern}` };
+    this._frSetActiveUI(true);
+    this._frFeedback("Règle active — cliquez « Aperçu » pour la prévisualiser.");
+    this._invalidatePreview();
+  }
+
+  private _frClear(): void {
+    this._frRule = null;
+    this._frClearHits();
+    this._frSetActiveUI(false);
+    const findEl = this._q<HTMLInputElement>("#prep-cur-fr-find");
+    const replaceEl = this._q<HTMLInputElement>("#prep-cur-fr-replace");
+    if (findEl) findEl.value = "";
+    if (replaceEl) replaceEl.value = "";
+    this._frFeedback("");
+    this._invalidatePreview();
+  }
+
+  private _frSetActiveUI(active: boolean): void {
+    const badge = this._q<HTMLElement>("#prep-cur-fr-badge");
+    const clearBtn = this._q<HTMLElement>("#prep-cur-fr-clear-btn");
+    if (badge) badge.style.display = active ? "" : "none";
+    if (clearBtn) clearBtn.style.display = active ? "" : "none";
+    // Mark the <details> so its (always-visible) summary flags an active rule even when collapsed
+    // — otherwise a staged F/R rule would silently affect the preview with no on-screen cue.
+    this._q<HTMLElement>(".prep-cur-fr")?.classList.toggle("prep-cur-fr--active", active);
+  }
+
+  /** Reset the F/R rule + hits on a document change (keeps the typed pattern for convenience).
+   *  Does NOT render — setDocument renders the new doc right after. */
+  private _frReset(): void {
+    this._frRule = null;
+    this._frHits = [];
+    this._frHitSet = new Set();
+    this._frHitIdx = -1;
+    const nav = this._q<HTMLElement>("#prep-cur-fr-nav");
+    if (nav) nav.style.display = "none";
+    this._frSetActiveUI(false);
+    this._frFeedback("");
   }
 
   // ─── Utility ────────────────────────────────────────────────────────────

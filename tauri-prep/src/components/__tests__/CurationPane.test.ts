@@ -623,3 +623,101 @@ describe("CurationPane — revue : relu + persistance + filtres (R6.5-B Lot B)",
     expect(reluBtn(10).textContent).toContain("✓ relu");
   });
 });
+
+describe("CurationPane — règle avancée Find/Replace + Trouver (R6.5-B Lot C)", () => {
+  const set = (sel: string, v: string) => { (host.querySelector(sel) as HTMLInputElement).value = v; };
+  const click = (sel: string) => (host.querySelector(sel) as HTMLButtonElement).click();
+  const fb = () => host.querySelector("#prep-cur-fr-feedback")?.textContent ?? "";
+
+  it("Activer : la règle F/R entre dans le run d'aperçu", async () => {
+    let body: { rules?: Array<Record<string, unknown>> } | null = null;
+    const conn = fakeConn({
+      units: [unit(1, { text_norm: "aXb" })],
+      preview: (b) => { body = b as typeof body; return { ok: true, doc_id: 1, stats: { units_total: 1, units_changed: 0, replacements_total: 0 }, examples: [] }; },
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    set("#prep-cur-fr-find", "X"); set("#prep-cur-fr-replace", "Y");
+    click("#prep-cur-fr-apply-btn");
+    click("#prep-cur-preview-btn");
+    await flush();
+    expect(body!.rules).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pattern: "X", replacement: "Y", description: "R/R: X" }),
+    ]));
+  });
+
+  it("motif littéral (regex décoché) : le pattern est échappé", async () => {
+    let body: { rules?: Array<Record<string, unknown>> } | null = null;
+    const conn = fakeConn({
+      units: [unit(1)],
+      preview: (b) => { body = b as typeof body; return { ok: true, doc_id: 1, stats: { units_total: 1, units_changed: 0, replacements_total: 0 }, examples: [] }; },
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    set("#prep-cur-fr-find", "a.b");
+    click("#prep-cur-fr-apply-btn");
+    click("#prep-cur-preview-btn");
+    await flush();
+    const fr = body!.rules!.find((r) => r.description === "R/R: a.b")!;
+    expect(fr.pattern).toBe("a\\.b");
+  });
+
+  it("Trouver : compte les occurrences + surligne les lignes matchées", async () => {
+    const pane = new CurationPane(host, () => fakeConn({
+      units: [unit(1, { text_norm: "le chat" }), unit(2, { text_norm: "un chien" }), unit(3, { text_norm: "le chat noir" })],
+    }), () => {});
+    await pane.setDocument(1, null);
+    set("#prep-cur-fr-find", "chat");
+    click("#prep-cur-fr-find-btn");
+    expect(fb()).toContain("2 occurrences dans 2 unités");
+    expect(host.querySelectorAll(".prep-conv-unit-row--found, .prep-conv-unit-row--found-active").length).toBe(2);
+    expect((host.querySelector("#prep-cur-fr-nav") as HTMLElement).style.display).not.toBe("none");
+  });
+
+  it("Trouver : ◄► navigue entre les unités matchées", async () => {
+    const pane = new CurationPane(host, () => fakeConn({
+      units: [unit(1, { text_norm: "chat" }), unit(2, { text_norm: "chien" }), unit(3, { text_norm: "chat" })],
+    }), () => {});
+    await pane.setDocument(1, null);
+    set("#prep-cur-fr-find", "chat");
+    click("#prep-cur-fr-find-btn");
+    expect(host.querySelector("#prep-cur-fr-pos")?.textContent).toBe("1 / 2");
+    expect(host.querySelector('.prep-conv-unit-row[data-uid="10"]')?.classList.contains("prep-conv-unit-row--found-active")).toBe(true);
+    click("#prep-cur-fr-next");
+    expect(host.querySelector("#prep-cur-fr-pos")?.textContent).toBe("2 / 2");
+    expect(host.querySelector('.prep-conv-unit-row[data-uid="30"]')?.classList.contains("prep-conv-unit-row--found-active")).toBe(true);
+  });
+
+  it("Effacer : retire la règle F/R et vide les champs", async () => {
+    const pane = new CurationPane(host, () => fakeConn({ units: [unit(1)] }), () => {});
+    await pane.setDocument(1, null);
+    set("#prep-cur-fr-find", "x");
+    click("#prep-cur-fr-apply-btn");
+    expect((host.querySelector("#prep-cur-fr-badge") as HTMLElement).style.display).not.toBe("none");
+    click("#prep-cur-fr-clear-btn");
+    expect((host.querySelector("#prep-cur-fr-find") as HTMLInputElement).value).toBe("");
+    expect((host.querySelector("#prep-cur-fr-badge") as HTMLElement).style.display).toBe("none");
+  });
+
+  it("regex invalide → feedback d'erreur, pas de règle", async () => {
+    const pane = new CurationPane(host, () => fakeConn({ units: [unit(1)] }), () => {});
+    await pane.setDocument(1, null);
+    set("#prep-cur-fr-find", "[");
+    (host.querySelector("#prep-cur-fr-regex") as HTMLInputElement).checked = true;
+    click("#prep-cur-fr-apply-btn");
+    expect(fb()).toContain("invalide");
+    expect((host.querySelector("#prep-cur-fr-badge") as HTMLElement).style.display).toBe("none");
+  });
+
+  it("une règle active marque le <details> (indicateur visible même replié)", async () => {
+    const pane = new CurationPane(host, () => fakeConn({ units: [unit(1)] }), () => {});
+    await pane.setDocument(1, null);
+    const details = host.querySelector(".prep-cur-fr")!;
+    expect(details.classList.contains("prep-cur-fr--active")).toBe(false);
+    set("#prep-cur-fr-find", "x");
+    click("#prep-cur-fr-apply-btn");
+    expect(details.classList.contains("prep-cur-fr--active")).toBe(true);
+    click("#prep-cur-fr-clear-btn");
+    expect(details.classList.contains("prep-cur-fr--active")).toBe(false);
+  });
+});

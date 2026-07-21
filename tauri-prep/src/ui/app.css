@@ -7524,6 +7524,34 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-cur-chip-sep { width: 1px; height: 1rem; background: #e2e8f0; margin: 0 2px; }
 .prep-cur-bar-spacer { flex: 1 1 auto; }
 
+/* R6.5-B Lot C — règle avancée (chercher/remplacer) + Trouver. */
+.prep-cur-fr { margin: 0 0 2px; font-size: 0.8rem; }
+.prep-cur-fr > summary { cursor: pointer; color: #475569; padding: 2px 0; user-select: none; }
+.prep-cur-fr > summary:hover { color: #0f766e; }
+/* Flag an active rule on the always-visible summary (even when the section is collapsed). */
+.prep-cur-fr--active > summary { color: #0f766e; font-weight: 600; }
+.prep-cur-fr--active > summary::after { content: " \2014 r\00e8gle active"; color: #0f766e; }
+.prep-cur-fr-body { display: flex; flex-direction: column; gap: 6px; padding: 6px 0 2px; }
+.prep-cur-fr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.prep-cur-fr-input {
+  flex: 1 1 180px; min-width: 120px; font: inherit; font-size: 0.8rem;
+  padding: 3px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #14201e;
+}
+.prep-cur-fr-opts label { display: inline-flex; align-items: center; gap: 3px; color: #57706c; white-space: nowrap; }
+.prep-cur-fr-badge {
+  font-size: 0.7rem; color: #0f766e; border: 1px solid #99d5cf; background: #e7f5f3;
+  padding: 0 6px; border-radius: 999px; white-space: nowrap;
+}
+.prep-cur-fr-nav { display: inline-flex; align-items: center; gap: 4px; }
+.prep-cur-fr-nav > span { font-variant-numeric: tabular-nums; color: #57706c; font-size: 0.72rem; min-width: 3.5em; text-align: center; }
+.prep-cur-fr-feedback { font-size: 0.72rem; color: #57706c; }
+.prep-cur-fr-feedback--err { color: #b91c1c; }
+
+/* Trouver — surlignage des lignes matchées (l'actif prime, box-shadow visible même si un
+   autre modificateur de ligne change le fond). */
+.prep-conv-unit-row--found { background: #fef9c3; }
+.prep-conv-unit-row--found-active { background: #fde68a; box-shadow: inset 3px 0 0 #d97706; }
+
 /* ───────────────────────────────────────────────────────────────────────────
    R6.4 · T4a — Responsive du canvas (container query ; modèle = AlignPanel).
    .prep-canvas-root déclare déjà `container-type: inline-size` ; il manquait toute
