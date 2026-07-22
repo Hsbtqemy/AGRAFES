@@ -508,10 +508,9 @@ export class ActionsScreen {
       const el = root.querySelector<HTMLInputElement | HTMLSelectElement>(sel);
       if (el) { el.value = val; el.dispatchEvent(new Event("change")); }
     };
-    setVal("#act-seg-lang", preset.segmentation_lang);
-    setVal("#act-seg-pack", preset.segmentation_pack);
-    // R6.5-C : le legacy poussait `curation_preset` dans CurationView ; la curation canvas
-    // sélectionne ses presets manuellement (le champ reste sur le preset, non appliqué ici).
+    // Retrait Seg/Curation : les champs de langue/pack de segmentation (SegmentationView) et
+    // le preset de curation (CurationView) ont disparu ; la segmentation/curation canvas gère
+    // ses presets elle-même. Seuls les champs d'alignement encore présents sont appliqués ici.
     setVal("#act-align-strategy", preset.alignment_strategy);
     if (preset.similarity_threshold !== undefined) {
       setVal("#act-sim-threshold", String(preset.similarity_threshold));
@@ -575,11 +574,9 @@ export class ActionsScreen {
   }
 
   private _setButtonsEnabled(on: boolean): void {
-    ["act-preview-btn", "act-curate-btn", "act-seg-btn",
-     "act-seg-validate-btn", "act-seg-validate-only-btn", "act-seg-focus-toggle",
-     "act-seg-open-export-btn", "act-seg-lt-btn", "act-seg-lt-validate-btn", "act-seg-lt-validate-only-btn",
-     "act-seg-lt-open-export-btn", "act-align-open-export-btn",
-     "act-meta-btn", "align-coll-load-btn"].forEach(id => {
+    // Retrait Seg/Curation : les boutons preview/curate/seg/seg-lt/meta ont été retirés avec
+    // leurs écrans legacy ; ne restent que les boutons vivants (export d'alignement, collisions).
+    ["act-align-open-export-btn", "align-coll-load-btn"].forEach(id => {
       const el = this._q(`#${id}`) as HTMLButtonElement | null;
       if (el) el.disabled = !on;
     });
