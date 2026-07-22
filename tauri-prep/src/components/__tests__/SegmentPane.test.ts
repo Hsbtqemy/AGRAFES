@@ -24,6 +24,7 @@ function fakeConn(cfg: {
   relations?: unknown[];
   propagate?: unknown;
   alignedCount?: number;
+  conventions?: unknown[];
 }): Conn {
   const rec = cfg.calls ?? [];
   return {
@@ -38,6 +39,9 @@ function fakeConn(cfg: {
       }
       if (path.startsWith("/doc_relations")) {
         return { ok: true, doc_id: 1, relations: cfg.relations ?? [], count: (cfg.relations ?? []).length };
+      }
+      if (path.startsWith("/conventions")) {
+        return { conventions: cfg.conventions ?? [] };
       }
       return {};
     },
@@ -338,5 +342,34 @@ describe("SegmentPane — Propager la segmentation (tranche 4)", () => {
     await flush();
     expect(host.querySelector("#prep-seg-canvas-prop-apply")).toBeNull();
     expect(host.querySelector("#prep-seg-canvas-propagate")!.classList.contains("active")).toBe(false);
+  });
+
+  it("paints the intertitre role badge on the preview header (roles are preserved)", async () => {
+    const conventions = [
+      { name: "chapitre", label: "Chapitre", color: "#8b5cf6", icon: "§", sort_order: 0, category: "structure" },
+    ];
+    const conn = fakeConn({ units: [unit(1)], relations: withSource, propagate: preview, conventions });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    await flush();
+    (host.querySelector("#prep-seg-canvas-propagate") as HTMLButtonElement).click();
+    await flush();
+    const heads = host.querySelectorAll(".prep-seg-canvas-prop-head");
+    // pre-section (header_role null) → no badge; matched section (chapitre) → badge with the catalogue label
+    expect(heads[0].querySelector(".prep-seg-canvas-prop-role")).toBeNull();
+    const badge = heads[1].querySelector(".prep-seg-canvas-prop-role");
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain("Chapitre");
+  });
+
+  it("surfaces the engine's line-role-loss warning in the preview", async () => {
+    const withWarn = { ...preview, warnings: ["2 ligne(s) portent un rôle de convention qui sera perdu à la propagation."] };
+    const conn = fakeConn({ units: [unit(1)], relations: withSource, propagate: withWarn });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    await flush();
+    (host.querySelector("#prep-seg-canvas-propagate") as HTMLButtonElement).click();
+    await flush();
+    expect(host.querySelector(".prep-seg-canvas-warn")?.textContent).toContain("rôle");
   });
 });

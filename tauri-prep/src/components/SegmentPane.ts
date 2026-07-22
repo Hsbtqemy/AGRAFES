@@ -17,16 +17,18 @@
 
 import type {
   Conn, SegmentPreviewResponse, PrepUndoEligibilityResponse,
-  PropagatePreviewResponse, ApplyPropagatedUnit,
+  PropagatePreviewResponse, ApplyPropagatedUnit, ConventionRole,
 } from "../lib/sidecarClient.ts";
 import {
   segmentPreview, segment, getDocumentStats, listUnits,
   mergeUnits, splitUnit, prepUndo, prepUndoEligibility, regroupCoarse,
-  getDocRelations, segmentPropagatePreview, applyPropagated,
+  getDocRelations, segmentPropagatePreview, applyPropagated, listConventions,
 } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
+import { resolveRoleBadge } from "../lib/conventionsUnitList.ts";
+import { safeColor } from "../lib/conventionsRoles.ts";
 import {
   buildSegmentParams,
   groupSegmentsBySource,
@@ -92,6 +94,10 @@ export class SegmentPane {
   private _propagateActive = false;
   /** Last propagate preview (drives the destructive apply). */
   private _lastPropagate: PropagatePreviewResponse | null = null;
+  /** Convention catalogue (name → label/color/icon), loaded lazily to paint the propagate
+   *  preview's section-header role badges — so the user sees intertitre roles ARE preserved. */
+  private _roles: ConventionRole[] = [];
+  private _rolesLoaded = false;
 
   constructor(
     root: HTMLElement,
@@ -806,6 +812,30 @@ export class SegmentPane {
     if (btn) btn.hidden = this._sourceDocId === null;
   }
 
+  /** Load the convention catalogue once (best-effort) for the propagate preview badges. */
+  private async _ensureRoles(conn: Conn): Promise<void> {
+    if (this._rolesLoaded) return;
+    try {
+      this._roles = (await listConventions(conn)) ?? [];
+    } catch {
+      this._roles = [];
+    }
+    this._rolesLoaded = true;
+  }
+
+  /** A role badge for a section header, styled like the Rôles layer (colour + icon + label).
+   *  Unknown role → a neutral badge with the raw name (never hide a role that IS preserved). */
+  private _roleBadgeHtml(roleName: string | null): string {
+    if (!roleName) return "";
+    const b = resolveRoleBadge(roleName, this._roles);
+    const label = b ? b.label : roleName;
+    const color = safeColor(b ? b.color : "#374151", "#374151");
+    const icon = b && b.icon ? esc(b.icon) + " " : "";
+    return `<span class="prep-conv-unit-badge prep-seg-canvas-prop-role" `
+      + `style="background:${color}22;border-color:${color};color:${color}">`
+      + `${icon}${esc(label)}</span>`;
+  }
+
   /** Enter the transient propagate mode: fetch the positional propagate preview (target recut to
    *  the source's segment count per section) and render it read-only + an Apply in the sheet. */
   private async _runPropagate(): Promise<void> {
@@ -824,9 +854,12 @@ export class SegmentPane {
     const el = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
     if (el) setHtml(el, raw(`<div class="prep-seg-canvas-empty">Calcul de la propagation&#8230;</div>`));
     try {
-      const res = await segmentPropagatePreview(conn, {
-        doc_id: docId, reference_doc_id: refId, lang: this._lang ?? "und",
-      });
+      const [res] = await Promise.all([
+        segmentPropagatePreview(conn, {
+          doc_id: docId, reference_doc_id: refId, lang: this._lang ?? "und",
+        }),
+        this._ensureRoles(conn), // catalogue for the section-header role badges
+      ]);
       if (docId !== this._docId || !this._propagateActive) return; // stale (doc switch / left the mode)
       this._lastPropagate = res;
       this._renderPropagate(res);
@@ -853,6 +886,9 @@ export class SegmentPane {
         const header = s.header_text != null
           ? `<span class="prep-seg-canvas-seg-text">${esc(s.header_text)}</span>`
           : `<em>avant le premier intertitre</em>`;
+        // Show the intertitre's role badge — it IS preserved on apply, so surfacing it
+        // reassures the user their roles survive the (line-only) recut.
+        const badge = s.header_text != null ? this._roleBadgeHtml(s.header_role) : "";
         const count = s.delta === 0
           ? `<span class="prep-seg-canvas-prop-ok">${s.result_count} = source</span>`
           : `<span class="prep-seg-canvas-prop-delta" title="Écart avec la source">${s.result_count} vs ${s.ref_count} (${s.delta > 0 ? "+" : ""}${s.delta})</span>`;
@@ -862,7 +898,7 @@ export class SegmentPane {
               .join("")
           : `<div class="prep-seg-canvas-seg prep-seg-canvas-empty">Aucun segment.</div>`;
         return `<div class="prep-seg-canvas-group">
-            <div class="prep-seg-canvas-group-head prep-seg-canvas-prop-head">${header} &#183; ${count}</div>
+            <div class="prep-seg-canvas-group-head prep-seg-canvas-prop-head">${header}${badge} &#183; ${count}</div>
             ${segs}
           </div>`;
       })

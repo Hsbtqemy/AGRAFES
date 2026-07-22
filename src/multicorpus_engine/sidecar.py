@@ -4303,6 +4303,22 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "segments": [],
                 })
 
+        # Line-role loss guard: propagation recuts body LINE units into fresh segments with no
+        # role (apply_propagated re-inserts them as plain lines), so any convention role posed
+        # on a body line is dropped. Intertitre/structure roles ARE preserved (re-inserted with
+        # header_role). Surface it — the response body is not contract-schematized, so appending
+        # to `warnings` needs no contract bump. Same class as the text_source NULL limitation.
+        line_roles_lost = conn.execute(
+            "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' "
+            "AND n >= ? AND unit_role IS NOT NULL",
+            (doc_id, tgt_tsn),
+        ).fetchone()[0]
+        if line_roles_lost:
+            warnings.append(
+                f"{line_roles_lost} ligne(s) portent un rôle de convention qui sera perdu à la "
+                f"propagation (les rôles d'intertitre, eux, sont conservés)."
+            )
+
         self._send_json(success_payload({
             "doc_id": doc_id,
             "reference_doc_id": reference_doc_id,

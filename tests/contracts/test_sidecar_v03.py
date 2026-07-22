@@ -146,6 +146,62 @@ def test_propagate_preview_excludes_paratext_below_text_start(tmp_path: Path) ->
         server.shutdown()
 
 
+def test_propagate_preview_warns_line_role_loss(tmp_path: Path) -> None:
+    """propagate_preview must warn when a body LINE carries a convention role: the recut
+    drops it on apply (intertitre/structure roles are preserved, line roles are not)."""
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.migrations import apply_migrations
+    from multicorpus_engine.sidecar import CorpusServer
+
+    db_path = tmp_path / "prop_role.db"
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+
+    # unit_role has an FK to unit_roles(name) — seed the catalogue first.
+    conn.execute("INSERT INTO unit_roles (name, label) VALUES ('chapitre', 'Chapitre')")
+    conn.execute("INSERT INTO unit_roles (name, label) VALUES ('dialogue', 'Dialogue')")
+
+    def add_doc(title: str) -> int:
+        cur = conn.execute(
+            "INSERT INTO documents (title, language, created_at) "
+            "VALUES (?, 'fr', '2026-01-01T00:00:00Z')",
+            (title,),
+        )
+        return int(cur.lastrowid)
+
+    def add_unit(doc_id: int, n: int, text: str, utype: str = "line", role: str | None = None) -> None:
+        conn.execute(
+            "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm, unit_role) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (doc_id, utype, n, text, text, role),
+        )
+
+    # Target (translation): a chapter (structure role — preserved) + a body line carrying a role.
+    tgt = add_doc("Trad")
+    add_unit(tgt, 1, "Chapitre 1", utype="structure", role="chapitre")
+    add_unit(tgt, 2, "Une réplique de dialogue.", role="dialogue")
+    # Reference (source): a chapter + a body line (no roles).
+    ref = add_doc("Source")
+    add_unit(ref, 1, "Chapter 1", utype="structure")
+    add_unit(ref, 2, "A line of dialogue.")
+    conn.commit()
+    conn.close()
+
+    server = CorpusServer(db_path=db_path, host="127.0.0.1", port=0)
+    server.start()
+    base_url = f"http://127.0.0.1:{server.actual_port}"
+    _wait_health(base_url)
+    try:
+        code, payload = _http("POST", f"{base_url}/segment/propagate_preview", {
+            "doc_id": tgt, "reference_doc_id": ref,
+        })
+        assert code == 200, payload
+        warns = " ".join(payload["warnings"])
+        assert "rôle" in warns and "perdu" in warns   # line-role loss surfaced
+    finally:
+        server.shutdown()
+
+
 # ─── /curate/preview tests ────────────────────────────────────────────────────
 
 def test_curate_preview_returns_stats_and_examples(v03_sidecar) -> None:

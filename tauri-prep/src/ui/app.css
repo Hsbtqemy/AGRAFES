@@ -7274,6 +7274,8 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-seg-canvas-prop-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .prep-seg-canvas-prop-ok { color: #0f766e; font-variant-numeric: tabular-nums; }
 .prep-seg-canvas-prop-delta { color: #92600a; font-variant-numeric: tabular-nums; }
+/* Role badge on a propagate section header — centre it in the flex head (drop the list margin). */
+.prep-seg-canvas-prop-role { margin-top: 0; }
 .prep-seg-canvas-seg {
   display: flex; gap: 0.4rem; align-items: baseline;
   padding: 0.28rem 0.55rem; font-size: 0.86rem; color: #1e293b;
