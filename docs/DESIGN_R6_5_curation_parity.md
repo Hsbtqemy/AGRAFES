@@ -213,7 +213,24 @@ de la note de parité :
    le message d'erreur si le rechargement échouait (garde sur le booléen `_loadUnits`, RED prouvé) ;
    (c) *2ᵉ passe* — `_undo` rechargeait sans la même garde de changement de doc (capture `docId` +
    bail si `docId !== this._docId` post-`prepUndo`). +5 tests.
-5. **Lot E — Tiroir Avancé T3 (D6)** : reloger les 2 composants + diag/export/réindex.
+5. **Lot E — Tiroir Avancé (T3) — DISSOUS (2026-07-22)**, après confrontation au réel : les 🟠 sont
+   soit **absorbés** par A/B, soit **hors-curation**, soit **redondants**. Dispositions :
+   - **#7 admin cross-doc des exceptions** → **non porté au canvas** : la curation est mono-doc, Lot A
+     couvre déjà les exceptions *par-unité en contexte* (badges 🔒 + Rétablir), et le geste central du
+     panneau (`openInCuration`) est une **navigation cross-doc** — profil « corpus », pas curation. Son
+     foyer naturel = l'onglet **Documents** (`MetadataScreen`, déjà cross-doc) *si le besoin se confirme*
+     (chantier séparé).
+   - **#5 diagnostics** → **abandonné** : redondant avec Lot B (résumé + chips **par règle** = le
+     breakdown ; troncature = sans objet car aperçu exhaustif).
+   - **#20 réindex** → **hors curation** : corpus-level (curation/segmentation/stylo/import salissent
+     l'index, pas annotation/alignement). Doit devenir un **contrôle global** dans le header
+     « Constituer » → note [`DESIGN_global_reindex_and_constituer_bar.md`](DESIGN_global_reindex_and_constituer_bar.md).
+   - **#8 historique des apply** + **#6 export rapport** → autonomes mais **audit/niche, faible valeur
+     dans la curation** ; **notés « à reloger si un besoin réel émerge »**, non portés pour ne pas
+     traîner du code peu utilisé avant le retrait.
+
+   → **R6.5-B est complet (A·B·C·D livrés+poussés ; E dissous).** Prochain = **R6.5-C** (retrait du
+   legacy `CurationView`).
 
 Aucun lot ne touche le contrat ni une migration → discipline contrat non déclenchée ; CI = ruff +
 pytest inchangés, vitest + build pour le front.
