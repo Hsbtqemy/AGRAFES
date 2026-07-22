@@ -386,7 +386,6 @@ export async function structureSections(
   return conn.post("/segment/structure_sections", { doc_id, reference_doc_id }) as Promise<StructureSectionsResponse>;
 }
 
-
 export interface PropagateSectionSegment {
   n: number;
   text: string;
