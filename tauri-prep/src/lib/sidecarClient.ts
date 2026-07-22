@@ -807,14 +807,22 @@ export interface CuratePreviewExample {
    */
   is_exception_override?: boolean;
   /**
-   * Level 8C: why this example is present in the preview.
-   *   "standard"        — normal inclusion within limit_examples
-   *   "forced"          — unit was requested via force_unit_id and is a normal diff
-   *   "forced_ignored"  — unit was requested but has a persistent 'ignore' exception;
-   *                       included for inspection only; changes are NOT applied
-   *   "forced_no_change"— unit was requested but produces no diff with current rules
+   * R6.5: set by the server when this example is a unit_status='non_traduit' segment
+   * that the (default) exclusion skips from automatic rules. Only surfaced for a
+   * forced inspection (force_unit_id) — otherwise such units are omitted entirely,
+   * like the apply. The change is NOT applied.
    */
-  preview_reason?: "standard" | "forced" | "forced_ignored" | "forced_no_change";
+  is_non_traduit_skipped?: boolean;
+  /**
+   * Level 8C: why this example is present in the preview.
+   *   "standard"          — normal inclusion within limit_examples
+   *   "forced"            — unit was requested via force_unit_id and is a normal diff
+   *   "forced_ignored"    — unit was requested but has a persistent 'ignore' exception;
+   *                         included for inspection only; changes are NOT applied
+   *   "forced_no_change"  — unit was requested but produces no diff with current rules
+   *   "non_traduit_skipped" — unit was requested but is excluded as non_traduit (R6.5)
+   */
+  preview_reason?: "standard" | "forced" | "forced_ignored" | "forced_no_change" | "non_traduit_skipped";
 }
 
 /**
