@@ -944,14 +944,18 @@ export class SegmentPane {
       if (!ok) return;
     }
 
-    // Flatten sections → units: an optional structure header (the target's own intertitre) then
-    // its line segments. Mirrors what apply_propagated expects (structure/line, in order).
+    // Flatten sections → units: each section's boundary header — PRESERVING its original
+    // unit_type (a structural-role line stays a line + role; a structure unit stays structure).
+    // No line→structure conversion: that would drop the intertitre from FTS/alignment, and the
+    // canonical intertitre in this model is a line carrying the role (docx_paragraphs). Then the
+    // section's recut line segments, in order.
     const units: ApplyPropagatedUnit[] = [];
     for (const s of res.sections) {
       if (s.header_text && s.header_text.trim()) {
+        const htype = s.header_unit_type === "line" ? "line" : "structure";
         units.push(s.header_role
-          ? { type: "structure", text: s.header_text, role: s.header_role }
-          : { type: "structure", text: s.header_text });
+          ? { type: htype, text: s.header_text, role: s.header_role }
+          : { type: htype, text: s.header_text });
       }
       for (const seg of s.segments) {
         if (seg.text.trim()) units.push({ type: "line", text: seg.text });

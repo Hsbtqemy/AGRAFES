@@ -362,6 +362,30 @@ describe("SegmentPane — Propager la segmentation (tranche 4)", () => {
     expect(badge!.textContent).toContain("Chapitre");
   });
 
+  it("preserves a structural-role line boundary as a line (no line→structure conversion)", async () => {
+    const calls: Call[] = [];
+    const previewRoleLine = {
+      ok: true, doc_id: 1, reference_doc_id: 7, total_segments: 1, segment_pack: "default", warnings: [],
+      sections: [
+        { status: "matched", header_text: "Chapitre 2", header_role: "intertitre", header_unit_type: "line",
+          ref_count: 1, raw_count: 1, result_count: 1, adjusted: false, delta: 0, segments: [{ n: 1, text: "Une." }] },
+      ],
+    };
+    const conn = fakeConn({ units: [unit(1)], relations: withSource, propagate: previewRoleLine, calls });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    await flush();
+    (host.querySelector("#prep-seg-canvas-propagate") as HTMLButtonElement).click();
+    await flush();
+    (host.querySelector("#prep-seg-canvas-prop-apply") as HTMLButtonElement).click();
+    await flush();
+    const units = (calls.find((c) => c.path === "/segment/apply_propagated")!.body as
+      { units: Array<{ type: string; text: string; role?: string }> }).units;
+    // the intertitre-role boundary stays a LINE + role — not converted to structure
+    expect(units[0]).toMatchObject({ type: "line", text: "Chapitre 2", role: "intertitre" });
+    expect(units[1]).toMatchObject({ type: "line", text: "Une." });
+  });
+
   it("surfaces the engine's line-role-loss warning in the preview", async () => {
     const withWarn = { ...preview, warnings: ["2 ligne(s) portent un rôle de convention qui sera perdu à la propagation."] };
     const conn = fakeConn({ units: [unit(1)], relations: withSource, propagate: withWarn });

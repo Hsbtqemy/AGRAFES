@@ -395,6 +395,9 @@ export interface PropagateSection {
   status: "pre" | "matched" | "extra_in_target" | "missing_in_target";
   header_text: string | null;
   header_role: string | null;
+  /** Original unit_type of the boundary ("structure" or "line" for a structural-role line);
+   *  the apply preserves it as-is (no line→structure conversion). Null for the pre-section. */
+  header_unit_type: "line" | "structure" | null;
   ref_count: number;
   raw_count: number;
   result_count: number;

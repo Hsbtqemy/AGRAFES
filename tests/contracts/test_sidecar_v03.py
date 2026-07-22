@@ -202,6 +202,76 @@ def test_propagate_preview_warns_line_role_loss(tmp_path: Path) -> None:
         server.shutdown()
 
 
+def test_propagate_preview_sections_on_structural_role_lines(tmp_path: Path) -> None:
+    """A structural-category role (intertitre) posed on a LINE must act as a section boundary —
+    the canonical intertitre in this model is a line carrying the role (docx_paragraphs), so
+    keying only on unit_type='structure' would miss it. It becomes a header, not a segment, and
+    is preserved as a line (header_unit_type='line')."""
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.migrations import apply_migrations
+    from multicorpus_engine.sidecar import CorpusServer
+
+    db_path = tmp_path / "prop_struct_role.db"
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+
+    # 'intertitre' is a STRUCTURE-category role; 'dialogue' is a TEXT-category role.
+    conn.execute("INSERT INTO unit_roles (name, label, category) VALUES ('intertitre', 'Intertitre', 'structure')")
+    conn.execute("INSERT INTO unit_roles (name, label, category) VALUES ('dialogue', 'Dialogue', 'text')")
+
+    def add_doc(title: str) -> int:
+        cur = conn.execute(
+            "INSERT INTO documents (title, language, created_at) "
+            "VALUES (?, 'fr', '2026-01-01T00:00:00Z')",
+            (title,),
+        )
+        return int(cur.lastrowid)
+
+    def add_unit(doc_id: int, n: int, text: str, utype: str = "line", role: str | None = None) -> None:
+        conn.execute(
+            "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm, unit_role) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (doc_id, utype, n, text, text, role),
+        )
+
+    # Target (translation) — ALL lines (units_structure=0, as docx_paragraphs produces):
+    # an intertitre-role line, then two body lines (one carrying a text role).
+    tgt = add_doc("Trad")
+    add_unit(tgt, 1, "Chapitre 2", role="intertitre")   # line + structural role → boundary
+    add_unit(tgt, 2, "Une réplique.", role="dialogue")  # line + text role → lost, warned
+    add_unit(tgt, 3, "Une phrase de corps.")
+    # Reference (source) — same shape, more body so a recut is meaningful.
+    ref = add_doc("Source")
+    add_unit(ref, 1, "Chapter 2", role="intertitre")
+    add_unit(ref, 2, "A line.")
+    add_unit(ref, 3, "Another line.")
+    conn.commit()
+    conn.close()
+
+    server = CorpusServer(db_path=db_path, host="127.0.0.1", port=0)
+    server.start()
+    base_url = f"http://127.0.0.1:{server.actual_port}"
+    _wait_health(base_url)
+    try:
+        code, payload = _http("POST", f"{base_url}/segment/propagate_preview", {
+            "doc_id": tgt, "reference_doc_id": ref,
+        })
+        assert code == 200, payload
+        sections = payload["sections"]
+        # the intertitre-role line is a section header, preserved as a line
+        header = next((s for s in sections if s["header_text"] == "Chapitre 2"), None)
+        assert header is not None, sections
+        assert header["header_unit_type"] == "line"
+        # ... and it is NOT emitted as a body segment
+        seg_texts = " ".join(seg["text"] for s in sections for seg in s["segments"])
+        assert "Chapitre 2" not in seg_texts
+        # only the TEXT role is flagged as lost — structural role is preserved
+        warns = " ".join(payload["warnings"])
+        assert "perdu" in warns and "structurels" in warns
+    finally:
+        server.shutdown()
+
+
 # ─── /curate/preview tests ────────────────────────────────────────────────────
 
 def test_curate_preview_returns_stats_and_examples(v03_sidecar) -> None:

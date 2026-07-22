@@ -4026,18 +4026,45 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         conn = self._conn()
 
+        # Section boundaries come from unit_type='structure' OR a structural-category role
+        # (intertitre/titre/chapeau…). The canonical intertitre in this model is a *line*
+        # carrying the role — docx_paragraphs stores Word Headings that way (unit_type='line',
+        # role='intertitre') — so keying only on unit_type would miss them. Mirror
+        # coarse_grain.py's STRUCTURAL_ROLES / qa_report's category='structure'; read from the
+        # corpus catalogue so custom structural roles count too.
+        structural_roles = [
+            r[0] for r in conn.execute(
+                "SELECT name FROM unit_roles WHERE category = 'structure'"
+            ).fetchall()
+        ]
+
         # ── helpers ──────────────────────────────────────────────────────────
 
         def _fetch_structure(d_id: int, tsn: int) -> list[dict]:
             # Body only (n >= text_start_n): apply_propagated preserves paratext below the
             # boundary, so the preview must not include it — else re-inserting it on apply
-            # doubles the paratext. Symmetric with the apply (same class as the curation fix).
-            rows = conn.execute(
-                "SELECT n, text_raw, unit_role FROM units "
-                "WHERE doc_id = ? AND unit_type = 'structure' AND n >= ? ORDER BY n",
-                (d_id, tsn),
-            ).fetchall()
-            return [{"n": r[0], "text": r[1] or "", "role": r[2]} for r in rows]
+            # doubles the paratext. A boundary is a structure unit OR a structural-role line;
+            # each is returned with its own unit_type so the apply preserves it as-is (no
+            # line→structure conversion — that would drop it from FTS/alignment).
+            if structural_roles:
+                placeholders = ",".join("?" * len(structural_roles))
+                rows = conn.execute(
+                    "SELECT n, text_raw, unit_role, unit_type FROM units "
+                    "WHERE doc_id = ? AND n >= ? "
+                    f"AND (unit_type = 'structure' OR unit_role IN ({placeholders})) "
+                    "ORDER BY n",
+                    (d_id, tsn, *structural_roles),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT n, text_raw, unit_role, unit_type FROM units "
+                    "WHERE doc_id = ? AND unit_type = 'structure' AND n >= ? ORDER BY n",
+                    (d_id, tsn),
+                ).fetchall()
+            return [
+                {"n": r[0], "text": r[1] or "", "role": r[2], "unit_type": r[3]}
+                for r in rows
+            ]
 
         def _fetch_lines_between(d_id: int, n_from: int | None, n_to: int | None) -> list[tuple[int, str]]:
             """Fetch (n, text_norm) for line units in (n_from, n_to) exclusive."""
@@ -4184,6 +4211,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "status": "pre",
                 "header_text": None,
                 "header_role": None,
+                "header_unit_type": None,
                 "ref_count": ref_count,
                 "raw_count": raw_count,
                 "result_count": result_count,
@@ -4217,6 +4245,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "status": status,
                 "header_text": header["text"],
                 "header_role": header["role"],
+                "header_unit_type": header["unit_type"],
                 "ref_count": ref_count,
                 "raw_count": raw_count,
                 "result_count": result_count,
@@ -4269,6 +4298,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         "status": "missing_in_target",
                         "header_text": r["text"],
                         "header_role": r["role"],
+                        "header_unit_type": r["unit_type"],
                         "ref_count": ref_count,
                         "raw_count": 0,
                         "result_count": 0,
@@ -4295,6 +4325,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "status": "missing_in_target",
                     "header_text": r["text"],
                     "header_role": r["role"],
+                    "header_unit_type": r["unit_type"],
                     "ref_count": ref_count,
                     "raw_count": 0,
                     "result_count": 0,
@@ -4303,20 +4334,28 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "segments": [],
                 })
 
-        # Line-role loss guard: propagation recuts body LINE units into fresh segments with no
-        # role (apply_propagated re-inserts them as plain lines), so any convention role posed
-        # on a body line is dropped. Intertitre/structure roles ARE preserved (re-inserted with
-        # header_role). Surface it — the response body is not contract-schematized, so appending
-        # to `warnings` needs no contract bump. Same class as the text_source NULL limitation.
-        line_roles_lost = conn.execute(
-            "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' "
-            "AND n >= ? AND unit_role IS NOT NULL",
-            (doc_id, tgt_tsn),
-        ).fetchone()[0]
-        if line_roles_lost:
+        # Line-role loss guard: propagation recuts body lines into fresh segments with no role,
+        # so a *text-category* role posed on a body line is dropped. Structural roles
+        # (intertitre/titre/chapeau…) are NOT lost — they are section boundaries, re-inserted
+        # with their role and unit_type (see _fetch_structure), so exclude them from the count.
+        # Surfacing via `warnings` needs no contract bump (response body not schematized).
+        if structural_roles:
+            placeholders = ",".join("?" * len(structural_roles))
+            text_roles_lost = conn.execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' "
+                f"AND n >= ? AND unit_role IS NOT NULL AND unit_role NOT IN ({placeholders})",
+                (doc_id, tgt_tsn, *structural_roles),
+            ).fetchone()[0]
+        else:
+            text_roles_lost = conn.execute(
+                "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line' "
+                "AND n >= ? AND unit_role IS NOT NULL",
+                (doc_id, tgt_tsn),
+            ).fetchone()[0]
+        if text_roles_lost:
             warnings.append(
-                f"{line_roles_lost} ligne(s) portent un rôle de convention qui sera perdu à la "
-                f"propagation (les rôles d'intertitre, eux, sont conservés)."
+                f"{text_roles_lost} ligne(s) portent un rôle de texte qui sera perdu à la "
+                f"propagation (les rôles structurels, eux, sont conservés)."
             )
 
         self._send_json(success_payload({
