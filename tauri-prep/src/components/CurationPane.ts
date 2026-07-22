@@ -129,20 +129,24 @@ export class CurationPane {
               <input type="text" id="prep-cur-fr-find" class="prep-cur-fr-input" placeholder="Chercher&#8230;" autocomplete="off" />
               <input type="text" id="prep-cur-fr-replace" class="prep-cur-fr-input" placeholder="Remplacer par&#8230;" autocomplete="off" />
             </div>
-            <div class="prep-cur-fr-row prep-cur-fr-opts">
-              <label><input type="checkbox" id="prep-cur-fr-regex" /> expression r&#233;guli&#232;re</label>
-              <label><input type="checkbox" id="prep-cur-fr-nocase" /> ignorer la casse</label>
-              <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-fr-find-btn"
-                title="Compter et parcourir les occurrences du motif (sans &#233;crire)">Trouver</button>
-              <button type="button" class="btn btn-secondary btn-sm" id="prep-cur-fr-apply-btn"
-                title="Ajouter cette r&#232;gle chercher/remplacer aux r&#232;gles de curation">Activer la r&#232;gle</button>
-              <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-fr-clear-btn" style="display:none">Effacer</button>
-              <span class="prep-cur-fr-badge" id="prep-cur-fr-badge" style="display:none">r&#232;gle active</span>
-              <span class="prep-cur-fr-nav" id="prep-cur-fr-nav" style="display:none">
-                <button type="button" class="btn btn-ghost btn-xs" id="prep-cur-fr-prev" title="Occurrence pr&#233;c&#233;dente">&#9664;</button>
-                <span id="prep-cur-fr-pos"></span>
-                <button type="button" class="btn btn-ghost btn-xs" id="prep-cur-fr-next" title="Occurrence suivante">&#9654;</button>
-              </span>
+            <div class="prep-cur-fr-row prep-cur-fr-controls">
+              <div class="prep-cur-fr-opts">
+                <label><input type="checkbox" id="prep-cur-fr-regex" /> expression r&#233;guli&#232;re</label>
+                <label><input type="checkbox" id="prep-cur-fr-nocase" /> ignorer la casse</label>
+              </div>
+              <div class="prep-cur-fr-actions">
+                <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-fr-find-btn"
+                  title="Compter et parcourir les occurrences du motif (sans &#233;crire)">Trouver</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-fr-apply-btn"
+                  title="Ajouter cette r&#232;gle chercher/remplacer aux r&#232;gles de curation">Activer la r&#232;gle</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-fr-clear-btn" style="display:none">Effacer</button>
+                <span class="prep-cur-fr-badge" id="prep-cur-fr-badge" style="display:none">r&#232;gle active</span>
+                <span class="prep-cur-fr-nav" id="prep-cur-fr-nav" style="display:none">
+                  <button type="button" class="btn btn-ghost btn-xs" id="prep-cur-fr-prev" title="Occurrence pr&#233;c&#233;dente">&#9664;</button>
+                  <span id="prep-cur-fr-pos"></span>
+                  <button type="button" class="btn btn-ghost btn-xs" id="prep-cur-fr-next" title="Occurrence suivante">&#9654;</button>
+                </span>
+              </div>
             </div>
             <span class="prep-cur-fr-feedback" id="prep-cur-fr-feedback" aria-live="polite"></span>
           </div>

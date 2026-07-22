@@ -7366,8 +7366,11 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
   background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
 }
 .prep-cur-presets { display: flex; flex-wrap: wrap; gap: 0.35rem 0.85rem; }
-.prep-cur-preset {
-  display: inline-flex; align-items: center; gap: 0.3rem;
+/* Descendant selector bumps specificity over `.prep-actions-screen label` (the
+   stacked-column form convention) which otherwise leaks a column flex + bottom
+   margin into these inline checkbox chips — force them back to a horizontal row. */
+.prep-cur-presets .prep-cur-preset {
+  display: inline-flex; flex-direction: row; align-items: center; gap: 0.3rem; margin-bottom: 0;
   font-size: 0.8rem; color: #334155; white-space: nowrap; cursor: pointer;
 }
 .prep-cur-summary { font-size: 0.8rem; color: #475569; font-weight: 500; margin-left: auto; }
@@ -7527,13 +7530,28 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 /* Flag an active rule on the always-visible summary (even when the section is collapsed). */
 .prep-cur-fr--active > summary { color: #0f766e; font-weight: 600; }
 .prep-cur-fr--active > summary::after { content: " \2014 r\00e8gle active"; color: #0f766e; }
-.prep-cur-fr-body { display: flex; flex-direction: column; gap: 6px; padding: 6px 0 2px; }
+/* Open body = inset card matching the dock above (coherent visual family). */
+.prep-cur-fr-body {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 0.5rem 0.6rem; margin-top: 4px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+}
 .prep-cur-fr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* Row 2 — options (left) vs actions (right): input → options → action reading path. */
+.prep-cur-fr-controls { justify-content: space-between; gap: 8px 16px; }
+.prep-cur-fr-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.prep-cur-fr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .prep-cur-fr-input {
   flex: 1 1 180px; min-width: 120px; font: inherit; font-size: 0.8rem;
   padding: 3px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #14201e;
 }
-.prep-cur-fr-opts label { display: inline-flex; align-items: center; gap: 3px; color: #57706c; white-space: nowrap; }
+/* Same leak as the presets: redeclare flex-direction + margin so the column form
+   convention (`.prep-actions-screen label`) doesn't stack these checkbox chips. */
+.prep-cur-fr-opts label { display: inline-flex; flex-direction: row; align-items: center; gap: 4px; margin-bottom: 0; color: #57706c; white-space: nowrap; }
+/* Normalise native checkboxes (shared: F/R options + dock presets) — kill the default
+   margin that made them float above their label, tint them the app teal. */
+.prep-cur-fr-opts input[type="checkbox"],
+.prep-cur-preset input[type="checkbox"] { margin: 0; accent-color: #0f766e; }
 .prep-cur-fr-badge {
   font-size: 0.7rem; color: #0f766e; border: 1px solid #99d5cf; background: #e7f5f3;
   padding: 0 6px; border-radius: 999px; white-space: nowrap;
