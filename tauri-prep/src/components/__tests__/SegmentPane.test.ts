@@ -21,6 +21,9 @@ function fakeConn(cfg: {
   units?: UnitRecord[];
   elig?: unknown;
   calls?: Call[];
+  relations?: unknown[];
+  propagate?: unknown;
+  alignedCount?: number;
 }): Conn {
   const rec = cfg.calls ?? [];
   return {
@@ -31,7 +34,10 @@ function fakeConn(cfg: {
       }
       if (path.startsWith("/documents/stats")) {
         return { doc_id: 1, line_count: (cfg.units ?? []).length, structure_count: 0,
-          external_id_count: 0, parent_count: 0, aligned_count: 0, max_text_len: 0, avg_text_len: 0 };
+          external_id_count: 0, parent_count: 0, aligned_count: cfg.alignedCount ?? 0, max_text_len: 0, avg_text_len: 0 };
+      }
+      if (path.startsWith("/doc_relations")) {
+        return { ok: true, doc_id: 1, relations: cfg.relations ?? [], count: (cfg.relations ?? []).length };
       }
       return {};
     },
@@ -41,6 +47,14 @@ function fakeConn(cfg: {
       if (path === "/segment/preview") {
         return { ok: true, doc_id: 1, mode: "sentences", units_input: 0, units_output: 0,
           segment_pack: "default", segments: [], warnings: [] };
+      }
+      if (path === "/segment/propagate_preview") {
+        return cfg.propagate ?? { ok: true, doc_id: 1, reference_doc_id: 0, total_segments: 0,
+          segment_pack: "default", warnings: [], sections: [] };
+      }
+      if (path === "/segment/apply_propagated") {
+        const u = (body as { units?: unknown[] }).units ?? [];
+        return { ok: true, doc_id: 1, units_written: u.length, fts_stale: true };
       }
       if (path === "/units/merge") return { ok: true, doc_id: 1, merged_n: b.n1, deleted_n: b.n2, text: "m", fts_stale: true };
       if (path === "/units/split") return { ok: true, doc_id: 1, unit_n: b.unit_n, new_unit_n: b.unit_n + 1, text_a: "a", text_b: "b", fts_stale: true };
@@ -259,5 +273,70 @@ describe("SegmentPane — Tours surface (R5.4c)", () => {
     (host.querySelector("#prep-seg-canvas-tours-apply") as HTMLButtonElement).click();
     await flush();
     expect(calls.find((c) => c.path === "/segment/coarse")?.body).toMatchObject({ pattern: "^— " });
+  });
+});
+
+describe("SegmentPane — Propager la segmentation (tranche 4)", () => {
+  const withSource = [
+    { id: 1, doc_id: 1, relation_type: "translation_of", target_doc_id: 7, note: null, created_at: "" },
+  ];
+  const preview = {
+    ok: true, doc_id: 1, reference_doc_id: 7, total_segments: 3, segment_pack: "default", warnings: [],
+    sections: [
+      { status: "pre", header_text: null, header_role: null, ref_count: 1, raw_count: 1,
+        result_count: 1, adjusted: false, delta: 0, segments: [{ n: 1, text: "Intro." }] },
+      { status: "matched", header_text: "Chapitre 1", header_role: "chapitre", ref_count: 2, raw_count: 2,
+        result_count: 2, adjusted: false, delta: 0, segments: [{ n: 1, text: "Une." }, { n: 2, text: "Deux." }] },
+    ],
+  };
+
+  it("hides the propagate action when the doc has no declared source", async () => {
+    const pane = new SegmentPane(host, () => fakeConn({ units: [unit(1)] }), () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    await flush();
+    expect(host.querySelector<HTMLButtonElement>("#prep-seg-canvas-propagate")!.hidden).toBe(true);
+  });
+
+  it("shows the action for a translation, previews, and applies the flattened units", async () => {
+    const calls: Call[] = [];
+    const conn = fakeConn({ units: [unit(1)], relations: withSource, propagate: preview, calls });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    await flush();
+
+    const btn = host.querySelector<HTMLButtonElement>("#prep-seg-canvas-propagate")!;
+    expect(btn.hidden).toBe(false);
+
+    btn.click();
+    await flush();
+    // reference derived from the translation_of relation (target_doc_id = 7), positional (no mapping)
+    expect(calls.find((c) => c.path === "/segment/propagate_preview")?.body).toMatchObject({ doc_id: 1, reference_doc_id: 7 });
+    // read-only preview: one head per section + an apply button in the sheet
+    expect(host.querySelectorAll(".prep-seg-canvas-prop-head").length).toBe(2);
+    expect(host.querySelector("#prep-seg-canvas-prop-apply")).not.toBeNull();
+
+    (host.querySelector("#prep-seg-canvas-prop-apply") as HTMLButtonElement).click();
+    await flush();
+    const applyCall = calls.find((c) => c.path === "/segment/apply_propagated");
+    expect(applyCall).toBeDefined();
+    const units = (applyCall!.body as { units: Array<{ type: string; text: string; role?: string }> }).units;
+    // pre (1 line, no header) + matched (structure header + 2 lines) → line, structure, line, line
+    expect(units.map((u) => u.type)).toEqual(["line", "structure", "line", "line"]);
+    expect(units[0]).toMatchObject({ type: "line", text: "Intro." });
+    expect(units[1]).toMatchObject({ type: "structure", text: "Chapitre 1", role: "chapitre" });
+  });
+
+  it("leaves propagate mode when a surface is selected", async () => {
+    const conn = fakeConn({ units: [unit(1)], relations: withSource, propagate: preview });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    await flush();
+    (host.querySelector("#prep-seg-canvas-propagate") as HTMLButtonElement).click();
+    await flush();
+    expect(host.querySelector("#prep-seg-canvas-prop-apply")).not.toBeNull();
+    (host.querySelector('[data-surface="brut"]') as HTMLButtonElement).click();
+    await flush();
+    expect(host.querySelector("#prep-seg-canvas-prop-apply")).toBeNull();
+    expect(host.querySelector("#prep-seg-canvas-propagate")!.classList.contains("active")).toBe(false);
   });
 });

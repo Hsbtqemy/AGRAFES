@@ -15,10 +15,14 @@
  * Personnalisé (custom terminators / Mots) is deliberately disabled here → R5.4b-2.
  */
 
-import type { Conn, SegmentPreviewResponse, PrepUndoEligibilityResponse } from "../lib/sidecarClient.ts";
+import type {
+  Conn, SegmentPreviewResponse, PrepUndoEligibilityResponse,
+  PropagatePreviewResponse, ApplyPropagatedUnit,
+} from "../lib/sidecarClient.ts";
 import {
   segmentPreview, segment, getDocumentStats, listUnits,
   mergeUnits, splitUnit, prepUndo, prepUndoEligibility, regroupCoarse,
+  getDocRelations, segmentPropagatePreview, applyPropagated,
 } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
@@ -82,6 +86,12 @@ export class SegmentPane {
   /** Custom coarse boundary pattern for the Tours surface (empty → the built-in `tours` preset). */
   private _toursPattern = "";
   private _toursTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Source doc (this doc's `translation_of` target) → drives family propagation, or null. */
+  private _sourceDocId: number | null = null;
+  /** Transient "Propager la segmentation" mode (not a surface): body = propagate preview. */
+  private _propagateActive = false;
+  /** Last propagate preview (drives the destructive apply). */
+  private _lastPropagate: PropagatePreviewResponse | null = null;
 
   constructor(
     root: HTMLElement,
@@ -110,6 +120,8 @@ export class SegmentPane {
             <button type="button" class="prep-seg-canvas-surfbtn" data-surface="custom" role="tab" aria-selected="false">Personnalis&#233;</button>
             <button type="button" class="prep-seg-canvas-surfbtn" data-surface="tours" role="tab" aria-selected="false" title="Grain grossier : regrouper en tours de parole (parent_n), sans re-d&#233;couper">Tours</button>
           </div>
+          <button type="button" class="prep-seg-canvas-propbtn btn btn-ghost btn-sm" id="prep-seg-canvas-propagate" hidden
+            title="Recouper cette traduction pour qu'elle ait le m&#234;me nombre de segments par section que sa source.">Propager la segmentation</button>
           <span class="prep-seg-canvas-hint" id="prep-seg-canvas-hint"></span>
           <div class="prep-seg-canvas-custom" id="prep-seg-canvas-custom" hidden>
             <div class="prep-seg-canvas-custom-row">
@@ -142,6 +154,8 @@ export class SegmentPane {
         this._setSurface(btn.dataset.surface as SegSurface);
       });
     });
+    this._root.querySelector<HTMLButtonElement>("#prep-seg-canvas-propagate")
+      ?.addEventListener("click", () => void this._runPropagate());
 
     // Personnalisé (R5.4b-2) controls → _custom, then a debounced live preview.
     this._root.querySelectorAll<HTMLInputElement>('input[name="prep-seg-kind"]').forEach((r) => {
@@ -180,6 +194,8 @@ export class SegmentPane {
     this._docId = docId;
     this._lang = lang;
     this._lastPreview = null;
+    this._propagateActive = false; // a doc switch/reload leaves the transient propagate mode
+    this._lastPropagate = null;
     this._units = [];
     this._splitEditingN = null; // a stale inline split editor must not survive a reload/doc switch
     this._splitDraft = null;
@@ -195,11 +211,14 @@ export class SegmentPane {
       if (abbrevInput) abbrevInput.value = this._custom.abbreviations.join(", ");
     }
     if (docId === null) {
+      this._sourceDocId = null;
+      this._togglePropagateBtn();
       this._renderEmpty("Sélectionnez un document.");
       this._renderApplyBar();
       return;
     }
     await this._loadUnits();
+    await this._refreshSource(); // derive the family source → show/hide the propagate action
     await this._renderActiveView();
   }
 
@@ -252,7 +271,11 @@ export class SegmentPane {
   // ─── Surface ──────────────────────────────────────────────────────────────
 
   private _setSurface(s: SegSurface): void {
-    if (s === this._surface) return;
+    // A surface click also leaves the transient propagate mode (even for the current surface).
+    if (s === this._surface && !this._propagateActive) return;
+    this._propagateActive = false;
+    this._lastPropagate = null;
+    this._root.querySelector<HTMLElement>("#prep-seg-canvas-propagate")?.classList.remove("active");
     this._surface = s;
     // Cancel a debounced preview scheduled by the previous surface — otherwise a pending
     // Personnalisé preview could fire after switching to Brut and overwrite its view.
@@ -754,6 +777,162 @@ export class SegmentPane {
     } catch (e) {
       this._notify(e instanceof Error ? e.message : String(e), true);
       if (btn) { btn.disabled = false; btn.textContent = "Regrouper en tours"; }
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  // ─── Propager la segmentation (famille-pilotée, front-pur — DESIGN_segmentation_retirement) ──
+
+  /** Derive this doc's source (its `translation_of` target) and show/hide the propagate action.
+   *  Front-pure: the "family" logic is just resolving the relation, no engine change. Best-effort. */
+  private async _refreshSource(): Promise<void> {
+    const conn = this._getConn();
+    const docId = this._docId;
+    this._sourceDocId = null;
+    if (conn && docId !== null) {
+      try {
+        const rel = await getDocRelations(conn, docId);
+        if (docId !== this._docId) return; // document switched during the await
+        const src = rel.relations.find((r) => r.relation_type === "translation_of");
+        this._sourceDocId = src ? src.target_doc_id : null;
+      } catch { /* no declared source → no propagate action */ }
+    }
+    this._togglePropagateBtn();
+  }
+
+  private _togglePropagateBtn(): void {
+    const btn = this._root.querySelector<HTMLButtonElement>("#prep-seg-canvas-propagate");
+    if (btn) btn.hidden = this._sourceDocId === null;
+  }
+
+  /** Enter the transient propagate mode: fetch the positional propagate preview (target recut to
+   *  the source's segment count per section) and render it read-only + an Apply in the sheet. */
+  private async _runPropagate(): Promise<void> {
+    const conn = this._getConn();
+    const docId = this._docId;
+    const refId = this._sourceDocId;
+    if (!conn || docId === null || refId === null) return;
+    this._propagateActive = true;
+    this._lastPreview = null;
+    this._previewToken++; // cancel any in-flight surface preview
+    this._root.querySelectorAll<HTMLButtonElement>(".prep-seg-canvas-surfbtn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-selected", "false");
+    });
+    this._root.querySelector<HTMLElement>("#prep-seg-canvas-propagate")?.classList.add("active");
+    const el = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
+    if (el) setHtml(el, raw(`<div class="prep-seg-canvas-empty">Calcul de la propagation&#8230;</div>`));
+    try {
+      const res = await segmentPropagatePreview(conn, {
+        doc_id: docId, reference_doc_id: refId, lang: this._lang ?? "und",
+      });
+      if (docId !== this._docId || !this._propagateActive) return; // stale (doc switch / left the mode)
+      this._lastPropagate = res;
+      this._renderPropagate(res);
+    } catch (e) {
+      if (docId !== this._docId || !this._propagateActive) return;
+      this._lastPropagate = null;
+      this._renderEmpty(`Erreur : ${e instanceof Error ? e.message : String(e)}`, true);
+    }
+    this._renderPropagateApplyBar();
+  }
+
+  /** Read-only, section-by-section: header, source-vs-result count (delta), warnings, segments.
+   *  Fine tweaks are NOT here — the user resegments via Brut merge/split after applying. */
+  private _renderPropagate(res: PropagatePreviewResponse): void {
+    const el = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
+    if (!el) return;
+    const warns = res.warnings.length
+      ? `<div class="prep-seg-canvas-warns">${res.warnings
+          .map((w) => `<div class="prep-seg-canvas-warn">&#9888; ${esc(w)}</div>`)
+          .join("")}</div>`
+      : "";
+    const sections = res.sections
+      .map((s) => {
+        const header = s.header_text != null
+          ? `<span class="prep-seg-canvas-seg-text">${esc(s.header_text)}</span>`
+          : `<em>avant le premier intertitre</em>`;
+        const count = s.delta === 0
+          ? `<span class="prep-seg-canvas-prop-ok">${s.result_count} = source</span>`
+          : `<span class="prep-seg-canvas-prop-delta" title="Écart avec la source">${s.result_count} vs ${s.ref_count} (${s.delta > 0 ? "+" : ""}${s.delta})</span>`;
+        const segs = s.segments.length
+          ? s.segments
+              .map((seg) => `<div class="prep-seg-canvas-seg"><span class="prep-seg-canvas-seg-text">${esc(seg.text)}</span></div>`)
+              .join("")
+          : `<div class="prep-seg-canvas-seg prep-seg-canvas-empty">Aucun segment.</div>`;
+        return `<div class="prep-seg-canvas-group">
+            <div class="prep-seg-canvas-group-head prep-seg-canvas-prop-head">${header} &#183; ${count}</div>
+            ${segs}
+          </div>`;
+      })
+      .join("");
+    setHtml(el, raw(warns + sections));
+  }
+
+  private _renderPropagateApplyBar(): void {
+    const bar = this._applyBarEl;
+    if (!bar) return;
+    const res = this._lastPropagate;
+    if (!res || this._docId === null) {
+      bar.classList.remove("visible");
+      bar.innerHTML = "";
+      return;
+    }
+    const t = res.total_segments;
+    bar.classList.add("visible");
+    setHtml(bar, raw(`
+      <span class="prep-seg-canvas-summary">${t} segment${t > 1 ? "s" : ""} propagé${t > 1 ? "s" : ""} depuis la source</span>
+      <button type="button" class="btn prep-btn-warning btn-sm" id="prep-seg-canvas-prop-apply">Appliquer la propagation</button>
+    `));
+    bar.querySelector("#prep-seg-canvas-prop-apply")?.addEventListener("click", () => void this._applyPropagate());
+  }
+
+  /** Write the propagated segmentation (apply_propagated). Destructive (clears alignment) → confirm
+   *  only when there is an alignment to lose; on success the host reloads. */
+  private async _applyPropagate(): Promise<void> {
+    const conn = this._getConn();
+    const res = this._lastPropagate;
+    if (!conn || this._docId === null || this._busy || !res) return;
+
+    let alignedCount = 0;
+    try {
+      alignedCount = (await getDocumentStats(conn, this._docId)).aligned_count;
+    } catch { /* ignore — no confirm */ }
+    if (needsAlignmentConfirm(alignedCount)) {
+      const ok = await modalConfirm({
+        message: `Ce document a ${alignedCount} lien${alignedCount > 1 ? "s" : ""} d’alignement. Propager la segmentation les effacera. Continuer ?`,
+        confirmLabel: "Propager",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
+    // Flatten sections → units: an optional structure header (the target's own intertitre) then
+    // its line segments. Mirrors what apply_propagated expects (structure/line, in order).
+    const units: ApplyPropagatedUnit[] = [];
+    for (const s of res.sections) {
+      if (s.header_text && s.header_text.trim()) {
+        units.push(s.header_role
+          ? { type: "structure", text: s.header_text, role: s.header_role }
+          : { type: "structure", text: s.header_text });
+      }
+      for (const seg of s.segments) {
+        if (seg.text.trim()) units.push({ type: "line", text: seg.text });
+      }
+    }
+    if (!units.length) { this._notify("Rien à propager.", true); return; }
+
+    this._busy = true;
+    const btn = this._applyBarEl?.querySelector<HTMLButtonElement>("#prep-seg-canvas-prop-apply");
+    if (btn) { btn.disabled = true; btn.textContent = "Application…"; }
+    try {
+      const r = await applyPropagated(conn, this._docId, units);
+      this._notify(`Segmentation propagée — ${r.units_written} unité${r.units_written > 1 ? "s" : ""} écrite${r.units_written > 1 ? "s" : ""}.`);
+      await this._onResegmented?.();
+    } catch (e) {
+      this._notify(e instanceof Error ? e.message : String(e), true);
+      if (btn) { btn.disabled = false; btn.textContent = "Appliquer la propagation"; }
     } finally {
       this._busy = false;
     }
