@@ -15,9 +15,13 @@ import { escHtml as esc, highlightChanges } from "../lib/diff.ts";
 import {
   listConventions, listUnits, curatePreview, curate, updateUnitTextNorm,
   listCurateExceptions, setCurateException, deleteCurateException,
+  prepUndo, prepUndoEligibility,
 } from "../lib/sidecarClient.ts";
 import { CURATE_PRESETS } from "../lib/curationPresets.ts";
 import { rulesSignature, fnv1a } from "../lib/curationFingerprint.ts";
+import {
+  formatUndoActionLabel, formatUndoTooltip, isUndoDisabled, type UndoEligibility,
+} from "../lib/prepUndo.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { CanvasUnitList } from "./CanvasUnitList.ts";
@@ -81,6 +85,9 @@ export class CurationPane {
   private _frHits: number[] = [];
   private _frHitSet = new Set<number>();
   private _frHitIdx = -1;
+  /** R6.5-B Lot D — Mode A undo eligibility for the current doc (last undoable prep action:
+   *  a curation Apply or a stylo edit). Doc-scoped; null when no doc / not connected. */
+  private _undoElig: UndoEligibility | null = null;
 
   constructor(root: HTMLElement, getConn: () => Conn | null, onError: (msg: string) => void) {
     this._root = root;
@@ -111,6 +118,8 @@ export class CurationPane {
             title="Afficher / masquer le diff complet de toutes les unit&#233;s modifi&#233;es">Afficher tous les diffs</button>
           <button type="button" class="btn prep-btn-warning btn-sm" id="prep-cur-apply-btn" disabled
             title="Appliquer la curation au document (r&#233;&#233;crit le texte de recherche ; l'original est conserv&#233;)">Appliquer</button>
+          <button type="button" class="btn btn-ghost btn-sm prep-cur-undo" id="prep-cur-undo-btn" disabled
+            title="Annuler la derni&#232;re action (curation appliqu&#233;e ou &#233;dition)">&#8624; Annuler</button>
           <span class="prep-cur-summary" id="prep-cur-summary" aria-live="polite"></span>
         </div>
         <details class="prep-cur-fr">
@@ -163,6 +172,7 @@ export class CurationPane {
       this._list?.render();
     });
     this._q("#prep-cur-apply-btn")?.addEventListener("click", () => void this._apply());
+    this._q("#prep-cur-undo-btn")?.addEventListener("click", () => void this._undo()); // Lot D
 
     // Lot C — advanced Find/Replace + Trouver.
     this._q("#prep-cur-fr-find-btn")?.addEventListener("click", () => this._frFind());
@@ -209,10 +219,12 @@ export class CurationPane {
     this._ruleFilter = null;
     this._ruleLabels = [];
     this._frReset(); // Lot C — drop any staged F/R rule + Trouver hits (no render)
+    this._undoElig = null; // Lot D — until re-fetched for the new doc
     this._renderSummary();
     this._renderReviewBar();
     this._renderToggleAll();
     this._renderApplyBtn();
+    this._renderUndo();
     this._list?.setData({ docId, textStartN });
     this._list?.clearSelectionQuiet();
     if (!this._loaded) await this._loadRoles();
@@ -224,6 +236,7 @@ export class CurationPane {
       this._renderReviewBar();
       this._list?.render();
     }
+    await this._refreshUndo(); // doc-scoped; independent of the units loading
   }
 
   dispose(): void {
@@ -242,6 +255,7 @@ export class CurationPane {
     this._frHits = [];
     this._frHitSet = new Set();
     this._frHitIdx = -1;
+    this._undoElig = null;
     this._list?.reset();
     this._docId = null;
     this._loaded = false;
@@ -653,6 +667,81 @@ export class CurationPane {
     } finally {
       if (btn) btn.textContent = "Appliquer";
       this._renderApplyBtn();
+      await this._refreshUndo(); // an apply recorded a curation_apply action
+    }
+  }
+
+  // ─── Undo (Mode A, R6.5-B Lot D) ──────────────────────────────────────────
+
+  /** Sync the undo button's label/disabled/tooltip from the current eligibility. The label is
+   *  dynamic (formatUndoActionLabel) so it names the last action — a curation Apply or a stylo edit. */
+  private _renderUndo(): void {
+    const btn = this._q<HTMLButtonElement>("#prep-cur-undo-btn");
+    if (!btn) return;
+    const elig = this._undoElig ?? undefined;
+    btn.disabled = isUndoDisabled(elig);
+    btn.textContent = elig ? formatUndoActionLabel(elig) : "↶ Annuler";
+    btn.title = elig ? formatUndoTooltip(elig) : "Annuler la dernière action (curation appliquée ou édition).";
+  }
+
+  /** Fetch the doc's undo eligibility (doc-scoped). Disabled when no doc / not connected.
+   *  Guards the doc-switch race: a result for a doc we've since left is dropped (à la SegmentPane). */
+  private async _refreshUndo(): Promise<void> {
+    const conn = this._getConn();
+    const docId = this._docId;
+    if (!conn || docId === null) { this._undoElig = null; this._renderUndo(); return; }
+    let elig: UndoEligibility | null = null;
+    try {
+      elig = await prepUndoEligibility(conn, docId);
+    } catch {
+      elig = null;
+    }
+    if (docId !== this._docId) return; // doc changed while awaiting — the result is stale
+    this._undoElig = elig;
+    this._renderUndo();
+  }
+
+  /** Revert the last undoable action (generic prepUndo). The text changed → invalidate the preview,
+   *  reload units + exceptions. Keeps the staged presets/F/R rule (the user may re-preview). */
+  private async _undo(): Promise<void> {
+    const conn = this._getConn();
+    const docId = this._docId;
+    if (!conn || docId === null || isUndoDisabled(this._undoElig ?? undefined)) return;
+    const btn = this._q<HTMLButtonElement>("#prep-cur-undo-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await prepUndo(conn, docId);
+      // Doc-switch guard (same class as _refreshUndo): if we left this doc during the round-trip,
+      // don't reload/relabel the current view for someone else's undo — its own setDocument owns it.
+      if (docId !== this._docId) return; // finally still refreshes the button for the current doc
+      // The undo rewrote text → any preview marks/relu/filters/Trouver hits are stale.
+      this._changed.clear();
+      this._expanded.clear();
+      this._showAllDiffs = false;
+      this._stats = null;
+      this._relu.clear();
+      this._ruleLabels = [];
+      this._statusFilter = "all";
+      this._ruleFilter = null;
+      this._frClearHits();
+      // Guard the same clobber as setDocument: only re-render the list when units reloaded, else
+      // the render would wipe the error message _loadUnits left in the area.
+      const loaded = await this._loadUnits();
+      if (loaded) await this._loadExceptions();
+      const s = this._q("#prep-cur-summary");
+      if (s) {
+        const n = res.units_restored;
+        s.textContent = `↶ Annulé : ${n} unité${n > 1 ? "s" : ""} restaurée${n > 1 ? "s" : ""}`
+          + (res.fts_stale ? " · réindexez pour la recherche." : ".");
+      }
+      this._renderReviewBar();
+      this._renderToggleAll();
+      this._renderApplyBtn();
+      if (loaded) this._list?.render();
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      await this._refreshUndo();
     }
   }
 
@@ -783,6 +872,7 @@ export class CurationPane {
     }
     this._renderSummary();
     this._renderApplyBtn();
+    void this._refreshUndo(); // Lot D — the stylo recorded an update_text action
   }
 
   // ─── Exceptions par unité (R6.5-B Lot A) ──────────────────────────────────

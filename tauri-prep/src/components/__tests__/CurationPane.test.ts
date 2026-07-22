@@ -34,6 +34,9 @@ function fakeConn(cfg: {
   exceptions?: FakeException[];
   onExcSet?: (body: unknown) => void;
   onExcDelete?: (body: unknown) => void;
+  undoElig?: Record<string, unknown>;
+  undoResult?: Record<string, unknown>;
+  onUndo?: (body: unknown) => void;
 }): Conn {
   return {
     get: async (path: string) => {
@@ -68,6 +71,13 @@ function fakeConn(cfg: {
       if (path === "/curate/exceptions/delete") {
         cfg.onExcDelete?.(body);
         return { ok: true, unit_id: (body as { unit_id: number }).unit_id, deleted: true };
+      }
+      if (path === "/prep/undo/eligibility") {
+        return cfg.undoElig ?? { eligible: false, reason: "no_action" };
+      }
+      if (path === "/prep/undo") {
+        cfg.onUndo?.(body);
+        return cfg.undoResult ?? { undo_action_id: 1, reverted_action_id: 1, reverted_action_type: "curation_apply", units_restored: 3, alignments_reflagged: 0, fts_stale: false };
       }
       return {};
     },
@@ -719,5 +729,82 @@ describe("CurationPane — règle avancée Find/Replace + Trouver (R6.5-B Lot C)
     expect(details.classList.contains("prep-cur-fr--active")).toBe(true);
     click("#prep-cur-fr-clear-btn");
     expect(details.classList.contains("prep-cur-fr--active")).toBe(false);
+  });
+});
+
+describe("CurationPane — undo Apply (R6.5-B Lot D)", () => {
+  const undoBtn = () => host.querySelector("#prep-cur-undo-btn") as HTMLButtonElement;
+
+  it("le bouton reflète l'éligibilité (activé + label dynamique)", async () => {
+    const conn = fakeConn({
+      units: [unit(1)],
+      undoElig: { eligible: true, action_type: "curation_apply", action_id: 5, description: "Apply 2 règles · 3 unités" },
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    expect(undoBtn().disabled).toBe(false);
+    expect(undoBtn().textContent).toContain("Apply 2 règles");
+  });
+
+  it("désactivé quand aucune action annulable", async () => {
+    const conn = fakeConn({ units: [unit(1)], undoElig: { eligible: false, reason: "no_action" } });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    expect(undoBtn().disabled).toBe(true);
+    expect(undoBtn().textContent).toContain("Annuler");
+  });
+
+  it("clic : POST /prep/undo (doc-scopé) + recharge + résumé", async () => {
+    let body: unknown = null;
+    const conn = fakeConn({
+      units: [unit(1)],
+      undoElig: { eligible: true, action_type: "curation_apply", action_id: 5, description: "Apply" },
+      onUndo: (b) => { body = b; },
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    undoBtn().click();
+    await flush();
+    expect(body).toEqual({ doc_id: 1 });
+    expect(host.querySelector("#prep-cur-summary")?.textContent).toContain("Annulé");
+    expect(host.querySelector("#prep-cur-summary")?.textContent).toContain("3 unités restaurées");
+  });
+
+  it("désactivé sans document sélectionné", async () => {
+    const conn = fakeConn({
+      units: [unit(1)],
+      undoElig: { eligible: true, action_type: "curation_apply", action_id: 5, description: "x" },
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(null, null);
+    expect(undoBtn().disabled).toBe(true);
+  });
+
+  it("échec du rechargement après undo : le message d'erreur survit (garde clobber)", async () => {
+    let unitsCalls = 0;
+    const conn = {
+      get: async (path: string) => {
+        if (path === "/conventions") return { conventions: [] };
+        if (path.startsWith("/units")) {
+          unitsCalls++;
+          if (unitsCalls >= 2) throw new Error("boom reload"); // le rechargement d'undo échoue
+          return { units: [unit(1)], count: 1, doc_id: 1 };
+        }
+        return {};
+      },
+      post: async (path: string) => {
+        if (path === "/prep/undo/eligibility") return { eligible: true, action_type: "curation_apply", action_id: 1, description: "Apply" };
+        if (path === "/prep/undo") return { undo_action_id: 1, reverted_action_id: 1, reverted_action_type: "curation_apply", units_restored: 2, alignments_reflagged: 0, fts_stale: false };
+        if (path === "/curate/exceptions") return { ok: true, exceptions: [], count: 0 };
+        return {};
+      },
+    } as unknown as Conn;
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null); // call 1 : OK
+    undoBtn().click();
+    await flush(); // undo → rechargement (call 2) échoue
+    const area = host.querySelector("#prep-cur-units");
+    expect(area?.textContent).toContain("Erreur");
+    expect(area?.textContent).toContain("boom reload");
   });
 });

@@ -7552,6 +7552,11 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 .prep-conv-unit-row--found { background: #fef9c3; }
 .prep-conv-unit-row--found-active { background: #fde68a; box-shadow: inset 3px 0 0 #d97706; }
 
+/* R6.5-B Lot D — bouton undo : le label dynamique (« ↶ Annuler : … ») peut être long, on le
+   plafonne pour ne pas déformer le dock (le titre porte le détail complet). */
+.prep-cur-undo { max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prep-cur-undo:not([disabled]) { color: #0f766e; }
+
 /* ───────────────────────────────────────────────────────────────────────────
    R6.4 · T4a — Responsive du canvas (container query ; modèle = AlignPanel).
    .prep-canvas-root déclare déjà `container-type: inline-size` ; il manquait toute
