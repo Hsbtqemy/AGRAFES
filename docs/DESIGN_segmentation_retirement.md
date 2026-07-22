@@ -1,7 +1,7 @@
 # DESIGN — Retrait de `SegmentationView` & décomposition du structure matcher
 
 > Note de cadrage (« figer avant ticket »). Rédigée 2026-07-22.
-> **Statut : cadre figé sur la décomposition (D1-D4) ; séquence & surfaçage à trancher (D5-D6).**
+> **Statut : décomposition + séquence figées (D1-D5 = voie **a**) ; D6 (workflow valider) à trancher.**
 > Amont : [`DESIGN_R5_4_segmentation_layer.md`](DESIGN_R5_4_segmentation_layer.md) (modèle segmentation
 > configurable, R5.4d = matcher différé), [`DESIGN_R5_4B_segment_canvas_layer.md`](DESIGN_R5_4B_segment_canvas_layer.md)
 > (tranches front R5.4b), [`DESIGN_alignment_workspace.md`](DESIGN_alignment_workspace.md) (§2.2/§2.3/§4.1,
@@ -97,14 +97,30 @@ avec override manuel conservé. Lève la friction #1.
 
 ## 4. À trancher (avant ticket)
 
-- **D5 — Séquence.** Deux voies (le fork resté ouvert) :
-  - **(a) Segmentation d'abord (partiel)** : canvas Segment **primaire** tout de suite (relog édition
-    D2, bascule nav, petits bloqueurs) ; appariement+propagate **extraits en primitive atteignable**
-    (interim) en attendant la couche structure de l'Alignement. Débloque l'UX mono-doc maintenant.
-    → *Recommandé* : la décomposition D1-D3 **rend ceci possible** — le matcher n'est plus un
-    monolithe bloquant. Coût : un interim (la primitive vit hors de sa maison définitive un temps).
-  - **(b) Alignement-structure d'abord** : bâtir le fold-in structure de l'Alignement (D-W11) EN
-    PREMIER, puis retirer `SegmentationView` proprement. Plus cohérent, plus gros, réordonne la roadmap.
+- **D5 — Séquence : voie (a) « Segmentation d'abord / partiel » — TRANCHÉ (2026-07-22).**
+  Canvas Segment **primaire** tout de suite (relog édition D2, bascule nav, petits bloqueurs), sans
+  attendre la grosse tranche structure de l'Alignement. La voie (b) « Alignement-structure d'abord »
+  est écartée : plus grosse, réordonne la roadmap (saute à une tranche Alignement ultérieure alors que
+  la refonte Alignement est déjà en cours).
+
+  **De-risque décisif (vérifié au code)** : `/segment/propagate_preview` prend un `section_mapping`
+  **optionnel** — sans lui, l'appariement est **positionnel** par défaut. Donc **propagate famille-pilotée
+  marche déjà sans UI d'appariement manuel**. Propagate se scinde :
+  - **auto** (positionnel, référence = pivot de la famille) → action **« caler cette trad sur sa source »**
+    sur le **canvas Segment** (référence implicite = mono-doc de fait), livrable dans la voie (a) ;
+  - **appariement manuel** (relier chapitre↔chapitre quand le positionnel dérape) → l'UI inter-doc qui
+    attend l'**Alignement** (tranche ultérieure, D-W11).
+  → l'« interim orphelin » qui pesait sur (a) **disparaît** : on ne sort pas de mini-outil bâtard ;
+  seule la **réparation manuelle** est différée.
+
+  **Tranches (voie a)** — ordre : bloqueurs relogés *avant* la bascule (sinon la bascule perd des features) :
+  1. **Cadeaux indépendants** (§6) : retirer l'orphelin `structure_diff` + corriger les docs périmés. Cheap.
+  2. **Relog édition de structure** (insert/delete/zone) dans `SegmentPane` (D2).
+  3. **Polish rendu Brut** : badges de rôle + rich-text + fold « original d'import ».
+  4. **Auto-propagate famille** sur le canvas (« caler sur la source », référence via `doc_relations`, D4).
+  5. **Bascule nav** « Segmentation » → couche canvas + **re-route des deep-links** (miroir R6.5-A/C).
+  6. **Retrait de `SegmentationView`** (+ décision D6 réglée d'ici là).
+  L'appariement manuel + fold-in Alignement = **hors de cette voie**, à la tranche structure de l'Alignement.
 - **D6 — Sort du workflow « valider-et-avancer »** : action « valider » surfacée sur la couche Segment,
   **ou** accepter la perte (valider via Métadonnées, qui porte déjà `workflow_status="validated"`).
   Surtout un arbitrage produit, peu de code. `calibrate_to` : rester différé (faible priorité).
