@@ -292,8 +292,10 @@ export class ActionsScreen {
     el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-wf-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const target = btn.dataset.target ?? "";
-        // R6.5-A : « Annotation » ouvre le canvas (couche Annotation), l'écran legacy retiré.
+        // R6.5-A/C : « Annotation » et « Curation » ouvrent le canvas (couches dédiées),
+        // les écrans legacy ayant été retirés.
         if (target === "annoter") { this.openAnnotationLayer(); return; }
+        if (target === "curation") { this.openCurationLayer(); return; }
         this._switchSubViewDOM(root, target as SubView);
       });
     });
@@ -356,8 +358,9 @@ export class ActionsScreen {
         jobCenter: () => this._jobCenter,
         onNavigate: (target, context) => {
           if (!this._wfRoot) return;
-          // R6.5-A : « annoter » ouvre le canvas (couche Annotation), l'écran legacy retiré.
+          // R6.5-A/C : « annoter » et « curation » ouvrent le canvas (couches dédiées).
           if (target === "annoter") { this.openAnnotationLayer(context?.docId ?? undefined); return; }
+          if (target === "curation") { this.openCurationLayer(context?.docId ?? undefined); return; }
           this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
           if (context?.docId != null) {
             if (target === "segmentation") this._segmentationView?.focusDoc(context.docId);
@@ -391,8 +394,9 @@ export class ActionsScreen {
         jobCenter: () => this._jobCenter,
         onNavigate: (target, context) => {
           if (!this._wfRoot) return;
-          // R6.5-A : « annoter » ouvre le canvas (couche Annotation), l'écran legacy retiré.
+          // R6.5-A/C : « annoter » et « curation » ouvrent le canvas (couches dédiées).
           if (target === "annoter") { this.openAnnotationLayer(context?.docId ?? undefined); return; }
+          if (target === "curation") { this.openCurationLayer(context?.docId ?? undefined); return; }
           this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
         },
         onOpenDocuments: () => this._openDocumentsTab?.(),
@@ -548,6 +552,15 @@ export class ActionsScreen {
     this.setSubView("texte");
     if (docId != null) void this._textCanvasView?.focusAnnotationToken(docId);
     else this._textCanvasView?.showAnnotationLayer();
+  }
+
+  /** R6.5-C retrait : « Curation » (hub, sidebar, étape-suivante) ouvre désormais le canvas sur la
+   *  couche Curation, l'écran legacy ayant été retiré. Avec `docId`, focalise ce doc ; sinon garde
+   *  le doc courant du canvas. Miroir exact de openAnnotationLayer. */
+  openCurationLayer(docId?: number): void {
+    this.setSubView("texte");
+    if (docId != null) void this._textCanvasView?.focusCurationDoc(docId);
+    else this._textCanvasView?.showCurationLayer();
   }
 
   /** Public API: called from app.ts after Conventions→Prep navigation. */

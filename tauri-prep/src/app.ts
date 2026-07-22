@@ -383,9 +383,10 @@ export class App {
           link.appendChild(treeLabel);
           link.addEventListener("click", () => {
             this._switchTab("actions");
-            // R6.5-A : « Annotation » ouvre le canvas (couche Annotation), l'écran legacy retiré.
+            // R6.5-A/C : « Annotation » et « Curation » ouvrent le canvas (couches dédiées).
             if (navKey === "annoter") this._actions.openAnnotationLayer();
-            else this._actions.setSubView(navKey as "curation" | "segmentation" | "alignement" | "matrice");
+            else if (navKey === "curation") this._actions.openCurationLayer();
+            else this._actions.setSubView(navKey as "segmentation" | "alignement" | "matrice");
           });
           treeBody.appendChild(link);
         }

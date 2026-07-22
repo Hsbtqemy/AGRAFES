@@ -292,6 +292,19 @@ export class TextCanvasView {
     this._setMode("annoter");
   }
 
+  /** Open the Curation layer keeping the current document (nav entry point, R6.5-C). */
+  showCurationLayer(): void {
+    this._setMode("curation");
+  }
+
+  /** Open the Curation layer on a specific document (Segmentation « étape suivante → Curation »).
+   *  Mirrors focusAnnotationToken: set `_docId` first so `_setMode`'s sync targets the right doc. */
+  async focusCurationDoc(docId: number): Promise<void> {
+    this._docId = docId;
+    this._setMode("curation");
+    await this._focusDoc(docId);
+  }
+
   private async _focusDoc(docId: number | null): Promise<void> {
     this._docId = docId;
     this._stats = null;
