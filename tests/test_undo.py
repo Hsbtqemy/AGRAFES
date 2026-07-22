@@ -910,3 +910,58 @@ def test_undo_resegment_is_fk_safe_after_realign(
     ).fetchone()[0]
     assert orphan == 0
     assert _snapshot_units(db_conn, doc_id) == before
+
+
+# ---------------------------------------------------------------------------
+# set_role (retrait Segmentation, tranche 2 — role assignment is undoable)
+# ---------------------------------------------------------------------------
+
+
+def _role_of(conn: sqlite3.Connection, doc_id: int, n: int) -> str | None:
+    return conn.execute(
+        "SELECT unit_role FROM units WHERE doc_id=? AND n=?", (doc_id, n)
+    ).fetchone()[0]
+
+
+def test_undo_set_role_restores_unit_role(db_conn: sqlite3.Connection) -> None:
+    from multicorpus_engine.services.units_service import set_unit_role
+    from multicorpus_engine.undo import compute_eligibility, execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["Une ligne.", "Chapitre 2", "Autre ligne."])
+    db_conn.execute(
+        "INSERT INTO unit_roles (name, label, category) VALUES ('intertitre', 'Intertitre', 'structure')"
+    )
+    db_conn.commit()
+
+    # assign the intertitre role to unit n=2 (was NULL)
+    set_unit_role(db_conn, {"doc_id": doc_id, "unit_n": 2, "role": "intertitre"})
+    assert _role_of(db_conn, doc_id, 2) == "intertitre"
+
+    elig = compute_eligibility(db_conn, doc_id)
+    assert elig["eligible"] is True
+    assert elig["action_type"] == "set_role"
+
+    payload = execute_undo(db_conn, doc_id)
+    assert payload["reverted_action_type"] == "set_role"
+    assert _role_of(db_conn, doc_id, 2) is None  # restored to NULL
+
+
+def test_undo_bulk_set_role_restores_all_units(db_conn: sqlite3.Connection) -> None:
+    from multicorpus_engine.services.units_service import bulk_set_unit_role
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["a", "b", "c"])
+    db_conn.execute(
+        "INSERT INTO unit_roles (name, label, category) VALUES ('dialogue', 'Dialogue', 'text')"
+    )
+    db_conn.commit()
+
+    # format B (doc_id + unit_ns): role on n=1 and n=3, leave n=2 untouched
+    bulk_set_unit_role(db_conn, {"doc_id": doc_id, "unit_ns": [1, 3], "role": "dialogue"})
+    assert _role_of(db_conn, doc_id, 1) == "dialogue"
+    assert _role_of(db_conn, doc_id, 3) == "dialogue"
+    assert _role_of(db_conn, doc_id, 2) is None
+
+    execute_undo(db_conn, doc_id)
+    assert _role_of(db_conn, doc_id, 1) is None
+    assert _role_of(db_conn, doc_id, 3) is None

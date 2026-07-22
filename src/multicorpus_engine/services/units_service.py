@@ -16,6 +16,7 @@ import sqlite3
 from typing import Any, Optional
 
 from ..action_history import (
+    ACTION_SET_ROLE,
     ACTION_UPDATE_TEXT,
     insert_unit_snapshots,
     record_prep_action,
@@ -107,9 +108,45 @@ _SET_ROLE_SCHEMA = (
 )
 
 
+def _record_role_change(conn: sqlite3.Connection, rows_before) -> None:
+    """Record an undoable ``set_role`` action + before-snapshot for each affected
+    unit, grouped by doc (one action per doc — role assignment is per-doc in the UI).
+
+    ``rows_before`` rows expose ``unit_id``, ``doc_id``, ``text_norm``, ``unit_role``
+    as captured BEFORE the UPDATE. No commit: the caller commits with the mutation so
+    snapshot + change either both land or both roll back (Mode A). Empty input records
+    nothing — no no-op action. Mirrors ``update_unit_text``'s inline recording.
+    """
+    by_doc: dict[int, list] = {}
+    for r in rows_before:
+        by_doc.setdefault(int(r["doc_id"]), []).append(r)
+    for d_id, rs in by_doc.items():
+        n = len(rs)
+        action_id = record_prep_action(
+            conn,
+            doc_id=d_id,
+            action_type=ACTION_SET_ROLE,
+            description=f"Rôle de convention · {n} unité{'s' if n > 1 else ''}",
+            context={"unit_count": n},
+        )
+        insert_unit_snapshots(
+            conn,
+            action_id,
+            [
+                {
+                    "unit_id":          int(r["unit_id"]),
+                    "text_norm_before": r["text_norm"] or "",
+                    "unit_role_before": r["unit_role"],
+                }
+                for r in rs
+            ],
+        )
+
+
 def set_unit_role(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     """Assign (or clear) a convention role on one unit (POST /units/set_role).
 
+    Records an undoable ``set_role`` action (Mode A) in the same tx as the mutation.
     Raises BadRequestError (missing/non-int ids) or NotFoundError (role or unit).
     """
     ids = validate(body, _SET_ROLE_SCHEMA)
@@ -123,11 +160,13 @@ def set_unit_role(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
         raise NotFoundError(f"Convention '{role}' not found")
 
     row = conn.execute(
-        "SELECT unit_id FROM units WHERE doc_id=? AND n=?", (doc_id, unit_n)
+        "SELECT unit_id, doc_id, text_norm, unit_role FROM units WHERE doc_id=? AND n=?",
+        (doc_id, unit_n),
     ).fetchone()
     if not row:
         raise NotFoundError(f"Unit n={unit_n} not found for doc_id={doc_id}")
 
+    _record_role_change(conn, [row])  # before-snapshot (Mode A) before the UPDATE
     conn.execute("UPDATE units SET unit_role=? WHERE doc_id=? AND n=?", (role, doc_id, unit_n))
     conn.commit()
     return {"doc_id": doc_id, "unit_n": unit_n, "unit_role": role}
@@ -156,6 +195,11 @@ def bulk_set_unit_role(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
         if role is not None and not _role_exists(conn, role):
             raise NotFoundError(f"Convention '{role}' not found")
         placeholders = ",".join("?" * len(unit_ids))
+        rows_before = conn.execute(
+            f"SELECT unit_id, doc_id, text_norm, unit_role FROM units WHERE unit_id IN ({placeholders})",
+            unit_ids,
+        ).fetchall()
+        _record_role_change(conn, rows_before)  # Mode A snapshot before the UPDATE
         result = conn.execute(
             f"UPDATE units SET unit_role=? WHERE unit_id IN ({placeholders})",
             [role, *unit_ids],
@@ -181,6 +225,11 @@ def bulk_set_unit_role(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     if role is not None and not _role_exists(conn, role):
         raise NotFoundError(f"Convention '{role}' not found")
     placeholders = ",".join("?" * len(unit_ns))
+    rows_before = conn.execute(
+        f"SELECT unit_id, doc_id, text_norm, unit_role FROM units WHERE doc_id=? AND n IN ({placeholders})",
+        [doc_id, *unit_ns],
+    ).fetchall()
+    _record_role_change(conn, rows_before)  # Mode A snapshot before the UPDATE
     result = conn.execute(
         f"UPDATE units SET unit_role=? WHERE doc_id=? AND n IN ({placeholders})",
         [role, doc_id, *unit_ns],

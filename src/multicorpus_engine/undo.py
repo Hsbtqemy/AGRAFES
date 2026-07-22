@@ -27,6 +27,7 @@ from multicorpus_engine.action_history import (
     ACTION_CURATION_APPLY,
     ACTION_MERGE_UNITS,
     ACTION_RESEGMENT,
+    ACTION_SET_ROLE,
     ACTION_SPLIT_UNIT,
     ACTION_UNDO,
     ACTION_UPDATE_TEXT,
@@ -160,6 +161,25 @@ def _undo_curation_apply(
         "units_restored":       len(snapshots),
         "alignments_reflagged": reflagged,
         "fts_stale":            len(snapshots) > 0,
+    }
+
+
+def _undo_set_role(
+    conn: sqlite3.Connection, snapshots: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Revert a role assignment (ACTION_SET_ROLE): restore ``unit_role`` from the
+    snapshot. Only metadata changed — the aligned *text* is untouched, so no FTS
+    invalidation and no alignment re-flag (unlike curation_apply, which edits text).
+    """
+    for s in snapshots:
+        conn.execute(
+            "UPDATE units SET unit_role = ? WHERE unit_id = ?",
+            (s["unit_role_before"], s["unit_id"]),
+        )
+    return {
+        "units_restored":       len(snapshots),
+        "alignments_reflagged": 0,
+        "fts_stale":            False,
     }
 
 
@@ -419,6 +439,8 @@ def execute_undo(
 
     if action_type == ACTION_CURATION_APPLY:
         outcome = _undo_curation_apply(conn, snapshots)
+    elif action_type == ACTION_SET_ROLE:
+        outcome = _undo_set_role(conn, snapshots)
     elif action_type == ACTION_UPDATE_TEXT:
         outcome = _undo_update_text(conn, snapshots)
     elif action_type == ACTION_MERGE_UNITS:

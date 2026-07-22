@@ -95,11 +95,15 @@ describe("formatUndoTooltip", () => {
 // Invariant 4 : types alignés sur la CHECK constraint backend.
 describe("type constants", () => {
   it("PREP_ACTION_TYPES couvre toutes les valeurs CHECK", () => {
+    // Doit refléter le CHECK de prep_action_history (migrations 019 + 032 update_text
+    // + 033 set_role). update_text manquait ici — dérive corrigée en tranche 2.
     expect(PREP_ACTION_TYPES).toEqual([
       "curation_apply",
       "merge_units",
       "split_unit",
       "resegment",
+      "update_text",
+      "set_role",
       "undo",
     ]);
   });

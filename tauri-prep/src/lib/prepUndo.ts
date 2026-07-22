@@ -29,6 +29,8 @@ export const PREP_ACTION_TYPES = [
   "merge_units",
   "split_unit",
   "resegment",
+  "update_text", // stylo (migration 032) — was missing from this union
+  "set_role",    // role assignment (migration 033, retrait Segmentation tranche 2)
   "undo",
 ] as const;
 
