@@ -449,7 +449,6 @@ export class App {
     }
 
     main.appendChild(content);
-    this._syncCurationWideClass();
 
     // Share global log element with all screens
     this._import.setLogEl(this._logEl);
@@ -520,7 +519,6 @@ export class App {
     this._screenEls[tab].classList.add("active");
     this._tabBtns[tab].classList.add("active");
     this._tabBtns[tab].setAttribute("aria-current", "page");
-    this._syncCurationWideClass();
     if (tab === "documents") this._metadata.onActivate();
   }
 
@@ -530,13 +528,6 @@ export class App {
     if (prefill) this._exports.applyWorkflowPrefill(prefill);
   }
 
-  private _syncCurationWideClass(): void {
-    const content = document.querySelector<HTMLElement>("#prep-main-content > .content");
-    if (!content) return;
-    const actionsScreen = this._screenEls.actions;
-    const curationActive = this._activeTab === "actions" && actionsScreen?.classList.contains("actions-sub-curation");
-    content.classList.toggle("prep-curation-wide", Boolean(curationActive));
-  }
 
   private _hasPendingChangesInCurrentTab(): boolean {
     return Boolean(this._screenControllers[this._activeTab]?.hasPendingChanges?.());

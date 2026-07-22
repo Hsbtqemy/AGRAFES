@@ -1,7 +1,10 @@
 /**
- * ActionsScreen — curate / segment / align with V0.3 extensions:
- *   - Curation Preview Diff (preset selector + before/after diff table)
+ * ActionsScreen — hub des actions (segment / align) + hébergeur du canvas Texte.
  *   - Align Audit UI (paginated link table after alignment run)
+ *
+ * La curation et l'annotation sont des couches du canvas (TextCanvasView) ; leurs écrans legacy
+ * ont été retirés (R6.5-A/C). « Curation »/« Annotation » (hub, sidebar, étape-suivante) ouvrent
+ * le canvas via openCurationLayer/openAnnotationLayer.
  */
 
 import type {
@@ -24,7 +27,6 @@ import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AlignMatrixView } from "./AlignMatrixView.ts";
 import { SegmentationView } from "./SegmentationView.ts";
-import { CurationView } from "./CurationView.ts";
 import { TextCanvasView } from "./TextCanvasView.ts";
 
 // ─── Project Presets (shared type) ───────────────────────────────────────────
@@ -58,7 +60,7 @@ interface ActionsExportPrefill {
 
 // ─── Sub-view type ────────────────────────────────────────────────
 
-type SubView = "hub" | "texte" | "curation" | "segmentation" | "alignement" | "matrice";
+type SubView = "hub" | "texte" | "segmentation" | "alignement" | "matrice";
 
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
@@ -78,8 +80,6 @@ export class ActionsScreen {
   private _matrixView: AlignMatrixView | null = null;
   // SegmentationView (extracted)
   private _segmentationView: SegmentationView | null = null;
-  // CurationView (extracted)
-  private _curationView: CurationView | null = null;
   // TextCanvasView (refonte T0 — canvas texte central, cohabite avec le legacy)
   private _textCanvasView: TextCanvasView | null = null;
 
@@ -133,10 +133,6 @@ export class ActionsScreen {
     hubPanel.dataset.panel = "hub";
     hubPanel.style.display = this._activeSubView === "hub" ? "" : "none";
 
-    const curationPanel = this._renderCurationPanel(root);
-    curationPanel.dataset.panel = "curation";
-    curationPanel.style.display = this._activeSubView === "curation" ? "" : "none";
-
     const segPanel = this._renderSegmentationPanel(root);
     segPanel.dataset.panel = "segmentation";
     segPanel.style.display = this._activeSubView === "segmentation" ? "" : "none";
@@ -154,7 +150,6 @@ export class ActionsScreen {
     textePanel.style.display = this._activeSubView === "texte" ? "" : "none";
 
     panelSlot.appendChild(hubPanel);
-    panelSlot.appendChild(curationPanel);
     panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
     panelSlot.appendChild(matricePanel);
@@ -238,7 +233,7 @@ export class ActionsScreen {
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
-      if (saved === "hub" || saved === "texte" || saved === "curation" || saved === "segmentation" || saved === "alignement" || saved === "matrice") {
+      if (saved === "hub" || saved === "texte" || saved === "segmentation" || saved === "alignement" || saved === "matrice") {
         this._activeSubView = saved;
       }
     } catch { /* ignore */ }
@@ -275,10 +270,8 @@ export class ActionsScreen {
   }
 
   private _setSubViewClass(root: HTMLElement, view: SubView): void {
-    root.classList.remove("actions-sub-hub", "actions-sub-curation", "actions-sub-segmentation", "actions-sub-alignement", "actions-sub-matrice");
+    root.classList.remove("actions-sub-hub", "actions-sub-segmentation", "actions-sub-alignement", "actions-sub-matrice");
     root.classList.add(`actions-sub-${view}`);
-    const content = root.closest<HTMLElement>(".content");
-    if (content) content.classList.toggle("prep-curation-wide", view === "curation");
   }
 
   /** Stable class method — replaces captured closure pattern for seg mode switching. */
@@ -344,36 +337,6 @@ export class ActionsScreen {
         if (target) this._switchSubViewDOM(root, target);
       });
     });
-  }
-
-  private _renderCurationPanel(_root: HTMLElement): HTMLElement {
-    this._curationView = new CurationView(
-      () => this._conn,
-      () => this._docs,
-      {
-        log: (msg, isError) => this._log(msg, isError),
-        toast: (msg, isError) => this._showToast?.(msg, isError),
-        setBusy: (v) => this._setBusy(v),
-        isBusy: () => this._isBusy,
-        jobCenter: () => this._jobCenter,
-        onNavigate: (target, context) => {
-          if (!this._wfRoot) return;
-          // R6.5-A/C : « annoter » et « curation » ouvrent le canvas (couches dédiées).
-          if (target === "annoter") { this.openAnnotationLayer(context?.docId ?? undefined); return; }
-          if (target === "curation") { this.openCurationLayer(context?.docId ?? undefined); return; }
-          this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
-          if (context?.docId != null) {
-            if (target === "segmentation") this._segmentationView?.focusDoc(context.docId);
-          }
-        },
-        onReloadDocs: () => { void this._loadDocs(); },
-        onReindex: () => { void this._runIndex(); },
-        onValidateMeta: () => { void this._runValidateMeta(); },
-        onOpenExporter: () => this._openExporterTab?.(),
-        getLastSegmentReport: () => this._segmentationView?.getLastSegmentReport() ?? null,
-      },
-    );
-    return this._curationView.render();
   }
 
   // ── New split segmentation panel (Sprint 9) ────────────────────────────────
@@ -511,8 +474,6 @@ export class ActionsScreen {
     return wrapper;
   }
 
-  // ── Curation preview scroll sync (#act-preview-raw ↔ #act-diff-list) ───────────────
-
   setConn(conn: Conn | null): void {
     this._conn = conn;
     this._docs = [];
@@ -524,7 +485,6 @@ export class ActionsScreen {
     }
     this._setButtonsEnabled(false);
     // Notify extracted views of connection change
-    this._curationView?.setConn();
     if (conn) {
       this._loadDocs();
       // Restore workflow run_id from localStorage
@@ -563,11 +523,6 @@ export class ActionsScreen {
     else this._textCanvasView?.showCurationLayer();
   }
 
-  /** Public API: called from app.ts after Conventions→Prep navigation. */
-  curationFocusDoc(docId: number): void {
-    this._curationView?.focusDoc(docId);
-  }
-
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {
     this._jobCenter = jc;
     this._showToast = showToast;
@@ -582,21 +537,13 @@ export class ActionsScreen {
   }
 
   hasPendingChanges(): boolean {
-    const curatePending = this._curationView?.hasPendingChanges() ?? false;
-    const segPending = this._segmentationView?.hasPendingChanges() ?? false;
-    return curatePending || segPending;
+    // R6.5-C : la curation canvas n'a aucune donnée non sauvée (aperçu non destructif, stylo β) —
+    // seule la segmentation garde un état en attente de validation.
+    return this._segmentationView?.hasPendingChanges() ?? false;
   }
 
   pendingChangesMessage(): string {
-    const curatePending = this._curationView?.hasPendingChanges() ?? false;
-    const segPending = this._segmentationView?.hasPendingChanges() ?? false;
-    if (curatePending && segPending) {
-      return "Des corrections manuelles de curation et une segmentation non validée sont en attente. Quitter cet onglet ?";
-    }
-    if (segPending) {
-      return "Une segmentation est en attente de validation document. Quitter cet onglet ?";
-    }
-    return "Des corrections manuelles de curation non appliquées sont en attente. Quitter cet onglet ?";
+    return "Une segmentation est en attente de validation document. Quitter cet onglet ?";
   }
 
   /** Apply a project preset to the current form fields (non-destructive). */
@@ -610,7 +557,8 @@ export class ActionsScreen {
     };
     setVal("#act-seg-lang", preset.segmentation_lang);
     setVal("#act-seg-pack", preset.segmentation_pack);
-    this._curationView?.applyCurationPreset(preset.curation_preset);
+    // R6.5-C : le legacy poussait `curation_preset` dans CurationView ; la curation canvas
+    // sélectionne ses presets manuellement (le champ reste sur le preset, non appliqué ici).
     setVal("#act-align-strategy", preset.alignment_strategy);
     if (preset.similarity_threshold !== undefined) {
       setVal("#act-sim-threshold", String(preset.similarity_threshold));
@@ -690,7 +638,6 @@ export class ActionsScreen {
       this._docs = await listDocuments(this._conn);
       this._renderDocList();
       this._setButtonsEnabled(true);
-      this._curationView?.onDocsLoaded();
       this._alignPanel?.refreshDocs();
       this._matrixView?.refreshDocs();
       this._segmentationView?.refreshDocs();
@@ -938,8 +885,6 @@ export class ActionsScreen {
     // Dispose extracted views
     this._segmentationView?.dispose();
     this._segmentationView = null;
-    this._curationView?.dispose();
-    this._curationView = null;
     // Dispose sub-panels
     this._alignPanel?.dispose();
     this._alignPanel = null;

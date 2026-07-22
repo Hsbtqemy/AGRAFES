@@ -229,8 +229,40 @@ de la note de parité :
      dans la curation** ; **notés « à reloger si un besoin réel émerge »**, non portés pour ne pas
      traîner du code peu utilisé avant le retrait.
 
-   → **R6.5-B est complet (A·B·C·D livrés+poussés ; E dissous).** Prochain = **R6.5-C** (retrait du
-   legacy `CurationView`).
+   → **R6.5-B est complet (A·B·C·D livrés+poussés ; E dissous).**
+
+## 8. R6.5-C — retrait du legacy `CurationView` ✅ *(livré 2026-07-22)*
+
+Blast radius **cartographié au code** (agent Explore) puis retrait en **2 commits** :
+- **Commit 1 (re-câblage, additif)** : ajout de `TextCanvasView.showCurationLayer()`/`focusCurationDoc()`
+  + `ActionsScreen.openCurationLayer(docId?)` (miroir exact de la paire Annotation R6.5-A) ; re-route
+  des **3 entrées de nav vivantes** (lien sidebar `app.ts`, carte hub `data-target="curation"`, « étape
+  suivante → Curation » depuis Segmentation) vers le canvas.
+- **Commit 2 (retrait)** : suppression de `CurationView.ts` + **3 composants** dédiés
+  (`CurateApplyConfirmDialog`, `CurateExceptionsAdminPanel`, `CurateApplyHistoryPanel`) + **15 modules
+  `lib/curation*`** (report/applyConfirm/sessionSummary/applyInputs/diagnostics/filtering/counters/
+  sampleInfo/contextDetail/diagPanel/diffList/viewTemplate/exceptionsAdmin/applyHistory + `curationReview`
+  déjà orphelin) + **16 fichiers de test** ; trim de ~20 sites curation dans `ActionsScreen.ts`
+  (dont `curationFocusDoc` déjà mort) + retrait de `"curation"` du type `SubView` + `_syncCurationWideClass`
+  (app.ts) + CSS `.prep-curation-wide`. **36 fichiers supprimés.**
+
+**GARDÉ** (importés par `CurationPane`) : `diff.ts`, `prepUndo.ts`, `curationPresets.ts`,
+`curationFingerprint.ts` + leurs tests + `CurationPane.test.ts`. **Externe** : zéro (shell/Python propres).
+**Gate** : build ✓ (bundle JS **−16 %**, 785→658 Ko ; 124→106 modules), vitest **883** (66 fichiers ;
+−272 tests supprimés avec le legacy).
+
+**Décisions/menus abandons actés** :
+- **Garde « modifications en attente » de curation retirée** (pas recâblée au canvas) : la curation canvas
+  n'a aucune donnée non sauvée (aperçu non destructif, stylo β). `hasPendingChanges`/`pendingChangesMessage`
+  ne reflètent plus que la segmentation.
+- **Pont preset-workflow → preset-curation non porté** : le legacy poussait `preset.curation_preset` dans
+  `CurationView` ; la curation canvas sélectionne ses presets manuellement (le champ reste sur le preset,
+  non appliqué). Petit abandon, à reloger si un besoin réel émerge.
+- **CSS mort** (`prep-curate-*`/`act-curate-*` de CurationView, distinct du `prep-cur-*`/`prep-conv-*` du
+  canvas) **non purgé** dans ce commit (audit CSS à risque, séparé ; même statut que le `annot-*` de R6.5-A).
+  → follow-up.
+
+**R6.5 (retrait des écrans legacy Curation/Annotation) est COMPLET.**
 
 Aucun lot ne touche le contrat ni une migration → discipline contrat non déclenchée ; CI = ruff +
 pytest inchangés, vitest + build pour le front.

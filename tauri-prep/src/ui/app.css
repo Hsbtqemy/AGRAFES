@@ -381,10 +381,6 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   margin: 0 auto;
   padding: var(--prep-content-pad-y-top) var(--prep-content-pad-x) var(--prep-content-pad-y-bottom);
 }
-/* Curation-only structural width tuning (replaces transient negative-margin hack). */
-.prep-main > .content.prep-curation-wide {
-  padding-inline: clamp(0.35rem, 0.7vw, 0.65rem);
-}
 
 .prep-screen { display: none; }
 .screen.active { display: block; }
