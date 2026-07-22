@@ -26,7 +26,6 @@ import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AlignMatrixView } from "./AlignMatrixView.ts";
-import { SegmentationView } from "./SegmentationView.ts";
 import { TextCanvasView } from "./TextCanvasView.ts";
 
 // ─── Project Presets (shared type) ───────────────────────────────────────────
@@ -60,7 +59,7 @@ interface ActionsExportPrefill {
 
 // ─── Sub-view type ────────────────────────────────────────────────
 
-type SubView = "hub" | "texte" | "segmentation" | "alignement" | "matrice";
+type SubView = "hub" | "texte" | "alignement" | "matrice";
 
 // ─── ActionsScreen ────────────────────────────────────────────────────────────
 
@@ -69,7 +68,6 @@ export class ActionsScreen {
   private _docs: DocumentRecord[] = [];
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
-  private _openDocumentsTab: (() => void) | null = null;
   private _openExporterTab: ((prefill?: ActionsExportPrefill) => void) | null = null;
 
   // Run ID of the last completed alignment (set by AlignPanel via onRunDone callback).
@@ -78,8 +76,6 @@ export class ActionsScreen {
   private _alignPanel: AlignPanel | null = null;
   // Matrice (grille ancrée-source, lecture — tranche 2c)
   private _matrixView: AlignMatrixView | null = null;
-  // SegmentationView (extracted)
-  private _segmentationView: SegmentationView | null = null;
   // TextCanvasView (refonte T0 — canvas texte central, cohabite avec le legacy)
   private _textCanvasView: TextCanvasView | null = null;
 
@@ -133,10 +129,6 @@ export class ActionsScreen {
     hubPanel.dataset.panel = "hub";
     hubPanel.style.display = this._activeSubView === "hub" ? "" : "none";
 
-    const segPanel = this._renderSegmentationPanel(root);
-    segPanel.dataset.panel = "segmentation";
-    segPanel.style.display = this._activeSubView === "segmentation" ? "" : "none";
-
     const alignPanel = this._renderAlignementPanel(root);
     alignPanel.dataset.panel = "alignement";
     alignPanel.style.display = this._activeSubView === "alignement" ? "" : "none";
@@ -150,7 +142,6 @@ export class ActionsScreen {
     textePanel.style.display = this._activeSubView === "texte" ? "" : "none";
 
     panelSlot.appendChild(hubPanel);
-    panelSlot.appendChild(segPanel);
     panelSlot.appendChild(alignPanel);
     panelSlot.appendChild(matricePanel);
     panelSlot.appendChild(textePanel);
@@ -226,9 +217,9 @@ export class ActionsScreen {
 
   private _loadSubViewPref(): void {
     try {
-      const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
-      // Retrait Seg tranche 5 : un état sauvé « segmentation » (legacy, désormais dormant) est
-      // redirigé vers le canvas — sinon le restore rouvrirait l'écran legacy (fuite de la bascule).
+      const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB);
+      // Retrait Seg tranche 6 : un état sauvé « segmentation » (écran retiré) est migré vers le
+      // canvas — sinon le restore viserait une subview qui n'existe plus.
       if (saved === "segmentation") {
         this._activeSubView = "texte";
       } else if (saved === "hub" || saved === "texte" || saved === "alignement" || saved === "matrice") {
@@ -268,7 +259,7 @@ export class ActionsScreen {
   }
 
   private _setSubViewClass(root: HTMLElement, view: SubView): void {
-    root.classList.remove("actions-sub-hub", "actions-sub-segmentation", "actions-sub-alignement", "actions-sub-matrice");
+    root.classList.remove("actions-sub-hub", "actions-sub-alignement", "actions-sub-matrice");
     root.classList.add(`actions-sub-${view}`);
   }
 
@@ -339,37 +330,6 @@ export class ActionsScreen {
   }
 
   // ── New split segmentation panel (Sprint 9) ────────────────────────────────
-
-  /**
-   * Build the segmentation panel — delegated to SegmentationView.
-   */
-  private _renderSegmentationPanel(_root: HTMLElement): HTMLElement {
-    const wrapper = document.createElement("div");
-    this._segmentationView = new SegmentationView(
-      () => this._conn,
-      () => this._docs,
-      {
-        log: (msg, isError) => this._log(msg, isError),
-        toast: (msg, isError) => this._showToast?.(msg, isError),
-        setBusy: (v) => this._setBusy(v),
-        isBusy: () => this._isBusy,
-        jobCenter: () => this._jobCenter,
-        onNavigate: (target, context) => {
-          if (!this._wfRoot) return;
-          // R6.5-A/C + retrait Seg tranche 5 : « annoter »/« curation »/« segmentation » → canvas.
-          if (target === "annoter") { this.openAnnotationLayer(context?.docId ?? undefined); return; }
-          if (target === "curation") { this.openCurationLayer(context?.docId ?? undefined); return; }
-          if (target === "segmentation") { this.openSegmentLayer(context?.docId ?? undefined); return; }
-          this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
-        },
-        onOpenDocuments: () => this._openDocumentsTab?.(),
-        onOpenExporter: (prefill) => this._openExporterTab?.(prefill),
-        onReloadDocs: () => { void this._loadDocs(); },
-      },
-    );
-    this._segmentationView.render(wrapper);
-    return wrapper;
-  }
 
   private _renderTexteCanvasPanel(_root: HTMLElement): HTMLElement {
     const wrapper = document.createElement("div");
@@ -492,7 +452,6 @@ export class ActionsScreen {
       if (savedRunId) this._alignRunId = savedRunId;
     }
     if (this._wfRoot) {
-      this._segmentationView?.refreshDocs();
       this._textCanvasView?.refreshDocs();
       this._matrixView?.refreshDocs();
     }
@@ -536,22 +495,8 @@ export class ActionsScreen {
     this._showToast = showToast;
   }
 
-  setOnOpenDocuments(cb: (() => void) | null): void {
-    this._openDocumentsTab = cb;
-  }
-
   setOnOpenExporter(cb: ((prefill?: ActionsExportPrefill) => void) | null): void {
     this._openExporterTab = cb;
-  }
-
-  hasPendingChanges(): boolean {
-    // R6.5-C : la curation canvas n'a aucune donnée non sauvée (aperçu non destructif, stylo β) —
-    // seule la segmentation garde un état en attente de validation.
-    return this._segmentationView?.hasPendingChanges() ?? false;
-  }
-
-  pendingChangesMessage(): string {
-    return "Une segmentation est en attente de validation document. Quitter cet onglet ?";
   }
 
   /** Apply a project preset to the current form fields (non-destructive). */
@@ -648,7 +593,6 @@ export class ActionsScreen {
       this._setButtonsEnabled(true);
       this._alignPanel?.refreshDocs();
       this._matrixView?.refreshDocs();
-      this._segmentationView?.refreshDocs();
       this._textCanvasView?.refreshDocs();
       this._log(`${this._docs.length} document(s) chargé(s).`);
       this._refreshRuntimeState();
@@ -890,9 +834,6 @@ export class ActionsScreen {
    * Safe to call multiple times (idempotent).
    */
   dispose(): void {
-    // Dispose extracted views
-    this._segmentationView?.dispose();
-    this._segmentationView = null;
     // Dispose sub-panels
     this._alignPanel?.dispose();
     this._alignPanel = null;

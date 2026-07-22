@@ -177,6 +177,19 @@ avec override manuel conservé. Lève la friction #1.
   le nettoyage du type `SubView`/`hasPendingChanges` = **tranche 6** (D6 étant réglé, le blocueur du retrait
   tombe). Nouvelles méthodes canvas : `showSegmentLayer`/`focusSegmentDoc`/`focusSegmentUnit`/`focusRolesDoc`
   (miroir `show/focusCurationDoc`) + `SegmentPane.focusUnit(n)` (expose `_pendingFocusN`).
+- **Tranche 6 (retrait effectif) LIVRÉE (2026-07-23), front-pur, −3103 lignes.** `SegmentationView.ts`
+  supprimé + ses **modules exclusifs** (`SegStructureMatcherPanel`→`segStructureMatcher`,
+  `segmentationRightPanel`, `seqDiff`, `segDocList` + leurs 4 tests). **Cartographie deps** faite avant
+  suppression : `RolesPane` (→ canvas), `NextStepBanner`/`prepNextStep` (→ AlignPanel),
+  `conventionsUnitList`/`segmentControls`/`conventionsRoles`/`importOriginal`/`segmentAnomalies` (→ canvas)
+  = **partagés, conservés**. Nettoyage : type `SubView` (retrait `"segmentation"` ; `_loadSubViewPref`
+  migre un état sauvé legacy → `"texte"`), `hasPendingChanges`/`pendingChangesMessage` **retirés**
+  d'ActionsScreen (le canvas est preview→apply, aucun état en attente ; `ActionsScreen as GuardableScreen`
+  comme les autres écrans sans garde), champ mort `_openDocumentsTab` + setter + wiring app.ts. Vérif :
+  build prep+shell, vitest prep 872 / shell 50, ESLint. **Reste (follow-up, désormais débloqué)** : purge
+  CSS legacy ([[project_legacy_css_purge_deferred]] — le déclencheur « quand Segmentation migre » est
+  atteint ; carte + pièges déjà vérifiés dans la note) ; commentaires de provenance « extracted from
+  SegmentationView » laissés (historiques, non trompeurs).
 - **Surfaçage exact de la primitive** (Seg seul / Align seul / les deux) et **instrumentation** (poser
   3 events voulu/éligible/bloqué [[feedback_instrumentation_triple_signal]] avant d'investir, pour
   enfin mesurer l'usage réel) : à décider avec D5.

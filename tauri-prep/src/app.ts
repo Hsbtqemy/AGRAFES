@@ -140,7 +140,6 @@ export class App {
     this._shareDocs.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._metadata.setJobCenter(this._jobCenter, showToast);
-    this._actions.setOnOpenDocuments(() => this._switchTab("documents"));
     this._actions.setOnOpenExporter((prefill) => this._openExporterWithPrefill(prefill));
     // D-P9-2b — deep-link « panneau famille (Documents) → espace Alignement ». App orchestre
     // la nav inter-écrans (les écrans ne se référencent pas) : même forme que les deep-links
@@ -172,9 +171,9 @@ export class App {
       }
     } catch { /* ignore */ }
 
-    // Conventions → Prep navigation : les conventions (rôles d'unités) sont
-    // désormais fusionnées dans la sous-vue Segmentation (onglet « Rôles »).
-    // Un deep-link vers les conventions ouvre Actions → Segmentation → Rôles.
+    // Conventions → Prep navigation : les conventions (rôles d'unités) vivent
+    // désormais dans la couche « Rôles » du canvas (retrait Seg tranche 6).
+    // Un deep-link vers les conventions ouvre Actions → canvas → couche Rôles.
     // Les clés historiques (prep-curation-doc) et la nouvelle (prep-roles-doc)
     // sont toutes deux consommées vers cette destination.
     try {
@@ -428,7 +427,9 @@ export class App {
       import: this._import as GuardableScreen,
       shareDocs: this._shareDocs as GuardableScreen,
       documents: this._metadata,
-      actions: this._actions,
+      // Retrait Seg tranche 6 : ActionsScreen n'a plus d'état en attente (le canvas est
+      // preview→apply), donc plus de méthodes de garde — cast comme les autres écrans sans garde.
+      actions: this._actions as GuardableScreen,
       exporter: this._exports as GuardableScreen,
       settings: this._settings as GuardableScreen,
     };
