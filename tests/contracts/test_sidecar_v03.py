@@ -149,6 +149,40 @@ def test_curate_preview_honours_text_start_boundary(v03_sidecar) -> None:
     assert any("Au revoir" in b for b in befores)
 
 
+def test_curate_preview_excludes_non_traduit_by_default(v03_sidecar) -> None:
+    """R6.5: the dry-run mirrors the apply — a unit_status='non_traduit' segment
+    is excluded from automatic rules by default, and included when opted in."""
+    base_url = v03_sidecar["base_url"]
+    doc_id = v03_sidecar["pivot_doc_id"]
+
+    # Mark n=1 ("Bonjour monde…") as a source segment kept in another language.
+    code, _ = _http("POST", f"{base_url}/units/set_status", {
+        "doc_id": doc_id, "unit_n": 1, "status": "non_traduit",
+    })
+    assert code == 200
+
+    rule = [{"pattern": "monde", "replacement": "MONDE", "flags": "i"}]
+
+    # Default: non_traduit excluded → only n=2 ("Au revoir monde") matches in scope.
+    code, payload = _http("POST", f"{base_url}/curate/preview", {
+        "doc_id": doc_id, "rules": rule, "limit_examples": 10,
+    })
+    assert code == 200
+    assert payload["stats"]["units_changed"] == 1
+    befores = [ex["before"] for ex in payload["examples"]]
+    assert all("Bonjour" not in b for b in befores)
+
+    # Opt-in: non_traduit included → both n=1 and n=2 change.
+    code, payload = _http("POST", f"{base_url}/curate/preview", {
+        "doc_id": doc_id, "rules": rule, "limit_examples": 10,
+        "include_non_traduit": True,
+    })
+    assert code == 200
+    assert payload["stats"]["units_changed"] == 2
+    befores = [ex["before"] for ex in payload["examples"]]
+    assert any("Bonjour" in b for b in befores)
+
+
 def test_curate_preview_does_not_modify_db(v03_sidecar) -> None:
     """Verify that /curate/preview is a pure dry-run — DB units unchanged after preview."""
 

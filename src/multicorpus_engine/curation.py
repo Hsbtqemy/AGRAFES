@@ -200,6 +200,7 @@ def curate_document(
     manual_overrides: Optional[dict[int, str]] = None,
     run_logger: Optional[logging.Logger] = None,
     record_action: Optional[CurationActionRecorder] = None,
+    include_non_traduit: bool = False,
 ) -> CurationReport:
     """Apply curation rules to all units of doc_id.
 
@@ -211,6 +212,10 @@ def curate_document(
       2. manual_overrides session value
       3. Persistent ignore exception (curation_exceptions.kind = 'ignore')
       4. skip_unit_ids session set
+      4.5. unit_status == 'non_traduit' — skipped unless include_non_traduit
+           (a source segment in another language must not get target-language
+           normalization). Overrides/manual above still win: the exclusion only
+           gates the *automatic* rule application, never an explicit text.
       5. Automatic rule application
 
     skip_unit_ids: optional set of unit_id values to exclude from the apply.
@@ -224,6 +229,13 @@ def curate_document(
         of applying the automatic rules.  Applied before skip_unit_ids so an override
         always wins even if the unit was also marked ignored (override implies acceptance).
 
+    include_non_traduit: when False (default), units whose unit_status is
+        'non_traduit' are excluded from *automatic* rule application — they are
+        source segments deliberately kept in another language and must not receive
+        target-language normalization. Explicit overrides/manual still apply to
+        them. When True, they are curated like any other unit (they are always
+        loaded and counted in units_total either way).
+
     Returns a CurationReport with counts including units_skipped.
     """
     log = run_logger or logger
@@ -235,7 +247,7 @@ def curate_document(
     ).fetchone()
     tsn = int(tsn_row[0]) if tsn_row and tsn_row[0] is not None else 1
     rows = conn.execute(
-        "SELECT unit_id, text_norm FROM units WHERE doc_id = ? AND n >= ? ORDER BY n",
+        "SELECT unit_id, text_norm, unit_status FROM units WHERE doc_id = ? AND n >= ? ORDER BY n",
         (doc_id, tsn),
     ).fetchall()
 
@@ -306,6 +318,15 @@ def curate_document(
             log.debug("Skipped (ignored in review) unit_id=%d", unit_id)
             continue
 
+        # Priority 4.5: non_traduit exclusion (unless the caller opts in). A source
+        # segment kept in another language must not receive target-language
+        # normalization. Runs AFTER override/manual (they carry explicit text and
+        # always win) but BEFORE automatic rule application.
+        if not include_non_traduit and row["unit_status"] == "non_traduit":
+            skipped += 1
+            log.debug("Skipped (non_traduit) unit_id=%d", unit_id)
+            continue
+
         # Priority 5: Apply rules normally.
         curated = apply_rules(original, rules)
 
@@ -370,11 +391,13 @@ def curate_all_documents(
     manual_overrides: Optional[dict[int, str]] = None,
     run_logger: Optional[logging.Logger] = None,
     record_action: Optional[CurationActionRecorder] = None,
+    include_non_traduit: bool = False,
 ) -> list[CurationReport]:
     """Apply curation rules to every document in the DB.
 
-    skip_unit_ids:    forwarded to curate_document — see its docstring.
-    manual_overrides: forwarded to curate_document — see its docstring.
+    skip_unit_ids:       forwarded to curate_document — see its docstring.
+    manual_overrides:    forwarded to curate_document — see its docstring.
+    include_non_traduit: forwarded to curate_document — see its docstring.
     record_action:    forwarded to curate_document. The same callback is reused
                       across all docs; it is responsible for emitting one
                       prep_action_history entry per doc that had modifications.
@@ -389,6 +412,7 @@ def curate_all_documents(
     return [
         curate_document(conn, doc_id, rules, skip_unit_ids=skip_unit_ids,
                         manual_overrides=manual_overrides, run_logger=run_logger,
-                        record_action=record_action)
+                        record_action=record_action,
+                        include_non_traduit=include_non_traduit)
         for doc_id in doc_ids
     ]

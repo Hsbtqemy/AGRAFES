@@ -7373,6 +7373,15 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
   display: inline-flex; flex-direction: row; align-items: center; gap: 0.3rem; margin-bottom: 0;
   font-size: 0.8rem; color: #334155; white-space: nowrap; cursor: pointer;
 }
+/* R6.5 — scope toggle (inclure les non traduits) : chip séparé des présélections.
+   Descendant selector (via .prep-cur-dock) pour battre `.prep-actions-screen label`
+   (0,1,1) — sinon la case est empilée en colonne comme les présélections l'étaient. */
+.prep-cur-dock .prep-cur-scope {
+  display: inline-flex; flex-direction: row; align-items: center; gap: 0.3rem; margin-bottom: 0;
+  padding-left: 0.7rem; border-left: 1px solid #e2e8f0;
+  font-size: 0.8rem; color: #475569; white-space: nowrap; cursor: pointer;
+}
+.prep-cur-scope input[type="checkbox"] { margin: 0; accent-color: #0f766e; }
 .prep-cur-summary { font-size: 0.8rem; color: #475569; font-weight: 500; margin-left: auto; }
 .prep-cur-units { flex: 1; min-height: 0; }
 

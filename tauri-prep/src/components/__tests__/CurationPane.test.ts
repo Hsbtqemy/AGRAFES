@@ -245,6 +245,49 @@ describe("CurationPane", () => {
     expect(pane.hasPendingEdits()).toBe(false);
   });
 
+  it("propagates the 'inclure les non traduits' scope toggle to preview and apply (R6.5)", async () => {
+    let previewBody: { include_non_traduit?: boolean } | null = null;
+    let curateBody: { include_non_traduit?: boolean } | null = null;
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      preview: (b) => {
+        previewBody = b as typeof previewBody;
+        return {
+          ok: true, doc_id: 1,
+          stats: { units_total: 2, units_changed: 1, replacements_total: 1 },
+          examples: [{ unit_id: 10, external_id: 1, before: "a", after: "b" }],
+        };
+      },
+      curate: (b) => { curateBody = b as typeof curateBody; return { ok: true, docs_curated: 1, units_modified: 1, fts_stale: true }; },
+    });
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+
+    const cb = host.querySelector<HTMLInputElement>('input[data-preset="spaces"]')!;
+    cb.checked = true; cb.dispatchEvent(new Event("change"));
+
+    // Toggle off (default) → preview carries include_non_traduit:false.
+    (host.querySelector("#prep-cur-preview-btn") as HTMLButtonElement).click();
+    await flush();
+    expect(previewBody!.include_non_traduit).toBe(false);
+
+    // Turning the scope toggle on invalidates the preview (like a preset change)…
+    const nt = host.querySelector<HTMLInputElement>("#prep-cur-include-nt")!;
+    nt.checked = true; nt.dispatchEvent(new Event("change"));
+    expect((host.querySelector("#prep-cur-apply-btn") as HTMLButtonElement).disabled).toBe(true);
+    // …so re-preview, now with the flag true.
+    (host.querySelector("#prep-cur-preview-btn") as HTMLButtonElement).click();
+    await flush();
+    expect(previewBody!.include_non_traduit).toBe(true);
+
+    // Apply carries the SAME flag → preview/apply symmetry.
+    (host.querySelector("#prep-cur-apply-btn") as HTMLButtonElement).click();
+    await flush();
+    (document.querySelector("[data-mc-ok]") as HTMLButtonElement).click();
+    await flush();
+    expect(curateBody!.include_non_traduit).toBe(true);
+  });
+
   it("clears markers + preview state when the document changes", async () => {
     const conn = fakeConn({
       units: [unit(1), unit(2)],

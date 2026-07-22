@@ -634,6 +634,11 @@ export interface CurateOptions {
    *  The engine writes them as text_norm and flags source_changed_at like any curation
    *  change (curation.py Priority 2). Works even with rules=[] (pure manual edit). */
   manual_overrides?: Array<{ unit_id: number; text: string }>;
+  /** R6.5: when true, also curate units marked unit_status='non_traduit' (source
+   *  kept in another language). Default (false/absent) excludes them from
+   *  automatic rules — overrides/manual always apply regardless. Must match the
+   *  value sent to curatePreview so the dry-run and the apply stay symmetric. */
+  include_non_traduit?: boolean;
 }
 
 export interface CurateResponse {
@@ -736,6 +741,10 @@ export interface CuratePreviewOptions {
    * exception, or produces no diff.  The example is annotated with `preview_reason`.
    */
   force_unit_id?: number;
+  /** R6.5: mirror of CurateOptions.include_non_traduit — when true the dry-run
+   *  also simulates units marked 'non_traduit'. Keep it equal to the value passed
+   *  to curate() so preview counts/examples match what apply will do. */
+  include_non_traduit?: boolean;
 }
 
 export interface CuratePreviewExample {

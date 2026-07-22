@@ -350,6 +350,55 @@ def test_curate_document_override_beats_skip(db_conn: sqlite3.Connection) -> Non
     assert _text(db_conn, u1) == "OVR"
 
 
+# ── curate_document: non_traduit exclusion (R6.5) ─────────────────────────────
+
+
+def test_curate_document_non_traduit_excluded_by_default(db_conn: sqlite3.Connection) -> None:
+    """A unit_status='non_traduit' segment is skipped from automatic rules by
+    default (source kept in another language must not get target normalization);
+    a normal sibling is curated."""
+    doc = _add_doc(db_conn)
+    u1 = _add_unit(db_conn, doc, 1, "aaa")   # non_traduit → protected
+    u2 = _add_unit(db_conn, doc, 2, "aaa")   # normal → curated
+    db_conn.execute("UPDATE units SET unit_status='non_traduit' WHERE unit_id=?", (u1,))
+    db_conn.commit()
+    report = curate_document(db_conn, doc, [CurationRule(pattern="a", replacement="x")])
+    assert report.units_modified == 1
+    assert report.units_skipped == 1
+    assert _text(db_conn, u1) == "aaa"   # untouched
+    assert _text(db_conn, u2) == "xxx"   # curated
+
+
+def test_curate_document_include_non_traduit_opt_in(db_conn: sqlite3.Connection) -> None:
+    """include_non_traduit=True curates non_traduit units like any other."""
+    doc = _add_doc(db_conn)
+    u1 = _add_unit(db_conn, doc, 1, "aaa")
+    db_conn.execute("UPDATE units SET unit_status='non_traduit' WHERE unit_id=?", (u1,))
+    db_conn.commit()
+    report = curate_document(
+        db_conn, doc, [CurationRule(pattern="a", replacement="x")],
+        include_non_traduit=True,
+    )
+    assert report.units_modified == 1
+    assert _text(db_conn, u1) == "xxx"
+
+
+def test_curate_document_override_beats_non_traduit_exclusion(db_conn: sqlite3.Connection) -> None:
+    """Priority 1 (persistent override) still wins over the non_traduit exclusion:
+    the exclusion only gates automatic rules, never an explicit text."""
+    doc = _add_doc(db_conn)
+    u1 = _add_unit(db_conn, doc, 1, "aaa")
+    db_conn.execute("UPDATE units SET unit_status='non_traduit' WHERE unit_id=?", (u1,))
+    db_conn.execute(
+        "INSERT INTO curation_exceptions (unit_id, kind, override_text) VALUES (?, 'override', ?)",
+        (u1, "OVR"),
+    )
+    db_conn.commit()
+    report = curate_document(db_conn, doc, [CurationRule(pattern="a", replacement="x")])
+    assert report.units_modified == 1
+    assert _text(db_conn, u1) == "OVR"
+
+
 # ── curate_document: Mode-A undo recorder ─────────────────────────────────────
 
 

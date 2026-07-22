@@ -679,6 +679,7 @@ def cmd_curate(args: argparse.Namespace) -> None:
     params = {
         "rules": str(rules_path),
         "doc_id": getattr(args, "doc_id", None),
+        "include_non_traduit": bool(getattr(args, "include_non_traduit", False)),
     }
     run_id = create_run(conn, "curate", params)
     log, log_path = setup_run_logger(db_path, run_id)
@@ -687,10 +688,13 @@ def cmd_curate(args: argparse.Namespace) -> None:
         rules = rules_from_list(raw_rules)
         log.info("Loaded %d curation rules from %s", len(rules), rules_path)
 
+        include_non_traduit = bool(getattr(args, "include_non_traduit", False))
         if getattr(args, "doc_id", None) is not None:
-            reports = [curate_document(conn, args.doc_id, rules, run_logger=log)]
+            reports = [curate_document(conn, args.doc_id, rules, run_logger=log,
+                                       include_non_traduit=include_non_traduit)]
         else:
-            reports = curate_all_documents(conn, rules, run_logger=log)
+            reports = curate_all_documents(conn, rules, run_logger=log,
+                                           include_non_traduit=include_non_traduit)
 
         total_modified = sum(r.units_modified for r in reports)
         stats = {
@@ -1699,6 +1703,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_curate.add_argument(
         "--doc-id", dest="doc_id", type=int, default=None,
         help="Curate a single document (default: all documents)",
+    )
+    p_curate.add_argument(
+        "--include-non-traduit", dest="include_non_traduit", action="store_true",
+        help="Also curate units marked unit_status='non_traduit' (source kept in "
+             "another language). Default: exclude them from automatic rules.",
     )
     p_curate.set_defaults(func=cmd_curate)
 

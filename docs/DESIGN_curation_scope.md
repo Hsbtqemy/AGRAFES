@@ -1,10 +1,10 @@
 # DESIGN — Périmètre de la curation : rôles & statut de traduction
 
 > Note de cadrage (« figer avant ticket »). Rédigée 2026-07-22.
-> **Statut : tranché (D1 = A3, D2 = B1, D3 = toggle) — moteur+UI non codés.**
-> Fait suite à la question : *« l'application des règles de curation concerne-t-elle
-> aussi le hors-bornes / les segments ayant un rôle ? »*, puis *« y a-t-il deux
-> "non traduit", un en curation, un en alignement ? »*
+> **Statut : livré 2026-07-22 (D1 = A3, D2 = B1, D3 = toggle).** Voir §5 pour la
+> réalisation. Fait suite à la question : *« l'application des règles de curation
+> concerne-t-elle aussi le hors-bornes / les segments ayant un rôle ? »*, puis
+> *« y a-t-il deux "non traduit", un en curation, un en alignement ? »*
 
 ## 0. La question
 
@@ -112,22 +112,35 @@ Clarification issue de la discussion : « non traduit » **n'est pas un rôle** 
 - **Rôles `structure` → B1 (statu quo).** Bénéfice de curation réel, nuisance
   quasi nulle ; ne pas complexifier. Un titre gênant reste couvert par *Ignorer*.
 
-## 5. Coût (A3 retenu)
+## 5. Réalisation (livré 2026-07-22)
 
-- **Moteur** : un paramètre `include_non_traduit` (défaut `False`) sur `curate_document`
-  **et** `_handle_curate_preview`. Quand `False`, filtre
-  `AND (unit_status IS NULL OR unit_status <> 'non_traduit')` ; quand `True`,
-  périmètre actuel. Les **deux** chemins doivent le porter (symétrie preview↔apply).
+- **Moteur** — paramètre `include_non_traduit=False` sur `curate_document` **et**
+  `curate_all_documents`. Implémenté **non pas** comme un filtre SQL mais comme une
+  **garde de boucle en priorité 4.5** (après override/manuel/ignore, avant les
+  règles auto) : c'est indispensable pour que **override/manuel gagnent toujours**
+  (un filtre SQL aurait aussi écarté leurs textes explicites). L'unité `non_traduit`
+  est donc chargée et **comptée dans `units_total`**, juste sautée des règles auto
+  (comptée dans `units_skipped`).
+- **Sidecar** — les **trois** chemins portent le flag : `_handle_curate` (apply),
+  `_handle_curate_preview` (dry-run, garde miroir + `is_non_traduit_skipped` pour
+  l'inspection forcée), et le job async de curation. Symétrie aperçu↔apply garantie.
+- **CLI** — `multicorpus curate --include-non-traduit` (opt-in) + flag dans les
+  `params` du run (provenance). Le nouveau défaut (exclu) s'applique **engine-wide**,
+  d'où l'opt-in CLI ; sans effet sur les corpus sans unité `non_traduit`.
+- **UI** — case « inclure les non traduits » dans le dock de la couche Curation
+  (défaut décoché) ; invalide l'aperçu au changement ; propagée identique à
+  `preview` et `apply`.
 - **Migration** : aucune (colonnes existantes).
-- **Contrat** : un champ de requête optionnel s'ajoute à `/curate` et
-  `/curate/preview` → **régénérer** `docs/openapi.json` + le snapshot (ajout de
-  champ, pas de retrait — cf. gel de contrat). Penser aussi à `SIDECAR_API_CONTRACT.md`
-  (les 3 artefacts, cf. discipline de synchro d'endpoint).
-- **UI** : une case « curer aussi les segments non traduits » dans le dock de la
-  couche Curation (canvas), à passer à `preview` et `apply` ; défaut décoché.
-- **Tests** : RED sur un doc contenant une unité `non_traduit` modifiable — décoché,
-  l'unité n'est ni comptée ni écrite (aperçu **et** apply) ; coché, elle l'est —
-  + preuve que l'ancien code la curait toujours.
+- **Contrat** : **aucun changement**. `include_non_traduit` suit le précédent des
+  params optionnels lus par les handlers mais absents du schéma openapi
+  (`force_unit_id` sur preview, `ignored_unit_ids`/`manual_overrides` sur apply) —
+  `additionalProperties:False` n'y est pas appliqué au runtime. Donc pas de régé
+  openapi/snapshot/`SIDECAR_API_CONTRACT.md`. *(Corrige une estimation initiale qui
+  tablait sur une régé de contrat.)*
+- **Tests** — apply : RED prouvé (ancien code cure les 2 unités, dont la
+  `non_traduit`) + opt-in + edge « override bat l'exclusion » ([test_curation.py]).
+  Aperçu HTTP : défaut exclut / opt-in inclut ([test_sidecar_v03.py]). Vitest : la
+  case propage le flag à preview **et** apply ([CurationPane.test.ts]).
 
 ## 6. Interactions & pièges
 
@@ -156,6 +169,6 @@ Clarification issue de la discussion : « non traduit » **n'est pas un rôle** 
 - **D3 — mécanisme : toggle** (pas d'exclusion dure), pour préserver les
   nettoyages neutres sur les emprunts.
 
-Lot à ouvrir quand voulu : paramètre `include_non_traduit` symétrique
-(preview+apply) + case dans le dock Curation + régénération de contrat + test RED.
-Pas de migration.
+**Livré 2026-07-22** (cf. §5) : paramètre `include_non_traduit` symétrique
+(preview+apply+job+CLI) + case dans le dock Curation + tests RED. Sans migration,
+sans changement de contrat.

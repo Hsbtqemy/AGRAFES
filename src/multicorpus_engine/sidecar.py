@@ -3012,6 +3012,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         limit_examples = max(1, min(_int_param(body.get("limit_examples", 10), 10), 5000))
 
+        # R6.5 — mirror curate_document: unless opted in, units marked
+        # unit_status='non_traduit' are excluded from the dry-run (not counted,
+        # not shown) exactly as the apply skips them. Symmetry preview↔apply.
+        include_non_traduit = bool(body.get("include_non_traduit", False))
+
         # Level 8C: optional forced unit.  When provided, this unit is always
         # included in examples regardless of limit_examples, even if it:
         #   - would be beyond the top-N modifications
@@ -3054,7 +3059,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         ).fetchone()
         tsn = int(tsn_row[0]) if tsn_row and tsn_row[0] is not None else 1
         rows = self._conn().execute(
-            "SELECT unit_id, external_id, text_norm FROM units WHERE doc_id = ? AND n >= ? ORDER BY n",
+            "SELECT unit_id, external_id, text_norm, unit_status FROM units "
+            "WHERE doc_id = ? AND n >= ? ORDER BY n",
             (doc_id, tsn),
         ).fetchall()
 
@@ -3151,6 +3157,33 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         })
                         if is_forced:
                             forced_unit_injected = True
+                continue
+
+            # ── non_traduit exclusion (mirror curate_document) ──────────────
+            # Unless opted in, a source segment kept in another language is not
+            # curated: skip it from the dry-run entirely (not counted, not shown),
+            # exactly as the apply skips it. Overrides above already won.
+            if not include_non_traduit and row[3] == "non_traduit":
+                # Forced inspection (Level 8C): surface it with a reason so the UI
+                # can explain why the clicked unit is not changing.
+                if is_forced and not forced_unit_injected:
+                    curated_sim = original
+                    for compiled_re, replacement in compiled_rules:
+                        curated_sim = compiled_re.sub(replacement, curated_sim)
+                    ctx_before, ctx_after = _ctx(row_idx)
+                    examples.append({
+                        "unit_id": unit_id,
+                        "external_id": row[1],
+                        "before": original,
+                        "after": curated_sim if curated_sim != original else original,
+                        "matched_rule_ids": [],
+                        "unit_index": row_idx,
+                        "context_before": ctx_before,
+                        "context_after": ctx_after,
+                        "is_non_traduit_skipped": True,
+                        "preview_reason": "non_traduit_skipped",
+                    })
+                    forced_unit_injected = True
                 continue
 
             # ── Normal rule application ─────────────────────────────────────
@@ -3547,6 +3580,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             if _parsed:
                 manual_overrides = _parsed
 
+        # R6.5 — when False (default), units marked unit_status='non_traduit' are
+        # excluded from automatic rule application (source segments in another
+        # language). Symmetric with the /curate/preview dry-run.
+        include_non_traduit = bool(body.get("include_non_traduit", False))
+
         # Mode A undo: optional context the frontend wants attached to the
         # prep_action_history row. Stored verbatim under context_json.apply_context.
         # rules_signature is sourced from the body too (frontend already computes
@@ -3604,12 +3642,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 reports = [curate_document(conn, doc_id, rules,
                                            skip_unit_ids=skip_unit_ids,
                                            manual_overrides=manual_overrides,
-                                           record_action=recorder)]
+                                           record_action=recorder,
+                                           include_non_traduit=include_non_traduit)]
             else:
                 reports = curate_all_documents(conn, rules,
                                                skip_unit_ids=skip_unit_ids,
                                                manual_overrides=manual_overrides,
-                                               record_action=recorder)
+                                               record_action=recorder,
+                                               include_non_traduit=include_non_traduit)
         total_modified = sum(r.units_modified for r in reports)
         total_skipped  = sum(r.units_skipped  for r in reports)
         action_ids = [r.action_id for r in reports if r.action_id is not None]
@@ -8936,16 +8976,20 @@ class CorpusServer:
                 if _parsed:
                     manual_overrides = _parsed
 
+            include_non_traduit = bool(params.get("include_non_traduit", False))
+
             progress_cb(10, "Applying curation rules")
             with lock:
                 if doc_id is not None:
                     reports = [curate_document(conn, int(doc_id), rules,
                                                skip_unit_ids=skip_unit_ids,
-                                               manual_overrides=manual_overrides)]
+                                               manual_overrides=manual_overrides,
+                                               include_non_traduit=include_non_traduit)]
                 else:
                     reports = curate_all_documents(conn, rules,
                                                    skip_unit_ids=skip_unit_ids,
-                                                   manual_overrides=manual_overrides)
+                                                   manual_overrides=manual_overrides,
+                                                   include_non_traduit=include_non_traduit)
             units_modified = sum(r.units_modified for r in reports)
             units_skipped  = sum(r.units_skipped  for r in reports)
             progress_cb(100, "Curation completed")

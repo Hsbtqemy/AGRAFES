@@ -53,6 +53,11 @@ export class CurationPane {
   private _list: CanvasUnitList | null = null;
 
   private _selectedPresets = new Set<string>();
+  /** R6.5 — scope toggle: also curate units marked unit_status='non_traduit'.
+   *  Default false (they are source segments in another language). A rule-scope
+   *  preference like the presets — kept across documents, not reset per-doc.
+   *  Sent identically to preview and apply so the dry-run matches the write. */
+  private _includeNonTraduit = false;
   /** unit_id → diff from the last preview; drives the discreet marker (decorateRow). */
   private _changed = new Map<number, CurationChange>();
   private _stats: { units_changed: number; units_total: number } | null = null;
@@ -112,6 +117,9 @@ export class CurationPane {
         </div>
         <div class="prep-cur-dock" role="group" aria-label="R&#232;gles de curation">
           <div class="prep-cur-presets">${presetsHtml}</div>
+          <label class="prep-cur-scope"
+            title="Par d&#233;faut, les segments marqu&#233;s &#171;&#160;non traduit&#160;&#187; (source gard&#233;e dans une autre langue) ne sont pas cur&#233;s. Cochez pour les inclure &#8212; utile pour les nettoyages neutres (espaces, invisibles), &#224; &#233;viter pour les r&#232;gles de langue (ponctuation FR/EN).">
+            <input type="checkbox" id="prep-cur-include-nt" /> inclure les non traduits</label>
           <button type="button" class="btn btn-secondary btn-sm" id="prep-cur-preview-btn"
             title="Aper&#231;u des unit&#233;s que ces r&#232;gles modifieraient (sans &#233;crire)">Aper&#231;u</button>
           <button type="button" class="btn btn-ghost btn-sm" id="prep-cur-toggle-all"
@@ -168,6 +176,12 @@ export class CurationPane {
         // Apply confirm-count stay truthful (revue adverse Lot 1). Staged overrides survive.
         this._invalidatePreview();
       });
+    });
+    this._q("#prep-cur-include-nt")?.addEventListener("change", (e) => {
+      // Scope change → the last preview (counts/marks) no longer reflects it.
+      // Invalidate like a preset change; the value is re-read at preview/apply.
+      this._includeNonTraduit = (e.target as HTMLInputElement).checked;
+      this._invalidatePreview();
     });
     this._q("#prep-cur-preview-btn")?.addEventListener("click", () => void this._runPreview());
     this._q("#prep-cur-toggle-all")?.addEventListener("click", () => {
@@ -381,6 +395,7 @@ export class CurationPane {
         doc_id: this._docId,
         rules,
         limit_examples: Math.max(this._units.length, 1),
+        include_non_traduit: this._includeNonTraduit,
       });
       this._changed = new Map(res.examples.map((e) => [e.unit_id, { before: e.before, after: e.after, ruleIds: e.matched_rule_ids }]));
       this._stats = { units_changed: res.stats.units_changed, units_total: res.stats.units_total };
@@ -647,7 +662,11 @@ export class CurationPane {
     const btn = this._q<HTMLButtonElement>("#prep-cur-apply-btn");
     if (btn) { btn.disabled = true; btn.textContent = "Application…"; }
     try {
-      const res = await curate(conn, { doc_id: this._docId, rules });
+      const res = await curate(conn, {
+        doc_id: this._docId,
+        rules,
+        include_non_traduit: this._includeNonTraduit,
+      });
       // Applied → the preview is consumed; reload the (now-rewritten) units.
       this._changed.clear();
       this._expanded.clear();
