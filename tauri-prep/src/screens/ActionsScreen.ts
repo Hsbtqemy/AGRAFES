@@ -175,8 +175,8 @@ export class ActionsScreen {
   }
 
   /**
-   * Public API (chantier 2 — retour amont) : ouvre la sub-view Segmentation
-   * sur le doc demandé et focus une unit précise. Utilisé par le listener
+   * Public API (chantier 2 — retour amont) : ouvre la couche Segmentation du
+   * canvas sur le doc demandé et focus une unit précise. Utilisé par le listener
    * agrafes:prep-focus-segment-unit dans app.ts.
    */
   async focusSegmentationOnUnit(docId: number, unitN: number): Promise<void> {
