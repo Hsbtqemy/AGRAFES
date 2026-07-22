@@ -412,6 +412,15 @@ describe("SegmentPane — Brut rendering parity (tranche 3)", () => {
     expect(host.querySelector('.prep-seg-canvas-unit[data-n="2"] .prep-conv-unit-badge')).toBeNull();
   });
 
+  it("renders rich-text markup from text_raw (parity with SegmentationView)", async () => {
+    await mountBrut(fakeConn({ units: [
+      unit(1, { text_raw: 'un <hi rend="italic">mot</hi> ici', text_norm: "un mot ici" }),
+    ] }));
+    const textEl = host.querySelector('.prep-seg-canvas-unit[data-n="1"] .prep-seg-canvas-seg-text');
+    expect(textEl!.querySelector("em")).not.toBeNull();        // <hi rend="italic"> → <em>
+    expect(textEl!.textContent).toContain("mot");
+  });
+
   it("shows the « voir l'original d'import » fold only when text_source diverges", async () => {
     await mountBrut(fakeConn({ units: [
       unit(1, { text_raw: "fusionné", text_source: "part une. part deux." }), // rewritten → fold
