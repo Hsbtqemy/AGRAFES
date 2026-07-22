@@ -18,7 +18,6 @@ import {
   updateDocument,
   getDocumentPreview,
   segmentPreview,
-  structureDiff,
   detectMarkers,
   mergeUnits,
   splitUnit,
@@ -28,7 +27,6 @@ import {
   SidecarError,
   richTextToHtml,
 } from "../lib/sidecarClient.ts";
-import type { StructureDiffSection, PropagateSection } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { RolesPane } from "../components/RolesPane.ts";
 import { SegStructureMatcherPanel } from "../components/SegStructureMatcherPanel.ts";

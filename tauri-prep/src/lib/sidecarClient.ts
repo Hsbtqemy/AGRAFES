@@ -386,38 +386,6 @@ export async function structureSections(
   return conn.post("/segment/structure_sections", { doc_id, reference_doc_id }) as Promise<StructureSectionsResponse>;
 }
 
-export interface StructureDiffSection {
-  status: "matched" | "missing_in_target" | "extra_in_target";
-  ref_n: number | null;
-  ref_text: string | null;
-  ref_role: string | null;
-  target_n: number | null;
-  target_text: string | null;
-  target_role: string | null;
-  ref_line_count: number;
-  target_line_count: number;
-}
-
-export interface StructureDiffResponse {
-  ok: boolean;
-  doc_id: number;
-  reference_doc_id: number;
-  sections: StructureDiffSection[];
-  ref_structure_count: number;
-  target_structure_count: number;
-  matched_count: number;
-  missing_count: number;
-  extra_count: number;
-  no_structure?: boolean;
-}
-
-export async function structureDiff(
-  conn: Conn,
-  doc_id: number,
-  reference_doc_id: number,
-): Promise<StructureDiffResponse> {
-  return conn.post("/segment/structure_diff", { doc_id, reference_doc_id }) as Promise<StructureDiffResponse>;
-}
 
 export interface PropagateSectionSegment {
   n: number;
