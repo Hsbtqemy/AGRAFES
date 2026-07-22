@@ -89,6 +89,63 @@ def v03_sidecar(tmp_path: Path):
         server.shutdown()
 
 
+# ─── /segment/propagate_preview — text_start_n scope (R5.4 tranche 4 fix) ──────
+
+def test_propagate_preview_excludes_paratext_below_text_start(tmp_path: Path) -> None:
+    """propagate_preview must scope to text_start_n like apply_propagated. Otherwise
+    paratext (n < text_start_n) is previewed AND preserved on apply → doubled paratext."""
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.migrations import apply_migrations
+    from multicorpus_engine.sidecar import CorpusServer
+
+    db_path = tmp_path / "prop.db"
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+
+    def add_doc(title: str, tsn: int | None) -> int:
+        cur = conn.execute(
+            "INSERT INTO documents (title, language, created_at, text_start_n) "
+            "VALUES (?, 'fr', '2026-01-01T00:00:00Z', ?)",
+            (title, tsn),
+        )
+        return int(cur.lastrowid)
+
+    def add_unit(doc_id: int, n: int, text: str, utype: str = "line") -> None:
+        conn.execute(
+            "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm) VALUES (?, ?, ?, ?, ?)",
+            (doc_id, utype, n, text, text),
+        )
+
+    # Target (translation): a paratext line below the boundary, then a body chapter + line.
+    tgt = add_doc("Trad", 2)
+    add_unit(tgt, 1, "Préface paratexte.")
+    add_unit(tgt, 2, "Chapitre 1", utype="structure")
+    add_unit(tgt, 3, "Corps de la traduction.")
+    # Reference (source): a chapter + a body line (no paratext).
+    ref = add_doc("Source", None)
+    add_unit(ref, 1, "Chapter 1", utype="structure")
+    add_unit(ref, 2, "Body of the source.")
+    conn.commit()
+    conn.close()
+
+    server = CorpusServer(db_path=db_path, host="127.0.0.1", port=0)
+    server.start()
+    base_url = f"http://127.0.0.1:{server.actual_port}"
+    _wait_health(base_url)
+    try:
+        code, payload = _http("POST", f"{base_url}/segment/propagate_preview", {
+            "doc_id": tgt, "reference_doc_id": ref,
+        })
+        assert code == 200, payload
+        seg_texts = " ".join(
+            seg["text"] for sec in payload["sections"] for seg in sec["segments"]
+        )
+        assert "Préface" not in seg_texts   # paratext excluded (preserved by apply)
+        assert "Corps de la traduction" in seg_texts  # body still previewed
+    finally:
+        server.shutdown()
+
+
 # ─── /curate/preview tests ────────────────────────────────────────────────────
 
 def test_curate_preview_returns_stats_and_examples(v03_sidecar) -> None:

@@ -4028,11 +4028,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         # ── helpers ──────────────────────────────────────────────────────────
 
-        def _fetch_structure(d_id: int) -> list[dict]:
+        def _fetch_structure(d_id: int, tsn: int) -> list[dict]:
+            # Body only (n >= text_start_n): apply_propagated preserves paratext below the
+            # boundary, so the preview must not include it — else re-inserting it on apply
+            # doubles the paratext. Symmetric with the apply (same class as the curation fix).
             rows = conn.execute(
                 "SELECT n, text_raw, unit_role FROM units "
-                "WHERE doc_id = ? AND unit_type = 'structure' ORDER BY n",
-                (d_id,),
+                "WHERE doc_id = ? AND unit_type = 'structure' AND n >= ? ORDER BY n",
+                (d_id, tsn),
             ).fetchall()
             return [{"n": r[0], "text": r[1] or "", "role": r[2]} for r in rows]
 
@@ -4118,8 +4121,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         # ── build structure boundaries for target doc ─────────────────────────
 
-        ref_structs = _fetch_structure(reference_doc_id)
-        tgt_structs = _fetch_structure(doc_id)
+        # Scope both docs to their paratext boundary (text_start_n) so the preview covers
+        # exactly what apply_propagated will replace — otherwise paratext below the boundary
+        # is previewed AND preserved on apply = doubled. NULL → 1 (whole doc, unchanged).
+        def _tsn(d_id: int) -> int:
+            r = conn.execute("SELECT text_start_n FROM documents WHERE doc_id = ?", (d_id,)).fetchone()
+            return int(r[0]) if r and r[0] is not None else 1
+        tgt_tsn = _tsn(doc_id)
+        ref_tsn = _tsn(reference_doc_id)
+        ref_structs = _fetch_structure(reference_doc_id, ref_tsn)
+        tgt_structs = _fetch_structure(doc_id, tgt_tsn)
         r_len, t_len = len(ref_structs), len(tgt_structs)
 
         # Build target section boundaries: list of (header_dict, n_from, n_to)
@@ -4148,9 +4159,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         # Pre-section (before first structure unit)
         first_tgt_n = tgt_structs[0]["n"] if tgt_structs else None
         first_ref_n = ref_structs[0]["n"] if ref_structs else None
-        pre_tgt_lines = _fetch_lines_between(doc_id, None, first_tgt_n)
+        # Pre-section = body lines before the first structure, still floored at the paratext
+        # boundary (n >= tsn; _fetch_lines_between is exclusive-from, hence tsn - 1).
+        pre_tgt_lines = _fetch_lines_between(doc_id, tgt_tsn - 1, first_tgt_n)
         if pre_tgt_lines:
-            pre_ref_lines = _fetch_lines_between(reference_doc_id, None, first_ref_n)
+            pre_ref_lines = _fetch_lines_between(reference_doc_id, ref_tsn - 1, first_ref_n)
             ref_count = _count_ref_segments(pre_ref_lines)
             raw_segs = _segment_lines(pre_tgt_lines)
             raw_count = len(raw_segs)
