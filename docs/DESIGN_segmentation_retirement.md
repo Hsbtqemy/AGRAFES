@@ -92,8 +92,20 @@ avec override manuel conservé. Lève la friction #1.
 - **D3 — Appariement + propagate = primitive de couture famille-pilotée.** Maison de l'appariement =
   Alignement (D-W11) ; **surfaçable des deux côtés** (depuis Segmentation : « caler cette trad sur sa
   source » ; depuis Alignement : « aligner la structure de la famille ») — **même moteur**.
-- **D4 — Propagate devient famille-pilotée** : `reference_doc_id` déduit du `translation_of` (override
-  manuel gardé). Petit, propre, lève la friction principale.
+- **D4 — Propagate famille-pilotée = action « Propager la segmentation » (front-pur).** Bouton
+  **conditionnel** sur le `SegmentPane` (visible seulement si le doc a une source `translation_of`),
+  tooltip *« Recouper cette traduction pour qu'elle ait le même nombre de segments par section que sa
+  source. »* Le **front** dérive la référence (`getDocRelations(doc)` → filtrer `translation_of` →
+  `target_doc_id` = source) et la passe au `propagate_preview` **existant** → **zéro moteur, zéro
+  contrat** (corrige §5). Aperçu **lecture seule** par section (compte source vs résultat, delta,
+  warnings) ; retouches fines = merge/split de Brut après-coup, **pas** d'éditeur par-section (ça =
+  réparation manuelle → Alignement D3). Apply = `apply_propagated` **destructif** → confirm conditionnel
+  (aligné) → reload.
+  - **Terminologie tranchée (vérifiée au code 4121-4207)** : « **segmentation** », pas « structure ».
+    Propagate garde les **intertitres de la cible** (charpente, `header_text` vient de `tgt_structs`) et
+    ne recoupe que les **lignes** pour atteindre le nb de segments/section de la source. Copier les
+    intertitres est une **autre** op (`insert_structure_unit`, D3). « Propager la structure » induirait
+    en erreur.
 
 ## 4. À trancher (avant ticket)
 
@@ -114,13 +126,23 @@ avec override manuel conservé. Lève la friction #1.
   seule la **réparation manuelle** est différée.
 
   **Tranches (voie a)** — ordre : bloqueurs relogés *avant* la bascule (sinon la bascule perd des features) :
-  1. **Cadeaux indépendants** (§6) : retirer l'orphelin `structure_diff` + corriger les docs périmés. Cheap.
+  1. **Cadeaux indépendants** (§6) : retirer l'orphelin `structure_diff` + corriger les docs périmés. Cheap. **✅ livré (37df480, 7154f01).**
   2. **Relog édition de structure** (insert/delete/zone) dans `SegmentPane` (D2).
   3. **Polish rendu Brut** : badges de rôle + rich-text + fold « original d'import ».
   4. **Auto-propagate famille** sur le canvas (« caler sur la source », référence via `doc_relations`, D4).
   5. **Bascule nav** « Segmentation » → couche canvas + **re-route des deep-links** (miroir R6.5-A/C).
   6. **Retrait de `SegmentationView`** (+ décision D6 réglée d'ici là).
   L'appariement manuel + fold-in Alignement = **hors de cette voie**, à la tranche structure de l'Alignement.
+
+  **Ré-ordonnance (2026-07-22) : tranche 4 AVANT 2-3.** Dépendance vérifiée molle (propagate marche
+  sur une source bien structurée à l'import ; l'édition de structure = *réparation*, pas préalable
+  systématique) → on est libre d'ordonner. On fait donc la pièce **stratégique + porteuse d'incertitude
+  de prémisse** (tranche 4, la « segmentation en fonction des familles ») d'abord, pour la **valider
+  tôt** et de-risquer le reste ([[feedback_verify_fix_against_reality_before_building]]) ; l'édition de
+  structure (tranche 2, connue, rare) suit et se fera « bien » (Mode A undo — les ops
+  `insert/delete_structure_unit` ne sont PAS Mode-A-undoables aujourd'hui, à instrumenter via
+  `record_prep_action`). Le quirk préexistant « insert/delete décalent `n` mais pas `text_start_n` » est
+  noté pour la tranche 2.
 - **D6 — Sort du workflow « valider-et-avancer »** : action « valider » surfacée sur la couche Segment,
   **ou** accepter la perte (valider via Métadonnées, qui porte déjà `workflow_status="validated"`).
   Surtout un arbitrage produit, peu de code. `calibrate_to` : rester différé (faible priorité).
@@ -132,10 +154,10 @@ avec override manuel conservé. Lève la friction #1.
 
 - **D2 (édition structure au canvas)** : front (relog des ops insert/delete/zone dans `SegmentPane`) ;
   endpoints moteur **existent déjà**. Zéro contrat, zéro migration.
-- **D4 (propagate famille-pilotée)** : `reference_doc_id` devient **optionnel** sur
-  `/segment/propagate_preview` (déduit de `doc_relations`) → **param additif = contrat** (3 artefacts +
-  snapshot, cf. [[reference_sidecar_endpoint_doc_sync]] — ici c'est un endpoint *existant*, param
-  optionnel : re-checker si le schéma le liste). **Zéro migration** (`doc_relations` existe).
+- **D4 (propagate famille-pilotée)** : **front-pur** — le front dérive `reference_doc_id` via
+  `getDocRelations` et le passe au `propagate_preview` **existant** (clients `getDocRelations` /
+  `segmentPropagatePreview` / `applyPropagated` déjà présents). **Zéro moteur, zéro contrat, zéro
+  migration.** (Révise l'estimation initiale qui tablait sur un param optionnel côté moteur.)
 - **Bascule nav + re-route deep-links** : front pur (miroir R6.5-A/C).
 - **Rendu Brut (badges/rich-text/fold)** : front pur.
 
