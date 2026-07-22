@@ -965,3 +965,28 @@ def test_undo_bulk_set_role_restores_all_units(db_conn: sqlite3.Connection) -> N
     execute_undo(db_conn, doc_id)
     assert _role_of(db_conn, doc_id, 1) is None
     assert _role_of(db_conn, doc_id, 3) is None
+
+
+def test_undo_bulk_set_role_format_a_unit_ids(db_conn: sqlite3.Connection) -> None:
+    """Format A (unit_ids + role_name) — the canvas RolesPane path. doc_id is NOT
+    passed: the recorder derives it from the units so eligibility/undo find it per doc."""
+    from multicorpus_engine.services.units_service import bulk_set_unit_role
+    from multicorpus_engine.undo import compute_eligibility, execute_undo
+
+    doc_id, unit_ids = _seed_doc(db_conn, ["a", "b", "c"])
+    db_conn.execute(
+        "INSERT INTO unit_roles (name, label, category) VALUES ('intertitre', 'Intertitre', 'structure')"
+    )
+    db_conn.commit()
+
+    bulk_set_unit_role(db_conn, {"unit_ids": [unit_ids[0], unit_ids[2]], "role_name": "intertitre"})
+    assert _role_of(db_conn, doc_id, 1) == "intertitre"
+    assert _role_of(db_conn, doc_id, 3) == "intertitre"
+
+    elig = compute_eligibility(db_conn, doc_id)  # doc_id derived from the units
+    assert elig["eligible"] is True
+    assert elig["action_type"] == "set_role"
+
+    execute_undo(db_conn, doc_id)
+    assert _role_of(db_conn, doc_id, 1) is None
+    assert _role_of(db_conn, doc_id, 3) is None

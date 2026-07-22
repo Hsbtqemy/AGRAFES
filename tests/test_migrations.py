@@ -59,6 +59,57 @@ def test_migrations_apply_clean_db(tmp_path: Path) -> None:
     assert count2 == 0, "Re-running migrations should be a no-op"
 
 
+def test_migration_033_rebuild_preserves_snapshots(tmp_path: Path) -> None:
+    """Migration 033 rebuilds prep_action_history (to widen the action_type CHECK
+    with 'set_role'). Its foreign_keys=OFF/ON wrap must prevent the DROP from
+    CASCADE-wiping existing prep_action_unit_snapshots when upgrading a POPULATED DB.
+    Also guards the same pattern used by migration 032 (previously untested)."""
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.migrations import apply_migrations
+
+    db_path = tmp_path / "upgrade.db"
+    conn = get_connection(db_path)
+    apply_migrations(conn, migrations_dir=_MIGRATIONS_DIR)  # includes 033
+
+    # Seed a doc + a recorded action + a snapshot (as an already-migrated DB would hold).
+    conn.execute(
+        "INSERT INTO documents (doc_id, title, language, created_at)"
+        " VALUES (1, 'D', 'fr', '2026-01-01T00:00:00Z')"
+    )
+    cur = conn.execute(
+        "INSERT INTO prep_action_history (doc_id, action_type, performed_at, description)"
+        " VALUES (1, 'merge_units', '2026-01-01T00:00:00Z', 'x')"
+    )
+    action_id = cur.lastrowid
+    conn.execute(
+        "INSERT INTO prep_action_unit_snapshots (action_id, unit_id, text_norm_before)"
+        " VALUES (?, 42, 'before')",
+        (action_id,),
+    )
+    conn.commit()
+
+    # Re-run the 033 rebuild on the populated table — faithful to the upgrade path
+    # (same connection with foreign_keys=ON, same executescript the runner uses).
+    sql = (_MIGRATIONS_DIR / "033_prep_action_set_role.sql").read_text(encoding="utf-8")
+    conn.executescript(sql)
+    conn.commit()
+
+    # The action AND its snapshot must survive the DROP (foreign_keys=OFF took effect).
+    assert conn.execute(
+        "SELECT COUNT(*) FROM prep_action_history WHERE action_id=?", (action_id,)
+    ).fetchone()[0] == 1
+    assert conn.execute(
+        "SELECT COUNT(*) FROM prep_action_unit_snapshots WHERE action_id=?", (action_id,)
+    ).fetchone()[0] == 1, "snapshot CASCADE-wiped by the rebuild — foreign_keys=OFF did not take effect"
+
+    # ... and 'set_role' is now an accepted action_type.
+    conn.execute(
+        "INSERT INTO prep_action_history (doc_id, action_type, performed_at, description)"
+        " VALUES (1, 'set_role', '2026-01-01T00:00:00Z', 'y')"
+    )
+    conn.commit()
+
+
 def test_migration_019_prep_action_history(tmp_path: Path) -> None:
     """Migration 019 must create prep_action_history and snapshot tables."""
     from multicorpus_engine.db.connection import get_connection
