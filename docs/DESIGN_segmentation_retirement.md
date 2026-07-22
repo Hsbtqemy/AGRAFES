@@ -143,6 +143,25 @@ avec override manuel conservé. Lève la friction #1.
   `insert/delete_structure_unit` ne sont PAS Mode-A-undoables aujourd'hui, à instrumenter via
   `record_prep_action`). Le quirk préexistant « insert/delete décalent `n` mais pas `text_start_n` » est
   noté pour la tranche 2.
+
+  **RE-CADRAGE tranche 2-3 (approfondissement 2026-07-22, post-tranche 4).** L'investigation amont a
+  changé la donne — le « gros blocueur » se dissout :
+  - **Le canvas couvre DÉJÀ le workflow structurel role-first.** Marquer une ligne en intertitre (rôle
+    `category='structure'`) = **RolesPane** (mode Rôles, `_assignRole`→`bulk_set_role`) ; merge/split =
+    **Brut** (déjà Mode A). Or la **forme canonique d'un intertitre = ligne + rôle**, pas une unité
+    `structure` (`docx_paragraphs` → `units_structure=0`, cf. [[reference_structural_role_vs_unit_type]]).
+  - **`insert/delete_structure_unit` = narrow, différé.** Ils n'opèrent que sur `unit_type='structure'`
+    → **hors-sol** pour un corpus role-first (0 unité `structure`). Le **driver** de l'insert (réparer des
+    compteurs source/trad décalés) est servi **ailleurs** : l'Alignement marque le **statut**
+    (`non_traduit`/`ajout`, §3.3 D-W8/D8) qui **sort l'unité du compteur** — pas d'insertion de placeholder.
+    Reste l'insert « pur structurel » (mono-doc), rare et couvert par Rôles+Brut. → **différé, tracé narrow.**
+  - **Le vrai « bien = Mode A » se déplace : l'assignation de rôle** (`bulk_set_role`) est le geste
+    structurel **dominant** au canvas et n'est **PAS** Mode-A-undoable (UPDATE+commit, aucun
+    `record_prep_action`). L'instrumenter (snapshot `unit_role` avant, miroir merge/split) a **plus de
+    valeur** que l'undo d'insert/delete.
+  - **Ordre révisé** : **tranche 3 (polish Brut)** d'abord (front-pur, rend les intertitres-rôle visibles)
+    → **tranche 2 re-cadrée = undo Mode A de l'assignation de rôle** → insert/delete structure **différés**.
+    Conséquence : **le retrait de `SegmentationView` est bien plus proche** (finitions, pas un pan).
 - **D6 — Sort du workflow « valider-et-avancer »** : action « valider » surfacée sur la couche Segment,
   **ou** accepter la perte (valider via Métadonnées, qui porte déjà `workflow_status="validated"`).
   Surtout un arbitrage produit, peu de code. `calibrate_to` : rester différé (faible priorité).

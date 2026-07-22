@@ -147,6 +147,13 @@ est un alignement cross-lingue** — il a une affinité naturelle avec **cet** e
 Segmentation. Cohérent avec §4.1 : **éditer** la structure (insert/delete) = round-trip vers Segmentation ;
 **aligner** la structure entre langues = ici. Reste à trancher le scope v1 (D-W11).
 
+> **Scope v1 précisé (2026-07-22, cf. `DESIGN_segmentation_retirement.md` re-cadrage).** L'**édition**
+> insert/delete reste hors de cet espace (canvas Segment, et **différée** — narrow : la forme canonique
+> d'un intertitre = ligne + rôle, pas une unité `structure`). Surtout : l'Alignement **n'a pas besoin
+> d'insérer** pour réparer un décalage de compteurs — il **marque le statut** (`non_traduit`/`ajout`,
+> §3.3) qui sort l'unité du compteur. Donc le scope structure v1 ici = **appariement** (structure matcher
+> chapitre↔chapitre) + rendu du squelette ; **pas** de mutation d'unités de structure.
+
 ## 2.3 Les grains — une matrice hiérarchique repliable (structure ⊃ ¶ ⊃ phrase)
 
 Le contenu a **deux grains** (¶ ⊃ phrase, modèle 2-grain), et la structure (§2.2) coiffe le tout. La matrice est

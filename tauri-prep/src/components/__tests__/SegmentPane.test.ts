@@ -397,3 +397,27 @@ describe("SegmentPane — Propager la segmentation (tranche 4)", () => {
     expect(host.querySelector(".prep-seg-canvas-warn")?.textContent).toContain("rôle");
   });
 });
+
+describe("SegmentPane — Brut rendering parity (tranche 3)", () => {
+  const conventions = [
+    { name: "intertitre", label: "Intertitre", color: "#9333ea", icon: "§", sort_order: 0, category: "structure" },
+  ];
+
+  it("paints the role badge on a Brut unit that carries a role", async () => {
+    await mountBrut(fakeConn({ units: [unit(1, { unit_role: "intertitre" }), unit(2)], conventions }));
+    const badge = host.querySelector('.prep-seg-canvas-unit[data-n="1"] .prep-conv-unit-badge');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain("Intertitre");
+    // a unit with no role → no badge
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="2"] .prep-conv-unit-badge')).toBeNull();
+  });
+
+  it("shows the « voir l'original d'import » fold only when text_source diverges", async () => {
+    await mountBrut(fakeConn({ units: [
+      unit(1, { text_raw: "fusionné", text_source: "part une. part deux." }), // rewritten → fold
+      unit(2, { text_raw: "intact", text_source: null }),                       // pristine → no fold
+    ] }));
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="1"] .prep-seg-canvas-source')).not.toBeNull();
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="2"] .prep-seg-canvas-source')).toBeNull();
+  });
+});

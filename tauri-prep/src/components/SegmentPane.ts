@@ -23,12 +23,14 @@ import {
   segmentPreview, segment, getDocumentStats, listUnits,
   mergeUnits, splitUnit, prepUndo, prepUndoEligibility, regroupCoarse,
   getDocRelations, segmentPropagatePreview, applyPropagated, listConventions,
+  richTextToHtml,
 } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
 import { resolveRoleBadge } from "../lib/conventionsUnitList.ts";
 import { safeColor } from "../lib/conventionsRoles.ts";
+import { hasImportOriginal } from "../lib/importOriginal.ts";
 import {
   buildSegmentParams,
   groupSegmentsBySource,
@@ -58,10 +60,14 @@ export class SegmentPane {
   private _docId: number | null = null;
   private _lang: string | null = null;
   private _surface: SegSurface = "phrases";
-  /** Current units (n + text + line-vs-structure) — rendered as-is by the "Brut" tab so the
-   *  user can compare the current state against a proposed segmentation by switching tabs,
-   *  flag anomalies, and edit (merge/split) line units in place (R5.4b-3). */
-  private _units: { n: number; text: string; isLine: boolean }[] = [];
+  /** Current units, rendered as-is by the "Brut" tab so the user can compare the current state
+   *  against a proposed segmentation by switching tabs, flag anomalies, and edit (merge/split)
+   *  line units in place (R5.4b-3). Carries role + verbatim raw + import-original for parity with
+   *  SegmentationView's rendering (tranche 3: role badge · richText · « voir l'original » fold). */
+  private _units: {
+    n: number; text: string; isLine: boolean;
+    role: string | null; textRaw: string; textSource: string | null;
+  }[] = [];
   private _applyBarEl: HTMLElement | null = null;
   private _lastPreview: SegmentPreviewResponse | null = null;
   private _previewTimer: ReturnType<typeof setTimeout> | null = null;
@@ -239,6 +245,7 @@ export class SegmentPane {
       if (docId !== this._docId) return; // document switched during the await — drop stale units
       this._units = units.map((u) => ({
         n: u.n, text: u.text_norm ?? u.text_raw ?? "", isLine: u.unit_type === "line",
+        role: u.unit_role ?? null, textRaw: u.text_raw ?? "", textSource: u.text_source ?? null,
       }));
     } catch {
       if (docId === this._docId) this._units = [];
@@ -331,6 +338,8 @@ export class SegmentPane {
 
   /** Render the Brut view, refreshing Mode A undo eligibility first (one cheap GET). */
   private async _renderBrutView(): Promise<void> {
+    const conn = this._getConn();
+    if (conn) await this._ensureRoles(conn); // catalogue for the Brut role badges (tranche 3)
     await this._refreshUndoElig();
     if (this._surface !== "brut") return; // a fast surface switch during the await supersedes us
     this._renderBrut();
@@ -396,7 +405,10 @@ export class SegmentPane {
 
   /** One Brut unit: number + edit actions (line units only) + text, decorated per anomaly.
    *  When this unit is being split, render the inline split editor in its place. */
-  private _brutRowHtml(u: { n: number; text: string; isLine: boolean }, i: number, view: AnomalyView): string {
+  private _brutRowHtml(
+    u: { n: number; text: string; isLine: boolean; role: string | null; textRaw: string; textSource: string | null },
+    i: number, view: AnomalyView,
+  ): string {
     if (this._splitEditingN === u.n && u.isLine) return this._splitEditorHtml(u);
     const row = view.rows[i];
     const clsMod = row.cls ? ` prep-seg-canvas-unit--${row.cls}` : "";
@@ -404,9 +416,16 @@ export class SegmentPane {
     const tag = u.isLine
       ? this._rowActionsHtml(u, i)
       : `<span class="prep-seg-canvas-unit-struct" title="Unit&#233; de structure &#8212; non segmentable">structure</span>`;
+    // Tranche 3 — parity with SegmentationView: role badge · rich text (verbatim text_raw) ·
+    // « voir l'original d'import » fold when a destructive op rewrote the line (ADR-043 P3).
+    const badge = this._roleBadgeHtml(u.role);
+    const body = richTextToHtml(u.textRaw, u.text);
+    const fold = hasImportOriginal({ text_raw: u.textRaw, text_source: u.textSource })
+      ? `<details class="prep-seg-canvas-source"><summary class="prep-seg-canvas-source-sum" title="Texte tel qu'import&#233;, avant red&#233;coupage / fusion">&#8982;&#160;voir l'original d'import</summary><div class="prep-seg-canvas-source-txt">${richTextToHtml(u.textSource, u.textSource ?? "")}</div></details>`
+      : "";
     return `<div class="prep-seg-canvas-unit${clsMod}" data-n="${u.n}"${hidden}>
         <div class="prep-seg-canvas-unit-head"><span class="prep-seg-canvas-unit-n">unit&#233; ${esc(String(u.n))}</span>${tag}</div>
-        <div class="prep-seg-canvas-unit-text"><span class="prep-seg-canvas-seg-text">${esc(u.text)}</span></div>
+        <div class="prep-seg-canvas-unit-text">${badge}<span class="prep-seg-canvas-seg-text">${body}</span>${fold}</div>
       </div>`;
   }
 

@@ -7336,6 +7336,21 @@ tr[data-len].prep-seg-row-context .prep-seg-cell-len {
 }
 .prep-seg-canvas-uabtn:hover { background: #f1f5f9; border-color: #94a3b8; }
 .prep-seg-canvas-unit-text { padding: 0.3rem 0.45rem; white-space: pre-wrap; word-break: break-word; }
+/* Tranche 3 — role badge inline before the Brut unit text (spacing + baseline). */
+.prep-seg-canvas-unit-text .prep-conv-unit-badge { margin: 0 0.4em 0 0; vertical-align: baseline; }
+/* Tranche 3 — « voir l'original d'import » fold, canvas mirror of .prep-seg-source*. */
+.prep-seg-canvas-source { margin-top: 3px; }
+.prep-seg-canvas-source-sum {
+  display: inline-block; cursor: pointer; font-size: 0.74rem;
+  color: var(--color-text-muted, #667085); user-select: none;
+}
+.prep-seg-canvas-source-sum:hover { color: var(--color-accent, #2563eb); }
+.prep-seg-canvas-source-txt {
+  margin-top: 2px; padding: 3px 8px;
+  border-left: 2px solid var(--color-border, #d0d5dd);
+  background: #f7f9fb; color: var(--color-text-muted, #475467);
+  font-size: 0.82rem; line-height: 1.4; white-space: pre-wrap;
+}
 
 .prep-seg-canvas-unit--short .prep-seg-canvas-unit-text { background: #fef9c3; }
 .prep-seg-canvas-unit--orphan .prep-seg-canvas-unit-text {
