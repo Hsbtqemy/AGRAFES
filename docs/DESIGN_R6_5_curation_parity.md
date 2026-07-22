@@ -200,7 +200,19 @@ de la note de parité :
    atteignable. **⚠ Divergence acceptée** : Trouver utilise `RegExp` **JS** (aperçu best-effort),
    l'apply utilise le `regex.V0` **Python** — un motif avancé (`\p{L}`, POSIX) peut différer/échouer en
    JS. +6 tests. **Abandonné** : la textarea JSON brute (D3).
-4. **Lot D — Undo Apply (D5)** : port mécanique du bouton.
+4. **Lot D — Undo Apply (D5)** ✅ *(livré 2026-07-22)* : **prémisse vérifiée au moteur** — `/curate`
+   enregistre bien une action `curation_apply` annulable avec snapshots (sidecar `_recorder_for` →
+   `record_action`), et `undo.py` sait l'annuler (`_undo_curation_apply`) → **front pur, aucun
+   changement moteur**. Bouton `#prep-cur-undo-btn` dans le dock, label dynamique honnête
+   (`formatUndoActionLabel` : « ↶ Annuler : <description backend> » — Apply *ou* édition stylo),
+   `prepUndoEligibility`/`prepUndo` + helpers `lib/prepUndo.ts`, désactivé sans doc (doc-scopé). Éligibilité
+   rafraîchie sur setDocument / après apply / après stylo / après undo. `_undo` invalide le preview +
+   recharge units/exceptions (garde les presets/F/R staged). **Passe adverse** : 2 bugs corrigés —
+   (a) **course async** dans `_refreshUndo` (résultat d'un doc quitté écrasait le nouveau ; garde
+   `docId === this._docId` post-await, à la SegmentPane) ; (b) **clobber** — `_undo` re-render effaçait
+   le message d'erreur si le rechargement échouait (garde sur le booléen `_loadUnits`, RED prouvé) ;
+   (c) *2ᵉ passe* — `_undo` rechargeait sans la même garde de changement de doc (capture `docId` +
+   bail si `docId !== this._docId` post-`prepUndo`). +5 tests.
 5. **Lot E — Tiroir Avancé T3 (D6)** : reloger les 2 composants + diag/export/réindex.
 
 Aucun lot ne touche le contrat ni une migration → discipline contrat non déclenchée ; CI = ruff +
