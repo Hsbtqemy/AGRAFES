@@ -117,6 +117,38 @@ def test_curate_preview_returns_stats_and_examples(v03_sidecar) -> None:
         assert "unit_id" in ex
 
 
+def test_curate_preview_honours_text_start_boundary(v03_sidecar) -> None:
+    """Regression: the dry-run must skip paratextual units (n < text_start_n) just
+    like curate_document does on apply. Otherwise the Aperçu counts/shows changes
+    on units the Appliquer will never touch (preview↔apply divergence)."""
+    base_url = v03_sidecar["base_url"]
+    doc_id = v03_sidecar["pivot_doc_id"]
+
+    # Pivot units (numbered lines): n=1 "Bonjour monde…", n=2 "Au revoir monde…",
+    # n=3 "Un troisieme exemple ici." → n=1 and n=2 both contain "monde".
+    # Mark n=1 as paratext: the translational text begins at n=2.
+    code, _ = _http("POST", f"{base_url}/documents/set_text_start", {
+        "doc_id": doc_id,
+        "text_start_n": 2,
+    })
+    assert code == 200
+
+    code, payload = _http("POST", f"{base_url}/curate/preview", {
+        "doc_id": doc_id,
+        "rules": [{"pattern": "monde", "replacement": "MONDE", "flags": "i"}],
+        "limit_examples": 10,
+    })
+    assert code == 200
+    stats = payload["stats"]
+    # In scope: n=2, n=3 only (n=1 excluded as paratext). Only n=2 matches "monde".
+    assert stats["units_total"] == 2
+    assert stats["units_changed"] == 1
+    # The paratextual unit must never surface in the preview examples.
+    befores = [ex["before"] for ex in payload["examples"]]
+    assert all("Bonjour" not in b for b in befores)
+    assert any("Au revoir" in b for b in befores)
+
+
 def test_curate_preview_does_not_modify_db(v03_sidecar) -> None:
     """Verify that /curate/preview is a pure dry-run — DB units unchanged after preview."""
 

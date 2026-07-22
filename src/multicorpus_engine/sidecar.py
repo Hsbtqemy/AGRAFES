@@ -3045,9 +3045,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             }))
             return
 
+        # Scope must match curate_document (curation.py): paratextual units
+        # (n < text_start_n) are never curated on apply, so this dry-run must not
+        # simulate/count them either — otherwise the Aperçu over-reports changes
+        # the Appliquer will silently skip. NULL boundary → 1 (all units), like apply.
+        tsn_row = self._conn().execute(
+            "SELECT text_start_n FROM documents WHERE doc_id = ?", (doc_id,)
+        ).fetchone()
+        tsn = int(tsn_row[0]) if tsn_row and tsn_row[0] is not None else 1
         rows = self._conn().execute(
-            "SELECT unit_id, external_id, text_norm FROM units WHERE doc_id = ? ORDER BY n",
-            (doc_id,),
+            "SELECT unit_id, external_id, text_norm FROM units WHERE doc_id = ? AND n >= ? ORDER BY n",
+            (doc_id, tsn),
         ).fetchall()
 
         # Load persistent exceptions for this document via JOIN — avoids
