@@ -162,9 +162,21 @@ avec override manuel conservé. Lève la friction #1.
   - **Ordre révisé** : **tranche 3 (polish Brut)** d'abord (front-pur, rend les intertitres-rôle visibles)
     → **tranche 2 re-cadrée = undo Mode A de l'assignation de rôle** → insert/delete structure **différés**.
     Conséquence : **le retrait de `SegmentationView` est bien plus proche** (finitions, pas un pan).
-- **D6 — Sort du workflow « valider-et-avancer »** : action « valider » surfacée sur la couche Segment,
-  **ou** accepter la perte (valider via Métadonnées, qui porte déjà `workflow_status="validated"`).
-  Surtout un arbitrage produit, peu de code. `calibrate_to` : rester différé (faible priorité).
+- **D6 — Sort du workflow « valider-et-avancer » — TRANCHÉ (2026-07-23) : suivre le précédent R6.5.**
+  Vérifié au code : **aucune** des 4 couches du canvas (Rôles/Curation/Annotation/Segment) ni le shell
+  `TextCanvasView` n'a de `valider`/NextStepBanner — R6.5 a **déjà** lâché ces éléments en basculant
+  Curation/Annotation, le canvas ne garde qu'un **badge `workflow_status` lecture-seule**
+  ([TextCanvasView.ts:406](../tauri-prep/src/screens/TextCanvasView.ts#L406)), validation via **Métadonnées**.
+  Ajouter `valider` **seulement** sur Segment ferait d'elle l'exception → on suit R6.5 : la bascule Segment
+  lâche `valider`/NextStep comme ses écrans frères. Zéro nouvelle capacité canvas.
+- **Tranche 5 (bascule nav) figée (2026-07-23) = miroir R6.5, front-pur.** Intercepter **tous** les points
+  d'entrée vers la subview `segmentation` (chasse aux callers, sinon fuite vers le legacy) :
+  sidebar (`app.ts` treeItems), les **2 deep-links** (`focusSegmentationOnUnit` → canvas Segment + unité ;
+  `segFocusDocRoles` « Conventions→Rôles » → canvas Rôles), le **restore** de subview, et le handler
+  **step-next**. `SegmentationView` reste **construit mais dormant** (injoignable) ; son retrait effectif +
+  le nettoyage du type `SubView`/`hasPendingChanges` = **tranche 6** (D6 étant réglé, le blocueur du retrait
+  tombe). Nouvelles méthodes canvas : `showSegmentLayer`/`focusSegmentDoc`/`focusSegmentUnit`/`focusRolesDoc`
+  (miroir `show/focusCurationDoc`) + `SegmentPane.focusUnit(n)` (expose `_pendingFocusN`).
 - **Surfaçage exact de la primitive** (Seg seul / Align seul / les deux) et **instrumentation** (poser
   3 events voulu/éligible/bloqué [[feedback_instrumentation_triple_signal]] avant d'investir, pour
   enfin mesurer l'usage réel) : à décider avec D5.

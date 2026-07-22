@@ -383,10 +383,12 @@ export class App {
           link.appendChild(treeLabel);
           link.addEventListener("click", () => {
             this._switchTab("actions");
-            // R6.5-A/C : « Annotation » et « Curation » ouvrent le canvas (couches dédiées).
+            // R6.5-A/C + retrait Seg tranche 5 : « Annotation », « Curation », « Segmentation »
+            // ouvrent le canvas (couches dédiées).
             if (navKey === "annoter") this._actions.openAnnotationLayer();
             else if (navKey === "curation") this._actions.openCurationLayer();
-            else this._actions.setSubView(navKey as "segmentation" | "alignement" | "matrice");
+            else if (navKey === "segmentation") this._actions.openSegmentLayer();
+            else this._actions.setSubView(navKey as "alignement" | "matrice");
           });
           treeBody.appendChild(link);
         }

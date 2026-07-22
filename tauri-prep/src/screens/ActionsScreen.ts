@@ -189,26 +189,20 @@ export class ActionsScreen {
    * agrafes:prep-focus-segment-unit dans app.ts.
    */
   async focusSegmentationOnUnit(docId: number, unitN: number): Promise<void> {
-    this.setSubView("segmentation");
-    const seg = this._segmentationView;
-    if (!seg) return;
-    seg.focusDoc(docId);
-    // Attendre un cycle de render avant focus de l'unit
-    await new Promise(r => setTimeout(r, 50));
-    await seg.focusUnit(unitN);
+    // Retrait Seg tranche 5 : ouvre la couche Segmentation du CANVAS (l'écran legacy est dormant).
+    // focusSegmentUnit attend le chargement du pane (via _focusDoc→_syncActivePane) avant de
+    // révéler l'unité — plus besoin du délai 50 ms du legacy.
+    this.setSubView("texte");
+    await this._textCanvasView?.focusSegmentUnit(docId, unitN);
   }
 
   /**
-   * Ouvre la sub-view Segmentation sur le doc demandé et bascule sur l'onglet
-   * « Rôles ». Remplace l'ancien sous-onglet Conventions du Shell, désormais
-   * fusionné dans Segmentation.
+   * Deep-link « Conventions → Rôles » : ouvre la couche Rôles du canvas sur le doc demandé.
+   * Retrait Seg tranche 5 : le sous-onglet Conventions/Rôles vit désormais au canvas.
    */
   async segFocusDocRoles(docId: number): Promise<void> {
-    this.setSubView("segmentation");
-    const seg = this._segmentationView;
-    if (!seg) return;
-    seg.focusDoc(docId);
-    await seg.focusRolesTab();
+    this.setSubView("texte");
+    await this._textCanvasView?.focusRolesDoc(docId);
   }
 
   /**
@@ -233,7 +227,11 @@ export class ActionsScreen {
   private _loadSubViewPref(): void {
     try {
       const saved = localStorage.getItem(ActionsScreen.LS_ACTIVE_SUB) as SubView | null;
-      if (saved === "hub" || saved === "texte" || saved === "segmentation" || saved === "alignement" || saved === "matrice") {
+      // Retrait Seg tranche 5 : un état sauvé « segmentation » (legacy, désormais dormant) est
+      // redirigé vers le canvas — sinon le restore rouvrirait l'écran legacy (fuite de la bascule).
+      if (saved === "segmentation") {
+        this._activeSubView = "texte";
+      } else if (saved === "hub" || saved === "texte" || saved === "alignement" || saved === "matrice") {
         this._activeSubView = saved;
       }
     } catch { /* ignore */ }
@@ -285,10 +283,11 @@ export class ActionsScreen {
     el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-wf-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const target = btn.dataset.target ?? "";
-        // R6.5-A/C : « Annotation » et « Curation » ouvrent le canvas (couches dédiées),
-        // les écrans legacy ayant été retirés.
+        // R6.5-A/C + retrait Seg tranche 5 : « Annotation », « Curation », « Segmentation »
+        // ouvrent le canvas (couches dédiées) ; l'écran Segmentation legacy devient dormant.
         if (target === "annoter") { this.openAnnotationLayer(); return; }
         if (target === "curation") { this.openCurationLayer(); return; }
+        if (target === "segmentation") { this.openSegmentLayer(); return; }
         this._switchSubViewDOM(root, target as SubView);
       });
     });
@@ -357,9 +356,10 @@ export class ActionsScreen {
         jobCenter: () => this._jobCenter,
         onNavigate: (target, context) => {
           if (!this._wfRoot) return;
-          // R6.5-A/C : « annoter » et « curation » ouvrent le canvas (couches dédiées).
+          // R6.5-A/C + retrait Seg tranche 5 : « annoter »/« curation »/« segmentation » → canvas.
           if (target === "annoter") { this.openAnnotationLayer(context?.docId ?? undefined); return; }
           if (target === "curation") { this.openCurationLayer(context?.docId ?? undefined); return; }
+          if (target === "segmentation") { this.openSegmentLayer(context?.docId ?? undefined); return; }
           this._switchSubViewDOM(this._wfRoot, target as Parameters<typeof this._switchSubViewDOM>[1]);
         },
         onOpenDocuments: () => this._openDocumentsTab?.(),
@@ -521,6 +521,14 @@ export class ActionsScreen {
     this.setSubView("texte");
     if (docId != null) void this._textCanvasView?.focusCurationDoc(docId);
     else this._textCanvasView?.showCurationLayer();
+  }
+
+  /** Retrait Seg tranche 5 : « Segmentation » (sidebar, step-next) ouvre désormais le canvas sur la
+   *  couche Segmentation, l'écran legacy devenant dormant. Miroir exact de openCurationLayer. */
+  openSegmentLayer(docId?: number): void {
+    this.setSubView("texte");
+    if (docId != null) void this._textCanvasView?.focusSegmentDoc(docId);
+    else this._textCanvasView?.showSegmentLayer();
   }
 
   setJobCenter(jc: JobCenter, showToast: (msg: string, isError?: boolean) => void): void {

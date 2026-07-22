@@ -430,3 +430,24 @@ describe("SegmentPane — Brut rendering parity (tranche 3)", () => {
     expect(host.querySelector('.prep-seg-canvas-unit[data-n="2"] .prep-seg-canvas-source')).toBeNull();
   });
 });
+
+describe("SegmentPane — focusUnit deep-link (tranche 5)", () => {
+  it("switches to Brut and reveals the target unit (Explorer→Prep re-route)", async () => {
+    const pane = await mountBrut(fakeConn({ units: [unit(1), unit(2), unit(3)] }));
+    // move off Brut, then focus a unit → must switch back to Brut with the unit present
+    (host.querySelector('[data-surface="phrases"]') as HTMLButtonElement).click();
+    await flush();
+    await pane.focusUnit(2);
+    await flush();
+    expect(host.querySelector('[data-surface="brut"]')?.classList.contains("active")).toBe(true);
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="2"]')).not.toBeNull();
+  });
+
+  it("re-renders Brut even when already on the Brut surface", async () => {
+    const pane = await mountBrut(fakeConn({ units: [unit(1), unit(2)] }));
+    await pane.focusUnit(1); // already on Brut → the else branch (_renderBrutView) must still render
+    await flush();
+    expect(host.querySelector('[data-surface="brut"]')?.classList.contains("active")).toBe(true);
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="1"]')).not.toBeNull();
+  });
+});

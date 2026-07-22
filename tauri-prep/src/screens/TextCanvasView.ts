@@ -305,6 +305,33 @@ export class TextCanvasView {
     await this._focusDoc(docId);
   }
 
+  /** Open the Segmentation layer keeping the current document (nav entry point, retrait Seg tranche 5). */
+  showSegmentLayer(): void {
+    this._setMode("segment");
+  }
+
+  /** Open the Segmentation layer on a specific document (mirrors focusCurationDoc). */
+  async focusSegmentDoc(docId: number): Promise<void> {
+    this._docId = docId;
+    this._setMode("segment");
+    await this._focusDoc(docId);
+  }
+
+  /** Deep-link (Explorer→Prep): open the Segmentation layer on a doc and reveal a unit. */
+  async focusSegmentUnit(docId: number, unitN: number): Promise<void> {
+    this._docId = docId;
+    this._setMode("segment");
+    await this._focusDoc(docId);
+    await this._segmentPane?.focusUnit(unitN);
+  }
+
+  /** Deep-link (Conventions→Rôles): open the Rôles layer on a specific document. */
+  async focusRolesDoc(docId: number): Promise<void> {
+    this._docId = docId;
+    this._setMode("roles");
+    await this._focusDoc(docId);
+  }
+
   private async _focusDoc(docId: number | null): Promise<void> {
     this._docId = docId;
     this._stats = null;

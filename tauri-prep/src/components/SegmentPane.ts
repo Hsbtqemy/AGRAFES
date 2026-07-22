@@ -234,6 +234,16 @@ export class SegmentPane {
     await this._renderActiveView();
   }
 
+  /** Public deep-link (Explorer→Prep, retrait Seg tranche 5): reveal unit `n` in the Brut view
+   *  (scroll + flash). Switches to Brut — the surface that lists units by n — then renders so
+   *  `_consumePendingFocus` scrolls to it. Handles the "already on Brut" case (where `_setSurface`
+   *  early-returns) by re-rendering directly. */
+  async focusUnit(n: number): Promise<void> {
+    this._pendingFocusN = n;
+    if (this._surface !== "brut") this._setSurface("brut");
+    else await this._renderBrutView();
+  }
+
   /** Load the current line units (for the Brut view). Mode switches don't change them,
    *  so this is per-document, not per-preview. */
   private async _loadUnits(): Promise<void> {
