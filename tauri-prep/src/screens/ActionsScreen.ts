@@ -428,6 +428,10 @@ export class ActionsScreen {
           this._switchSubViewDOM(this._wfRoot, "alignement");
           if (scope) void this._alignPanel?.scopeTo(scope);
         },
+        // Raccourci matrice → couche Segmentation (Brut) d'un doc : depuis l'en-tête de langue
+        // (docId seul → haut du doc) ou une orpheline « hors matrice » (docId + son n, deep-link).
+        // Réutilise le chemin de nav du deep-link retour-amont (focusSegmentationOnUnit).
+        onOpenSegmentation: (docId, unitN) => void this.focusSegmentationOnUnit(docId, unitN ?? 1),
       },
     );
     wrapper.appendChild(this._matrixView.render());

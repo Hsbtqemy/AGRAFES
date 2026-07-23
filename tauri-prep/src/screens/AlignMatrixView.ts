@@ -55,6 +55,10 @@ export interface AlignMatrixCallbacks {
    *  Avec `scope` (T6.2, D-P2) = handoff scopé depuis une cellule : Révision fine pré-chargée
    *  sur la paire moyeu ↔ doc-colonne et scrollée sur le lien de la cellule. */
   onOpenRevisionFine?: (scope?: RevisionFineScope) => void;
+  /** Open a document in the canvas Segmentation layer (Brut) — from a language-header shortcut
+   *  (docId only) or a « hors matrice » orphan (docId + its unit n, deep-linked). Reduces the
+   *  source↔translation round-trip when a segmentation mismatch must be fixed to align cleanly. */
+  onOpenSegmentation?: (docId: number, unitN?: number) => void;
 }
 
 /** Truncate for display on CODE POINTS: slicing UTF-16 units splits a surrogate pair
@@ -211,7 +215,10 @@ export class AlignMatrixView {
       if (reviewBtn) { this._onReviewClick(Number(reviewBtn.dataset.cutRow), Number(reviewBtn.dataset.cutCol)); return; }
       // Stylo (β) — correct a cell's text in place (source or a clean translation).
       const editBtn = t.closest<HTMLButtonElement>(".prep-matrix-edit-btn");
-      if (editBtn) this._openCellEdit(editBtn, Number(editBtn.dataset.editRow), editBtn.dataset.editCol ?? "");
+      if (editBtn) { this._openCellEdit(editBtn, Number(editBtn.dataset.editRow), editBtn.dataset.editCol ?? ""); return; }
+      // Header shortcut → open this document's Segmentation layer (Brut).
+      const segBtn = t.closest<HTMLButtonElement>(".prep-matrix-seg-btn");
+      if (segBtn) this._cb.onOpenSegmentation?.(Number(segBtn.dataset.segDoc));
     });
     return root;
   }
@@ -1840,6 +1847,7 @@ export class AlignMatrixView {
     if (!view) return;
     const units = view.uncovered[col] ?? [];
     const lang = view.translationLangs[col] ?? "?";
+    const docId = view.translationDocIds[col] ?? null;
     if (units.length === 0) return;
 
     this._cutBusy = true;
@@ -1853,6 +1861,10 @@ export class AlignMatrixView {
       `<li class="prep-matrix-orphan">`
       + `<span class="prep-matrix-orphan-n">[${u.n}]</span> `
       + `<span class="prep-matrix-orphan-text">${_esc(shortenCp(u.text_raw, 120))}</span>`
+      + (docId != null
+        ? `<button type="button" class="prep-matrix-orphan-seg" data-seg-unit="${u.n}"`
+          + ` title="Ouvrir cette unité dans la Segmentation (Brut) — la fusionner/couper pour recaler l'alignement">&#8599; Segmenter</button>`
+        : "")
       + `<button type="button" class="prep-matrix-add-choice" data-add-unit="${u.unit_id}"`
       + ` title="Marquer comme ajout du traducteur — une ligne [ajout] appara&#238;t dans la matrice">&#65291; Ajout</button>`
       + `</li>`).join("");
@@ -1890,6 +1902,13 @@ export class AlignMatrixView {
         const unitId = Number(btn.dataset.addUnit);
         close();
         void this._performMarkAddition(unitId);
+      }));
+    // Deep-link an orphan to its exact unit in the Segmentation/Brut layer of the target doc.
+    dialog.querySelectorAll<HTMLButtonElement>(".prep-matrix-orphan-seg").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const n = Number(btn.dataset.segUnit);
+        close();
+        if (docId != null) this._cb.onOpenSegmentation?.(docId, n);
       }));
   }
 

@@ -71,6 +71,9 @@ export interface MatrixStats {
 
 export interface MatrixView {
   hubLang: string;
+  /** Hub (source) document id — drives the header "open in Segmentation" shortcut. null
+   *  on an older sidecar that predates hub_doc_id. */
+  hubDocId: number | null;
   /** Translation languages only (hub excluded). */
   translationLangs: string[];
   /** Parallel to translationLangs: their doc_ids ([] when the sidecar predates 3a). */
@@ -199,6 +202,7 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
 
   return {
     hubLang,
+    hubDocId: data.hub_doc_id ?? null,
     translationLangs,
     translationDocIds,
     hasCellLinks,

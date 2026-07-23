@@ -7,6 +7,7 @@ const SAMPLE: AlignMatrix = {
   headers: ["paragraphe", "segment", "fr", "en"],
   languages: ["fr", "en"],
   hub_doc_id: 2,
+  language_doc_ids: [2, 3],
   rows: [
     ["1", 1, "FR1", "EN1"],
     ["1", 2, "FR2", ""],
@@ -19,8 +20,21 @@ describe("buildMatrixGridHtml", () => {
   it("renders a header with hub + translation languages", () => {
     const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
     expect(html).toContain("prep-matrix-th--hub");
-    expect(html).toMatch(/<th[^>]*>fr<\/th>/);
-    expect(html).toMatch(/<th[^>]*>en<\/th>/);
+    expect(html).toMatch(/<th[^>]*>fr\b/); // may carry the « ↗ Segmenter » shortcut after the label
+    expect(html).toMatch(/<th[^>]*>en\b/);
+  });
+
+  it("puts a « ↗ Segmenter » header shortcut on the hub and each translation, with its doc id", () => {
+    const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html).toContain('class="prep-matrix-seg-btn" data-seg-doc="2"'); // hub (fr) doc
+    expect(html).toContain('class="prep-matrix-seg-btn" data-seg-doc="3"'); // en translation doc
+  });
+
+  it("omits the header shortcut when a doc id is missing (older sidecar)", () => {
+    // A payload predating hub_doc_id / language_doc_ids → no shortcut to a doc it can't name.
+    const noDocIds = { headers: SAMPLE.headers, languages: SAMPLE.languages, rows: SAMPLE.rows } as AlignMatrix;
+    const html = buildMatrixGridHtml(buildMatrixView(noDocIds));
+    expect(html).not.toContain("prep-matrix-seg-btn");
   });
 
   it("tags cells by status (ok / empty / fused)", () => {

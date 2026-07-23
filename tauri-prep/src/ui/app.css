@@ -2423,6 +2423,19 @@ button.prep-matrix-cut-word:hover {
 }
 .prep-matrix-edit-ta:focus { outline: none; border-color: #0c4a46; }
 .prep-matrix-edit-actions { display: flex; gap: 0.4rem; }
+/* Raccourci « ↗ Segmenter » : en-tête de langue → couche Segmentation (Brut) du doc, et
+   deep-link par unité orpheline dans le panneau « hors matrice ». Teinte teal, discret. */
+.prep-matrix-seg-btn,
+.prep-matrix-orphan-seg {
+  margin-left: 6px; padding: 0 5px; font-size: 0.72rem; cursor: pointer;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: color-mix(in srgb, #0c4a46 70%, transparent); white-space: nowrap;
+}
+.prep-matrix-seg-btn:hover,
+.prep-matrix-orphan-seg:hover {
+  border-color: color-mix(in srgb, #0c4a46 45%, transparent);
+  background: color-mix(in srgb, #0c4a46 10%, transparent);
+}
 .prep-matrix-cut-dir {
   display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px;
   font-size: 0.82rem;

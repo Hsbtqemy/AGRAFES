@@ -20,6 +20,14 @@ import { escHtml as _esc } from "./diff.ts";
 import type { MatrixView } from "./alignMatrix.ts";
 
 export function buildMatrixGridHtml(view: MatrixView): string {
+  // Shortcut from a language header to that document's Segmentation layer (Brut) — where the
+  // ⇧⇩ merge / ✂ split live. Reduces the source↔translation round-trip when a segmentation
+  // mismatch has to be fixed to align cleanly.
+  const segBtn = (docId: number | null | undefined): string =>
+    docId != null
+      ? ` <button type="button" class="prep-matrix-seg-btn" data-seg-doc="${docId}"`
+        + ` title="Ouvrir ce document dans la Segmentation (Brut) — corriger le découpage">&#8599; Segmenter</button>`
+      : "";
   const transTh = view.translationLangs.map((l, i) => {
     const orphans = view.uncovered[i]?.length ?? 0;
     // D-W14 — the only surface where an unlinked unit is visible/actionable.
@@ -28,13 +36,13 @@ export function buildMatrixGridHtml(view: MatrixView): string {
         + ` title="${orphans} unité(s) de cette traduction ne sont couvertes par aucun lien — ouvrir la liste">`
         + `${orphans} hors matrice</button>`
       : "";
-    return `<th class="prep-matrix-th">${_esc(l)}${badge}</th>`;
+    return `<th class="prep-matrix-th">${_esc(l)}${badge}${segBtn(view.translationDocIds[i])}</th>`;
   }).join("");
   const thead =
     `<thead><tr>`
     + `<th class="prep-matrix-th prep-matrix-th--meta">&#182;</th>`
     + `<th class="prep-matrix-th prep-matrix-th--meta">seg</th>`
-    + `<th class="prep-matrix-th prep-matrix-th--hub">${_esc(view.hubLang)}</th>`
+    + `<th class="prep-matrix-th prep-matrix-th--hub">${_esc(view.hubLang)}${segBtn(view.hubDocId)}</th>`
     + transTh
     + `</tr></thead>`;
 
