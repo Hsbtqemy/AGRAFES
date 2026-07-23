@@ -27,6 +27,7 @@ from multicorpus_engine.action_history import (
     ACTION_CURATION_APPLY,
     ACTION_MERGE_UNITS,
     ACTION_RESEGMENT,
+    ACTION_SET_PARAGRAPH,
     ACTION_SET_ROLE,
     ACTION_SPLIT_UNIT,
     ACTION_UNDO,
@@ -175,6 +176,26 @@ def _undo_set_role(
         conn.execute(
             "UPDATE units SET unit_role = ? WHERE unit_id = ?",
             (s["unit_role_before"], s["unit_id"]),
+        )
+    return {
+        "units_restored":       len(snapshots),
+        "alignments_reflagged": 0,
+        "fts_stale":            False,
+    }
+
+
+def _undo_set_paragraph(
+    conn: sqlite3.Connection, snapshots: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Revert a manual paragraph-boundary toggle (ACTION_SET_PARAGRAPH): restore the
+    verbatim ``meta_json`` (carrying the previous ``parent_n``) from snapshot. Only the
+    coarse grouping key moved — the aligned text is untouched, so no FTS invalidation
+    and no alignment re-flag (parent_n does not feed text_norm or the beads).
+    """
+    for s in snapshots:
+        conn.execute(
+            "UPDATE units SET meta_json = ? WHERE unit_id = ?",
+            (s["meta_json_before"], s["unit_id"]),
         )
     return {
         "units_restored":       len(snapshots),
@@ -441,6 +462,8 @@ def execute_undo(
         outcome = _undo_curation_apply(conn, snapshots)
     elif action_type == ACTION_SET_ROLE:
         outcome = _undo_set_role(conn, snapshots)
+    elif action_type == ACTION_SET_PARAGRAPH:
+        outcome = _undo_set_paragraph(conn, snapshots)
     elif action_type == ACTION_UPDATE_TEXT:
         outcome = _undo_update_text(conn, snapshots)
     elif action_type == ACTION_MERGE_UNITS:

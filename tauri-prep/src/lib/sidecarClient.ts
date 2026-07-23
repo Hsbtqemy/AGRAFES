@@ -1545,6 +1545,29 @@ export async function regroupCoarse(
   return conn.post("/segment/coarse", opts) as Promise<RegroupCoarseResponse>;
 }
 
+// ---------------------------------------------------------------------------
+// Manual paragraph boundary (R6) — toggle one segment as a paragraph start
+// (or remove it when it already heads a multi-segment block). Non-destructive
+// parent_n relabel, a block at a time; undoable (Mode A, action_type=set_paragraph).
+// ---------------------------------------------------------------------------
+export interface ParagraphBoundaryResponse {
+  ok: boolean;
+  doc_id: number;
+  unit_id: number;
+  unit_n: number;
+  units_changed: number;
+  blocks: number;
+  action_id: number | null;
+}
+
+export async function setParagraphBoundary(
+  conn: Conn,
+  doc_id: number,
+  unit_id: number,
+): Promise<ParagraphBoundaryResponse> {
+  return conn.post("/segment/paragraph_boundary", { doc_id, unit_id }) as Promise<ParagraphBoundaryResponse>;
+}
+
 export async function align(conn: Conn, opts: AlignOptions): Promise<AlignResponse> {
   return conn.post("/align", opts) as Promise<AlignResponse>;
 }

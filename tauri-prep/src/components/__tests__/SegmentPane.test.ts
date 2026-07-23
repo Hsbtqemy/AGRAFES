@@ -72,6 +72,10 @@ function fakeConn(cfg: {
           units_restored: 2, alignments_reflagged: 0, fts_stale: true };
       }
       if (path === "/segment/coarse") return { ok: true, doc_id: 1, blocks: 2, units_grouped: 3, units_changed: 3 };
+      if (path === "/segment/paragraph_boundary") {
+        const bb = body as { doc_id: number; unit_id: number };
+        return { ok: true, doc_id: bb.doc_id, unit_id: bb.unit_id, unit_n: 1, units_changed: 2, blocks: 2, action_id: 9 };
+      }
       return {};
     },
   } as unknown as Conn;
@@ -278,65 +282,90 @@ describe("SegmentPane — Brut view (R5.4b-3)", () => {
   });
 });
 
-describe("SegmentPane — Tours surface (R5.4c)", () => {
-  it("previews coarse blocks and applies a non-destructive regroup", async () => {
-    const calls: Call[] = [];
-    let reseg = 0;
-    const conn = fakeConn({ units: [
-      unit(1, { text_norm: "— Bonjour." }),
-      unit(2, { text_norm: "Comment ça va ?" }),
-      unit(3, { text_norm: "— Bien." }),
-    ], calls });
-    const pane = new SegmentPane(host, () => conn, () => {}, null, () => { reseg++; });
+describe("SegmentPane — Tours surface (R6 manual paragraphs)", () => {
+  // Three text-scope singletons + one already-grouped block (n=3,4 share parent_n=3).
+  const TOURS_UNITS = [
+    unit(1, { text_norm: "Tout est provisoire." }),
+    unit(2, { text_norm: "Il faut aimer." }),
+    unit(3, { text_norm: "— Bien sûr." }),
+    unit(4, { text_norm: "…répondit-elle.", parent_n: 3 }),
+  ];
+
+  async function mountTours(conn: Conn, opts: { onReseg?: () => void } = {}): Promise<SegmentPane> {
+    const pane = new SegmentPane(host, () => conn, () => {}, null, opts.onReseg ?? (() => {}));
     await pane.setDocument(1, "fr");
     (host.querySelector('[data-surface="tours"]') as HTMLButtonElement).click();
     await flush();
-    // tour boundaries at n=1 and n=3 → two coarse blocks
-    expect(host.querySelectorAll("#prep-seg-canvas-tours-blocks .prep-seg-canvas-group").length).toBe(2);
-    const applyBtn = host.querySelector("#prep-seg-canvas-tours-apply") as HTMLButtonElement;
-    expect(applyBtn).not.toBeNull();
-    applyBtn.click();
-    await flush();
-    const call = calls.find((c) => c.path === "/segment/coarse");
-    expect(call?.body).toMatchObject({ doc_id: 1, preset: "tours" });
-    expect(reseg).toBe(1);
+    return pane;
+  }
+
+  it("renders a ¶ toggle per text segment, sequential ¶ numbers, boundaries highlighted", async () => {
+    const conn = fakeConn({ units: TOURS_UNITS });
+    await mountTours(conn);
+    const btns = host.querySelectorAll<HTMLButtonElement>(".prep-seg-canvas-para-btn");
+    expect(btns.length).toBe(4);
+    // Anchors: 1, 2, 3, 3 → sequential ¶ 1, 2, 3, 3. Rows 0/1/2 open a paragraph; row 3 does not.
+    expect(btns[0].textContent).toContain("1");
+    expect(btns[0].classList.contains("prep-seg-canvas-para-btn--start")).toBe(true);
+    expect(btns[2].textContent).toContain("3");
+    expect(btns[2].classList.contains("prep-seg-canvas-para-btn--start")).toBe(true);
+    expect(btns[3].classList.contains("prep-seg-canvas-para-btn--start")).toBe(false); // n=4 joins ¶3
   });
 
-  it("a custom pattern overrides the preset and re-groups (debounced)", async () => {
+  it("clicking a ¶ toggles the boundary on that segment's unit and reloads", async () => {
     const calls: Call[] = [];
-    const conn = fakeConn({ units: [
-      unit(1, { text_norm: "BOB : salut" }),
-      unit(2, { text_norm: "suite du propos" }),
-      unit(3, { text_norm: "ANNA : bonjour" }),
-    ], calls });
-    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
-    await pane.setDocument(1, "fr");
-    (host.querySelector('[data-surface="tours"]') as HTMLButtonElement).click();
+    const conn = fakeConn({ units: TOURS_UNITS, calls });
+    await mountTours(conn);
+    // Designate a new paragraph at segment 2 (unit_id 20).
+    host.querySelectorAll<HTMLButtonElement>(".prep-seg-canvas-para-btn")[1].click();
     await flush();
-    // default tours (dialogue dash) → no dashes → a single block
-    expect(host.querySelectorAll("#prep-seg-canvas-tours-blocks .prep-seg-canvas-group").length).toBe(1);
-    const inp = host.querySelector<HTMLInputElement>("#prep-seg-canvas-tours-pat")!;
-    inp.value = "^[A-Z]+ :";
-    inp.dispatchEvent(new Event("input"));
-    await new Promise((r) => setTimeout(r, 220)); // past the 180 ms debounce
-    expect(host.querySelectorAll("#prep-seg-canvas-tours-blocks .prep-seg-canvas-group").length).toBe(2);
-    (host.querySelector("#prep-seg-canvas-tours-apply") as HTMLButtonElement).click();
-    await flush();
-    expect(calls.find((c) => c.path === "/segment/coarse")?.body).toMatchObject({ doc_id: 1, pattern: "^[A-Z]+ :" });
+    const post = calls.find((c) => c.path === "/segment/paragraph_boundary");
+    expect(post?.body).toEqual({ doc_id: 1, unit_id: 20 });
+    // The list re-fetched units after the toggle (a second /units GET path is a get, not recorded;
+    // assert the toggle round-trip completed by the eligibility refresh call).
+    expect(calls.some((c) => c.path === "/prep/undo/eligibility")).toBe(true);
   });
 
-  it("sends the pattern raw (untrimmed) so apply matches the preview", async () => {
-    const calls: Call[] = [];
-    const conn = fakeConn({ units: [unit(1, { text_norm: "— A" }), unit(2, { text_norm: "— B" })], calls });
+  it("excludes paratext (n < text_start_n) from the ¶ list", async () => {
+    const conn = fakeConn({ units: TOURS_UNITS });
     const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
-    await pane.setDocument(1, "fr");
+    await pane.setDocument(1, "fr", 3); // n=1,2 are paratext → only n=3,4 get a ¶
     (host.querySelector('[data-surface="tours"]') as HTMLButtonElement).click();
     await flush();
+    expect(host.querySelectorAll(".prep-seg-canvas-para-btn").length).toBe(2);
+    // The paratext rows are still shown (muted), just not toggleable.
+    expect(host.querySelectorAll(".prep-seg-canvas-tours-row--mute").length).toBe(2);
+  });
+
+  it("excludes an intertitre-role line (section wall) from the ¶ list — it renders muted", async () => {
+    const conn = fakeConn({ units: [
+      unit(1, { text_norm: "Para un." }),
+      unit(2, { text_norm: "Chapitre I", unit_role: "intertitre" }),
+      unit(3, { text_norm: "Para deux." }),
+    ] });
+    await mountTours(conn);
+    // Two toggles (n=1, n=3); the intertitre has no ¶ button and reads as a muted row.
+    expect(host.querySelectorAll(".prep-seg-canvas-para-btn").length).toBe(2);
+    expect(host.querySelectorAll(".prep-seg-canvas-tours-row--mute").length).toBe(1);
+  });
+
+  it("« Pré-remplir » bootstraps the grouping via /segment/coarse (preset tours by default)", async () => {
+    const calls: Call[] = [];
+    const conn = fakeConn({ units: TOURS_UNITS, calls });
+    await mountTours(conn);
+    (host.querySelector("#prep-seg-canvas-tours-prefill") as HTMLButtonElement).click();
+    await flush();
+    expect(calls.find((c) => c.path === "/segment/coarse")?.body).toMatchObject({ doc_id: 1, preset: "tours" });
+  });
+
+  it("« Pré-remplir » sends a custom pattern raw (untrimmed)", async () => {
+    const calls: Call[] = [];
+    const conn = fakeConn({ units: TOURS_UNITS, calls });
+    await mountTours(conn);
     const inp = host.querySelector<HTMLInputElement>("#prep-seg-canvas-tours-pat")!;
     inp.value = "^— "; // the trailing space is significant and must not be trimmed away
     inp.dispatchEvent(new Event("input"));
-    await new Promise((r) => setTimeout(r, 220));
-    (host.querySelector("#prep-seg-canvas-tours-apply") as HTMLButtonElement).click();
+    (host.querySelector("#prep-seg-canvas-tours-prefill") as HTMLButtonElement).click();
     await flush();
     expect(calls.find((c) => c.path === "/segment/coarse")?.body).toMatchObject({ pattern: "^— " });
   });

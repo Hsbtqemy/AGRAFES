@@ -56,6 +56,67 @@ def test_matrix_projection_cut_concat_and_omission(db_conn: sqlite3.Connection) 
     assert m["language_doc_ids"] == [1, 2, 3]  # hub(1) + EN(2) + RO(3)
 
 
+def test_paragraph_column_is_sequential_not_anchor(db_conn: sqlite3.Connection) -> None:
+    """The « paragraphe » column is a 1-based sequential index (1,2,3…), NOT the parent_n
+    anchor: consecutive segments sharing a parent_n share a number; paratext (n<text_start_n)
+    is blank; an ungrouped segment is its own paragraph."""
+    conn = db_conn
+    conn.execute(
+        "INSERT INTO documents (title,language,doc_role,text_start_n,created_at)"
+        " VALUES ('FR','fr','original',3,datetime('now'))"
+    )
+    doc_id = conn.execute("SELECT doc_id FROM documents WHERE title='FR'").fetchone()[0]
+    # n=1,2 paratext ; ¶ anchored at 3 (n=3,4) then at 5 (n=5,6) ; n=7 singleton ; n=8 no parent_n
+    rows = [
+        (1, "Titre", None), (2, "Note", None),
+        (3, "A.", '{"parent_n":3}'), (4, "B.", '{"parent_n":3}'),
+        (5, "C.", '{"parent_n":5}'), (6, "D.", '{"parent_n":5}'),
+        (7, "E.", '{"parent_n":7}'), (8, "F.", None),
+    ]
+    for n, txt, meta in rows:
+        conn.execute(
+            "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm,meta_json)"
+            " VALUES (?,'line',?,?,?,?)",
+            (doc_id, n, txt, txt.lower(), meta),
+        )
+    conn.commit()
+    m = build_alignment_matrix(conn, doc_id)
+    # (paragraphe, segment): paratext blank, then 1,1,2,2,3,4 — sequential, not the anchor 3/5/7.
+    assert [(r[0], r[1]) for r in m["rows"]] == [
+        ("", 1), ("", 2), (1, 3), (1, 4), (2, 5), (2, 6), (3, 7), (4, 8),
+    ]
+
+
+def test_intertitre_line_carries_no_paragraph_number(db_conn: sqlite3.Connection) -> None:
+    """An intertitre-role line is a section heading, not a paragraph: blank ¶, and it does not
+    advance the sequential counter — so the grid shows no ¶ toggle on it (blank ¶ → no button),
+    consistent with the engine rejecting a paragraph toggle on a section wall."""
+    conn = db_conn
+    conn.execute(
+        "INSERT INTO documents (title,language,doc_role,text_start_n,created_at)"
+        " VALUES ('FR','fr','original',1,datetime('now'))"
+    )
+    doc_id = conn.execute("SELECT doc_id FROM documents WHERE title='FR'").fetchone()[0]
+    conn.execute(  # units.unit_role is an FK to unit_roles(name) — seed the convention first
+        "INSERT INTO unit_roles (name,label) VALUES ('intertitre','Intertitre')"
+    )
+    rows = [
+        (1, "Para un.", None),
+        (2, "Chapitre I", "intertitre"),  # section heading (line + role, not a structure unit)
+        (3, "Para deux.", None),
+    ]
+    for n, txt, role in rows:
+        conn.execute(
+            "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm,unit_role)"
+            " VALUES (?,'line',?,?,?,?)",
+            (doc_id, n, txt, txt.lower(), role),
+        )
+    conn.commit()
+    m = build_alignment_matrix(conn, doc_id)
+    # n=1 → ¶1 ; intertitre → blank ¶ ; n=3 → ¶2 (the heading did NOT advance the counter).
+    assert [(r[0], r[1]) for r in m["rows"]] == [(1, 1), ("", 2), (2, 3)]
+
+
 def test_matrix_cell_links_identifiers(db_conn: sqlite3.Connection) -> None:
     """A2 (revue 3b) — cell_links[i][j] maps each cell to its links, ∥ rows × translations."""
     _setup_family(db_conn)

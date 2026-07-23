@@ -90,6 +90,7 @@
   "POST /segment/delete_structure_unit",
   "POST /segment/detect_markers",
   "POST /segment/insert_structure_unit",
+  "POST /segment/paragraph_boundary",
   "POST /segment/preview",
   "POST /segment/propagate_preview",
   "POST /segment/structure_diff",

@@ -175,8 +175,21 @@ export function buildMatrixGridHtml(view: MatrixView): string {
       ? ` <button type="button" class="prep-matrix-edit-btn" data-edit-row="${rowIdx}" data-edit-col="hub"`
         + ` title="Corriger le texte de la source (β)">&#9998;</button>`
       : "";
+    // R6 — the ¶ cell is a toggle: click a segment to open a new paragraph here (regroups
+    // the run since the previous boundary AND absorbs the tail), or click a paragraph-start
+    // segment to remove its boundary (merge upward). Resolved through the view (data-para-row
+    // → view.rows[i].hubUnitId), like every other matrix gesture. Only a real hub row WITH a
+    // paragraph number: a hub_units row is NOT filtered by text_start_n, so paratext segments
+    // reach the grid with a BLANK ¶ (they carry no number) — the engine rejects a toggle on
+    // them (out of text scope), so no button there (it would look actionable but always 400).
+    const paraCell = r.hubUnitId != null && String(r.paragraph) !== ""
+      ? `<button type="button" class="prep-matrix-para-btn${r.paragraphStart ? " prep-matrix-para-btn--start" : ""}"`
+        + ` data-para-row="${rowIdx}"`
+        + ` title="${r.paragraphStart ? "Retirer cette frontière de paragraphe (fusionner avec le précédent)" : "Commencer un nouveau paragraphe à ce segment"}">`
+        + `${_esc(String(r.paragraph))}${r.paragraphStart ? " &#182;" : ""}</button>`
+      : _esc(String(r.paragraph));
     return `<tr class="${rowCls}">`
-      + `<td class="prep-matrix-meta">${_esc(String(r.paragraph))}</td>`
+      + `<td class="prep-matrix-meta prep-matrix-meta--para">${paraCell}</td>`
       + `<td class="prep-matrix-meta">${r.segment}</td>`
       + `<td class="prep-matrix-hub">${_esc(r.hubText)}${hubEdit}</td>`
       + cells

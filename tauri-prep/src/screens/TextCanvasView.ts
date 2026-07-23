@@ -367,7 +367,7 @@ export class TextCanvasView {
     const doc = this._getDocs().find((d) => d.doc_id === this._docId) ?? null;
     const ts = doc?.text_start_n ?? null;
     if (this._mode === "segment") {
-      await this._segmentPane?.setDocument(this._docId, doc?.language ?? null);
+      await this._segmentPane?.setDocument(this._docId, doc?.language ?? null, ts);
     } else if (this._mode === "curation") {
       await this._curationPane?.setDocument(this._docId, ts);
     } else if (this._mode === "annoter") {

@@ -32,6 +32,7 @@ import sqlite3
 from typing import Any, Optional
 
 from ..anchoring import anchor_status_for_doc
+from ..coarse_grain import STRUCTURAL_ROLES
 from .errors import NotFoundError
 
 #: D10 — the omission token; a deliberately untranslated cell is never empty
@@ -124,10 +125,19 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
     ]
 
     hub_units = conn.execute(
-        "SELECT unit_id, text_raw, meta_json, unit_status FROM units"
+        "SELECT unit_id, text_raw, meta_json, unit_status, n, unit_role FROM units"
         " WHERE doc_id=? AND unit_type='line' ORDER BY n",
         (family_root_id,),
     ).fetchall()
+    # The « paragraphe » column is a 1-based SEQUENTIAL paragraph index (1, 2, 3…), NOT the
+    # coarse anchor (parent_n): a paragraph groups consecutive segments sharing a parent_n
+    # (ungrouped → each segment is its own paragraph). Paratext (n < text_start_n) carries no
+    # paragraph number, as before. The anchor itself never surfaces to the client — the edit
+    # gesture addresses segments by their hub unit_id.
+    _tsn_row = conn.execute(
+        "SELECT text_start_n FROM documents WHERE doc_id=?", (family_root_id,)
+    ).fetchone()
+    hub_text_start_n = _tsn_row[0] if _tsn_row and _tsn_row[0] is not None else None
 
     # Per-cell « non traduit » (D-W8, mig 028): (pivot_unit_id, target_doc_id) -> status.
     cell_status_map: dict[tuple[int, int], str] = {
@@ -254,10 +264,27 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
             {"row": len(rows) - 1, "doc_id": tdoc_a, "unit_id": uid_a, "n": n_a}
         )
 
+    para_counter = 0
+    prev_anchor: Any = object()  # sentinel — the first text segment always opens ¶ 1
+
     for add in additions_by_anchor.get(-1, []):
         _append_addition(add)
-    for i, (uid, text_raw, meta_json, hub_status) in enumerate(hub_units):
-        row = [_parent_n(meta_json), i + 1, (text_raw or "").strip()]
+    for i, (uid, text_raw, meta_json, hub_status, n, unit_role) in enumerate(hub_units):
+        is_paratext = hub_text_start_n is not None and n < hub_text_start_n
+        # An intertitre-role line is a section heading, not a paragraph (derive_coarse_blocks
+        # classes it kind='heading'; the toggle treats it as a section wall). It carries no
+        # ¶ number and does not advance the counter — so the client shows no ¶ toggle on it
+        # (blank ¶ → no button), consistent with the engine rejecting a toggle there.
+        if is_paratext or unit_role in STRUCTURAL_ROLES:
+            para_label: Any = ""
+        else:
+            pn = _parent_n(meta_json)
+            anchor = pn if pn != "" else n  # ungrouped segment → its own n is the anchor
+            if anchor != prev_anchor:
+                para_counter += 1
+                prev_anchor = anchor
+            para_label = para_counter
+        row = [para_label, i + 1, (text_raw or "").strip()]
         row_links: list[list[dict[str, Any]]] = []
         row_statuses: list[Any] = []
         for tdoc, _lang in translations:

@@ -23,7 +23,7 @@ import type { Conn, FamilyRecord, MatrixCellLink, FamilyAlignOptions, AlignBatch
 import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
   setAlignCellStatus, bulkSetUnitStatus, alignFamily, resolveCollisions,
-  retargetCandidates, retargetAlignLink, updateUnitTextNorm,
+  retargetCandidates, retargetAlignLink, updateUnitTextNorm, setParagraphBoundary,
 } from "../lib/sidecarClient.ts";
 import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
 import type { AlignStrategy } from "../lib/alignRunBar.ts";
@@ -216,6 +216,9 @@ export class AlignMatrixView {
       // Stylo (β) — correct a cell's text in place (source or a clean translation).
       const editBtn = t.closest<HTMLButtonElement>(".prep-matrix-edit-btn");
       if (editBtn) { this._openCellEdit(editBtn, Number(editBtn.dataset.editRow), editBtn.dataset.editCol ?? ""); return; }
+      // R6 — ¶ toggle: designate this segment as a paragraph start (or remove its boundary).
+      const paraBtn = t.closest<HTMLButtonElement>(".prep-matrix-para-btn");
+      if (paraBtn) { void this._onParagraphToggle(Number(paraBtn.dataset.paraRow)); return; }
       // Header shortcut → open this document's Segmentation layer (Brut).
       const segBtn = t.closest<HTMLButtonElement>(".prep-matrix-seg-btn");
       if (segBtn) this._cb.onOpenSegmentation?.(Number(segBtn.dataset.segDoc));
@@ -696,6 +699,35 @@ export class AlignMatrixView {
     } catch (e) {
       this._cb.toast?.(`✗ ${e instanceof Error ? e.message : String(e)}`, true);
       // keep the editor open so the user can retry
+    } finally {
+      this._cutBusy = false;
+    }
+  }
+
+  /** R6 — toggle a paragraph boundary at the row's hub segment (designate a new paragraph
+   *  start, or remove an existing boundary). Non-destructive parent_n relabel a block at a
+   *  time; the reload re-projects the ¶ column (sequential numbers). F1 + busy guards, like
+   *  every other matrix mutation. */
+  private async _onParagraphToggle(rowIdx: number): Promise<void> {
+    const view = this._view;
+    const conn = this._getConn();
+    if (!view || !conn || this._cutBusy) return;
+    if (conn !== this._loadedConn) { // F1 — a corpus switch since load
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice", true);
+      this._resetMatrix();
+      return;
+    }
+    const row = view.rows[rowIdx];
+    const docId = view.hubDocId;
+    if (!row || row.hubUnitId == null || docId == null) return;
+    const wasStart = row.paragraphStart;
+    this._cutBusy = true; // block concurrent gestures during the write
+    try {
+      await setParagraphBoundary(conn, docId, row.hubUnitId);
+      await this._reloadPreservingScroll();
+      this._cb.toast?.(wasStart ? "✓ Frontière de paragraphe retirée" : "✓ Nouveau paragraphe");
+    } catch (e) {
+      this._cb.toast?.(`✗ ${e instanceof Error ? e.message : String(e)}`, true);
     } finally {
       this._cutBusy = false;
     }

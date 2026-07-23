@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.61"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.62"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -245,6 +245,13 @@ API_VERSION = CONTRACT_VERSION
 #         duplicate (pivot,target) link is refused. Logic in
 #         services/align_links_service.set_pivot. Additive enum+field → no new route →
 #         snapshot unchanged; openapi moves (version); .md action list updated.
+# 1.6.62: paragraphes manuels (R6). New POST /segment/paragraph_boundary — toggle one line
+#         segment as a paragraph start (or remove it when it already heads a multi-segment
+#         block): the coarse grain is relabelled a block at a time (regroupe le run précédent
+#         ET absorbe la queue en un geste). Non-destructive (only meta_json.parent_n moves),
+#         idempotent, undoable (Mode A, action_type=set_paragraph). No migration (parent_n in
+#         meta_json). NEW route → openapi + snapshot + .md all move. Logic in
+#         coarse_grain.toggle_paragraph_boundary / set_paragraph_boundary_document.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1200,6 +1207,37 @@ def openapi_spec() -> dict[str, Any]:
                             "content": {
                                 "application/json": {
                                     "schema": {"$ref": "#/components/schemas/SegmentCoarseResponse"},
+                                }
+                            },
+                        },
+                        "400": {
+                            "description": "Bad request",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            "/segment/paragraph_boundary": {
+                "post": {
+                    "summary": "Toggle a manual paragraph boundary (R6) — non-destructive parent_n relabel, undoable",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SegmentParagraphBoundaryRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Paragraph boundary toggle report",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/SegmentParagraphBoundaryResponse"},
                                 }
                             },
                         },
@@ -3402,6 +3440,18 @@ def openapi_spec() -> dict[str, Any]:
                     },
                     "additionalProperties": False,
                 },
+                "SegmentParagraphBoundaryRequest": {
+                    "type": "object",
+                    "required": ["doc_id", "unit_id"],
+                    "properties": {
+                        "doc_id": {"type": "integer"},
+                        "unit_id": {
+                            "type": "integer",
+                            "description": "R6 — unit_id of the line segment designated as a paragraph start (or, if it already heads a multi-segment block, removed as a boundary). Toggles meta_json.parent_n a block at a time; non-destructive and undoable (Mode A).",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
                 "FamilySegmentRequest": {
                     "type": "object",
                     "properties": {
@@ -3576,6 +3626,23 @@ def openapi_spec() -> dict[str, Any]:
                                 "blocks": {"type": "integer", "description": "distinct coarse blocks after regrouping"},
                                 "units_grouped": {"type": "integer", "description": "line units assigned a parent_n"},
                                 "units_changed": {"type": "integer", "description": "line units whose parent_n actually changed"},
+                            },
+                        },
+                    ]
+                },
+                "SegmentParagraphBoundaryResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["doc_id", "unit_id", "unit_n", "units_changed", "blocks"],
+                            "properties": {
+                                "doc_id": {"type": "integer"},
+                                "unit_id": {"type": "integer"},
+                                "unit_n": {"type": "integer", "description": "the target's resolved position-independent n"},
+                                "units_changed": {"type": "integer", "description": "line units whose parent_n actually moved"},
+                                "blocks": {"type": "integer", "description": "distinct coarse blocks after the toggle"},
+                                "action_id": {"type": "integer", "nullable": True, "description": "Mode A undo entry id, or null when nothing changed"},
                             },
                         },
                     ]

@@ -50,6 +50,55 @@ describe("buildMatrixGridHtml", () => {
     expect(html).toContain("prep-matrix-row--para-start");
   });
 
+  it("R6: renders a clickable ¶ toggle per hub row, highlighting paragraph starts", () => {
+    const withUnits: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      language_doc_ids: [2, 3],
+      hub_unit_ids: [10, 11, 12],
+      rows: [
+        ["1", 1, "FR1", "EN1"],
+        ["1", 2, "FR2", "EN2"],
+        ["2", 3, "FR3", "EN3"],
+      ],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(withUnits));
+    // A ¶ toggle per hub row, addressed by row index (resolved through the view).
+    expect(html).toContain('class="prep-matrix-para-btn prep-matrix-para-btn--start" data-para-row="0"');
+    expect(html).toContain('class="prep-matrix-para-btn" data-para-row="1"'); // mid-paragraph: plain
+    expect(html).toContain('prep-matrix-para-btn--start" data-para-row="2"'); // ¶2 start
+    // The mid-paragraph row is NOT a boundary.
+    expect(html).not.toMatch(/prep-matrix-para-btn--start" data-para-row="1"/);
+  });
+
+  it("R6: no ¶ toggle when hub_unit_ids are absent (older sidecar)", () => {
+    const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    expect(html).not.toContain("prep-matrix-para-btn");
+  });
+
+  it("R6: no ¶ toggle on a paratext hub row (blank ¶ — out of text scope, engine would 400)", () => {
+    // hub_units is not filtered by text_start_n, so a paratext segment reaches the grid with a
+    // real hub_unit_id but a BLANK paragraph. It must not carry a clickable ¶ (would always error).
+    const withParatext: AlignMatrix = {
+      headers: ["paragraphe", "segment", "fr", "en"],
+      languages: ["fr", "en"],
+      hub_doc_id: 2,
+      language_doc_ids: [2, 3],
+      hub_unit_ids: [99, 101],
+      rows: [
+        ["", 1, "TITRE (paratexte)", ""], // paratext: blank ¶
+        ["1", 2, "FR1", "EN1"],           // first real text segment
+      ],
+    };
+    const html = buildMatrixGridHtml(buildMatrixView(withParatext));
+    // Exactly one ¶ toggle — on the text row (index 1), never the paratext row (index 0).
+    // Count data-para-row (unique per button); the class alone double-matches on a --start button.
+    expect(html.match(/data-para-row=/g) ?? []).toHaveLength(1);
+    expect(html).toContain('data-para-row="1"');
+    expect(html).not.toContain('data-para-row="0"');
+  });
+
   it("puts a « ✂ Couper » button on fused cells only, with its cell coordinates (3b)", () => {
     const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
     // Exactly one fused cell: row index 3 (the repeat of "SHARED"), translation column 0.

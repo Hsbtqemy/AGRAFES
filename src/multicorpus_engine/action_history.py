@@ -20,6 +20,7 @@ ACTION_SPLIT_UNIT     = "split_unit"
 ACTION_RESEGMENT      = "resegment"
 ACTION_UPDATE_TEXT    = "update_text"
 ACTION_SET_ROLE       = "set_role"
+ACTION_SET_PARAGRAPH  = "set_paragraph"
 ACTION_UNDO           = "undo"
 
 ALLOWED_ACTION_TYPES = frozenset({
@@ -29,6 +30,7 @@ ALLOWED_ACTION_TYPES = frozenset({
     ACTION_RESEGMENT,
     ACTION_UPDATE_TEXT,
     ACTION_SET_ROLE,
+    ACTION_SET_PARAGRAPH,
     ACTION_UNDO,
 })
 

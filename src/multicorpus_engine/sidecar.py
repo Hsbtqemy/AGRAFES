@@ -482,6 +482,7 @@ _WRITE_PATHS = frozenset({
     "/curate",
     "/segment",
     "/segment/coarse",
+    "/segment/paragraph_boundary",
     # Curation exceptions — set/delete write the DB (were missing → token bypass, SID-02)
     "/curate/exceptions/set", "/curate/exceptions/delete",
     # Unit structural edits
@@ -1005,6 +1006,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     self._handle_segment(body)
             elif path == "/segment/coarse":
                 self._handle_segment_coarse(body)
+            elif path == "/segment/paragraph_boundary":
+                self._handle_segment_paragraph_boundary(body)
             elif path.startswith("/families/") and path.endswith("/segment"):
                 parts = path.split("/")  # ['', 'families', '{id}', 'segment']
                 if len(parts) == 4:
@@ -5504,6 +5507,72 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
             return
+        self._send_json(success_payload(data))
+
+    def _handle_segment_paragraph_boundary(self, body: dict) -> None:
+        # R6 — manual paragraph boundary: toggle one segment as a paragraph start (or
+        # remove an existing one) and relabel meta_json.parent_n a block at a time.
+        # Non-destructive (only parent_n moves), idempotent, undoable (Mode A). Logic
+        # lives in coarse_grain (growth-gate); this handler is a thin adapter.
+        from multicorpus_engine.coarse_grain import set_paragraph_boundary_document
+        from multicorpus_engine.action_history import (
+            ACTION_SET_PARAGRAPH,
+            insert_unit_snapshots,
+            record_prep_action,
+        )
+
+        doc_id = body.get("doc_id")
+        unit_id = body.get("unit_id")
+        if not isinstance(doc_id, int) or not isinstance(unit_id, int):
+            self._send_error(
+                "doc_id and unit_id must be integers", code=ERR_BAD_REQUEST, http_status=400
+            )
+            return
+
+        with self._lock():
+            conn = self._conn()
+
+            # Mode A undo: snapshot meta_json for every unit whose parent_n moves, so
+            # undo restores the previous grouping. Only records when something changes.
+            def _recorder(d_id: int, snaps: list[dict]) -> int | None:
+                if not snaps:
+                    return None
+                n = len(snaps)
+                action_id = record_prep_action(
+                    conn,
+                    doc_id=d_id,
+                    action_type=ACTION_SET_PARAGRAPH,
+                    description=(
+                        f"Paragraphe · {n} segment"
+                        f"{'s' if n > 1 else ''} regroupé{'s' if n > 1 else ''}"
+                    ),
+                    context={"unit_id": unit_id},
+                )
+                insert_unit_snapshots(
+                    conn,
+                    action_id,
+                    [
+                        {
+                            "unit_id":          s["unit_id"],
+                            # text_norm_before is required by the snapshot schema but this
+                            # action never touches text; "" keeps the row well-formed and
+                            # the undo path only reads meta_json_before.
+                            "text_norm_before": "",
+                            "meta_json_before": s["meta_json_before"],
+                        }
+                        for s in snaps
+                    ],
+                )
+                return action_id
+
+            try:
+                data = set_paragraph_boundary_document(
+                    conn, doc_id, unit_id, record_action=_recorder
+                )
+            except ValueError as exc:
+                self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)
+                return
+
         self._send_json(success_payload(data))
 
     def _handle_segment(self, body: dict) -> None:

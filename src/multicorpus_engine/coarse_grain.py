@@ -311,3 +311,228 @@ def regroup_document_coarse(
         "units_grouped": len(assignments),
         "units_changed": changed,
     }
+
+
+# --- R6: manual paragraph boundaries (per-unit toggle) ----------------------
+#
+# The ascendant regroup above is *pattern-driven* (Tours). This is its manual
+# sibling: the user designates one segment as a paragraph start (or removes an
+# existing one) in the matrix / Tours canvas, and the coarse grain updates a
+# block at a time. Same non-destructive contract (only parent_n moves), same
+# 2-grain output. The gesture is a **toggle** with a deliberate asymmetry so a
+# single click does the whole job ("désigner le début du suivant" → regroupe le
+# run précédent ET absorbe la queue). See DESIGN_prep_text_canvas §R6.
+
+
+def toggle_paragraph_boundary(
+    units: Iterable[dict[str, Any]], target_n: int
+) -> dict[int, int]:
+    """Toggle the paragraph boundary at ``target_n`` (manual coarse grouping, R6).
+
+    ``units`` are the document's units in **text scope** (paratext ``n < text_start_n``
+    already excluded by the caller), each a dict with ``n`` (int), ``parent_n``
+    (int|None — the current coarse anchor) and ``divider`` (bool — a section wall:
+    ``unit_type='structure'`` or an intertitre-role line). Order is normalised by ``n``.
+
+    A *paragraph boundary* is the start of a **multi-segment** block or a section wall;
+    a lone (singleton) segment is **not** one. That single rule makes the toggle
+    unambiguous even from the all-singletons baseline:
+
+    * ``target_n`` currently **heads a multi-segment block** → REMOVE it: its block folds
+      into the preceding paragraph of the same section (merge upward).
+    * otherwise → DESIGNATE it: the run ``[P, target)`` — back to the previous real
+      boundary or the section start — becomes one paragraph anchored at ``P``, and
+      ``[target, Q)`` — up to the next real boundary or the section end — becomes one
+      paragraph anchored at ``target``. So one click regroups the preceding segments
+      *and* absorbs the tail; designating a segment *inside* an existing block splits it.
+
+    Pure — the caller persists ``parent_n``. Returns ``{n: parent_n}`` for **every**
+    non-divider line unit (its anchor after the toggle); the caller diffs against the
+    stored value and writes only what changed (idempotent). Dividers are never
+    reassigned. A no-op (``target_n`` is a divider, is unknown, or is the section's
+    opening boundary being removed) returns the *current* assignment unchanged.
+
+    Known v1 limit: because "boundary" requires ``size > 1``, a legitimate one-segment
+    paragraph reads as an ungrouped singleton, so re-toggling it re-designates instead
+    of removing. It still *displays* as its own paragraph — only the toggle direction
+    is affected. Acceptable until a distinct marker is warranted.
+    """
+    rows = sorted(units, key=lambda u: u["n"])
+    n_list = [u["n"] for u in rows]
+    is_div = {u["n"]: bool(u.get("divider")) for u in rows}
+    # Current effective anchor: parent_n when set, else the unit's own n.
+    anchor: dict[int, int] = {}
+    for u in rows:
+        pn = u.get("parent_n")
+        anchor[u["n"]] = pn if pn is not None else u["n"]
+    # Block size per anchor (non-divider units only).
+    size: dict[int, int] = {}
+    for u in rows:
+        if not is_div[u["n"]]:
+            a = anchor[u["n"]]
+            size[a] = size.get(a, 0) + 1
+
+    def current() -> dict[int, int]:
+        return {u["n"]: anchor[u["n"]] for u in rows if not is_div[u["n"]]}
+
+    if target_n not in anchor or is_div.get(target_n):
+        return current()  # no-op: unknown n or a section wall
+
+    idx = n_list.index(target_n)
+    # Section bounds = nearest dividers on each side (exclusive). The region
+    # (left_wall, right_wall) is divider-free by construction.
+    left_wall = -1
+    for j in range(idx - 1, -1, -1):
+        if is_div[n_list[j]]:
+            left_wall = j
+            break
+    right_wall = len(rows)
+    for k in range(idx + 1, len(rows)):
+        if is_div[n_list[k]]:
+            right_wall = k
+            break
+
+    def is_real_boundary(j: int) -> bool:
+        n = n_list[j]
+        return (not is_div[n]) and anchor[n] == n and size.get(n, 0) > 1
+
+    result = current()
+    target_is_boundary = anchor[target_n] == target_n and size.get(target_n, 0) > 1
+
+    if target_is_boundary:
+        # REMOVE — fold target's block into the preceding paragraph of the section.
+        if idx - 1 <= left_wall:
+            return result  # target opens the section — nothing before to merge into
+        prev_anchor = anchor[n_list[idx - 1]]
+        for u in rows:
+            n = u["n"]
+            if not is_div[n] and anchor[n] == target_n:
+                result[n] = prev_anchor
+        return result
+
+    # DESIGNATE — [P, target) → P ; [target, Q) → target.
+    # P = last real boundary before target in the section, else the section start.
+    p_index = left_wall + 1
+    for j in range(idx - 1, left_wall, -1):
+        if is_real_boundary(j):
+            p_index = j
+            break
+    p_anchor = n_list[p_index]
+    # Q = next real boundary after target in the section, else the section end.
+    q_index = right_wall
+    for k in range(idx + 1, right_wall):
+        if is_real_boundary(k):
+            q_index = k
+            break
+    for j in range(p_index, idx):
+        n = n_list[j]
+        if not is_div[n]:
+            result[n] = p_anchor
+    for j in range(idx, q_index):
+        n = n_list[j]
+        if not is_div[n]:
+            result[n] = target_n
+    return result
+
+
+def set_paragraph_boundary_document(
+    conn: sqlite3.Connection,
+    doc_id: int,
+    unit_id: int,
+    *,
+    record_action: Any = None,
+) -> dict[str, Any]:
+    """Persist a manual paragraph-boundary toggle at ``(doc_id, unit_id)`` (R6).
+
+    ``unit_id`` (not the position-based ``n``) identifies the target segment — both front
+    surfaces (matrix ``hubUnitId``, canvas unit list) carry it, and it is unambiguous even
+    when paratext exclusion makes position ≠ ``n``.
+
+    Non-destructive: only ``meta_json.parent_n`` is rewritten, on line units in **text
+    scope** (``n >= documents.text_start_n``); paratext, fine text, ``alignment_links``
+    and FTS are untouched. Idempotent per unit (a line already carrying the target
+    ``parent_n`` is skipped). Structure / intertitre units act as section walls and are
+    never reassigned.
+
+    Mode A undo: if ``record_action`` is given it is called *before* the writes with
+    ``(doc_id, [{unit_id, meta_json_before}, ...])`` for the units about to change, and
+    may return an ``action_id`` (or ``None`` when there is nothing to record). Raises
+    ``ValueError`` (→ 400) if ``unit_id`` is not a line segment of this doc in text scope.
+    """
+    row = conn.execute(
+        "SELECT text_start_n FROM documents WHERE doc_id = ?", (doc_id,)
+    ).fetchone()
+    text_start_n = (row["text_start_n"] if row is not None else None) or 0
+
+    urows = conn.execute(
+        "SELECT unit_id, n, unit_type, unit_role, meta_json FROM units"
+        " WHERE doc_id = ? AND n >= ? ORDER BY n",
+        (doc_id, text_start_n),
+    ).fetchall()
+
+    units: list[dict[str, Any]] = []
+    by_n: dict[int, sqlite3.Row] = {}
+    target: sqlite3.Row | None = None
+    for r in urows:
+        is_line = r["unit_type"] == "line"
+        divider = (not is_line) or (r["unit_role"] in STRUCTURAL_ROLES)
+        pn = _parse_meta(r["meta_json"]).get("parent_n") if is_line else None
+        units.append({"n": r["n"], "parent_n": pn, "divider": divider})
+        by_n[r["n"]] = r
+        if r["unit_id"] == unit_id:
+            target = r
+
+    # Reject a target that is not an editable text segment — paratext, a structure unit, an
+    # intertitre-role heading (all section walls), or a foreign doc — rather than silently
+    # no-op, so the UI never claims a phantom change on a segment it should not offer.
+    if target is None or target["unit_type"] != "line" or target["unit_role"] in STRUCTURAL_ROLES:
+        raise ValueError(
+            f"unit_id={unit_id} is not an editable text segment "
+            f"(paratext or section heading) for doc_id={doc_id}"
+        )
+    unit_n = target["n"]
+
+    assignments = toggle_paragraph_boundary(units, unit_n)
+
+    # Diff by EFFECTIVE anchor (a null parent_n and an explicit parent_n == n both mean "this
+    # segment is its own paragraph"): only a unit whose effective anchor genuinely moves is
+    # written. This keeps a toggle's write set — and its undo snapshot — to the segments it
+    # actually regroups, instead of also flipping every still-ungrouped singleton elsewhere in
+    # the doc from null → own-n (an equivalent no-op that would only bloat the snapshot). A
+    # block start therefore keeps its null (own n = anchor); every reader normalises null↔own-n.
+    changes: list[tuple[sqlite3.Row, int, Any]] = []  # (row, new_parent_n, meta_before)
+    for n, new_pn in assignments.items():
+        r = by_n[n]
+        stored_pn = _parse_meta(r["meta_json"]).get("parent_n")
+        stored_anchor = stored_pn if stored_pn is not None else n
+        if stored_anchor == new_pn:
+            continue  # effective paragraph anchor unchanged
+        changes.append((r, new_pn, r["meta_json"]))
+
+    action_id: int | None = None
+    if changes and record_action is not None:
+        action_id = record_action(
+            doc_id,
+            [
+                {"unit_id": int(r["unit_id"]), "meta_json_before": meta_before}
+                for (r, _pn, meta_before) in changes
+            ],
+        )
+
+    for r, new_pn, _meta_before in changes:
+        meta = _parse_meta(r["meta_json"])
+        meta["parent_n"] = new_pn
+        conn.execute(
+            "UPDATE units SET meta_json = ? WHERE unit_id = ?",
+            (json.dumps(meta), int(r["unit_id"])),
+        )
+    conn.commit()
+
+    return {
+        "doc_id": doc_id,
+        "unit_id": unit_id,
+        "unit_n": unit_n,
+        "units_changed": len(changes),
+        "blocks": len(set(assignments.values())),
+        "action_id": action_id,
+    }

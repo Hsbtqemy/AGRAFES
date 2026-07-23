@@ -3061,6 +3061,65 @@
           }
         ]
       },
+      "SegmentParagraphBoundaryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "unit_id": {
+            "description": "R6 — unit_id of the line segment designated as a paragraph start (or, if it already heads a multi-segment block, removed as a boundary). Toggles meta_json.parent_n a block at a time; non-destructive and undoable (Mode A).",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "doc_id",
+          "unit_id"
+        ],
+        "type": "object"
+      },
+      "SegmentParagraphBoundaryResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "action_id": {
+                "description": "Mode A undo entry id, or null when nothing changed",
+                "nullable": true,
+                "type": "integer"
+              },
+              "blocks": {
+                "description": "distinct coarse blocks after the toggle",
+                "type": "integer"
+              },
+              "doc_id": {
+                "type": "integer"
+              },
+              "unit_id": {
+                "type": "integer"
+              },
+              "unit_n": {
+                "description": "the target's resolved position-independent n",
+                "type": "integer"
+              },
+              "units_changed": {
+                "description": "line units whose parent_n actually moved",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "doc_id",
+              "unit_id",
+              "unit_n",
+              "units_changed",
+              "blocks"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "SegmentPreviewRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4293,8 +4352,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.61",
-    "x-contract-version": "1.6.61"
+    "version": "1.6.62",
+    "x-contract-version": "1.6.62"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -8346,6 +8405,43 @@
           }
         },
         "summary": "Insert a structure unit before a given n (token required)"
+      }
+    },
+    "/segment/paragraph_boundary": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentParagraphBoundaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentParagraphBoundaryResponse"
+                }
+              }
+            },
+            "description": "Paragraph boundary toggle report"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Toggle a manual paragraph boundary (R6) — non-destructive parent_n relabel, undoable"
       }
     },
     "/segment/preview": {
