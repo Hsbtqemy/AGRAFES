@@ -283,7 +283,13 @@ export class AlignMatrixView {
     const conn = this._getConn();
     if (!conn || !this._root) return;
     try {
-      this._families = (await getFamilies(conn)).filter((f) => f.parent);
+      this._families = (await getFamilies(conn))
+        .filter((f) => f.parent)
+        // Alphabetical by parent title (case/accent-insensitive), family_id as a stable
+        // tiebreak — the server order is insertion-ish and hard to scan.
+        .sort((a, b) =>
+          a.parent!.title.localeCompare(b.parent!.title, "fr", { sensitivity: "base" })
+          || a.family_id - b.family_id);
     } catch {
       this._families = [];
     }

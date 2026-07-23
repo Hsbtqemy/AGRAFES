@@ -88,6 +88,38 @@ describe("AlignMatrixView.selectAndLoadFamily (D-P9-2b)", () => {
     expect(el.querySelector(".prep-matrix-grid")).toBeNull();
   });
 
+  it("trie le sélecteur de famille par titre (A→Z), family_id en départage stable", async () => {
+    const families = [
+      { family_id: 1, parent: { doc_id: 1, title: "Molière" }, children: [], stats: { total_docs: 2 } },
+      { family_id: 5, parent: { doc_id: 9, title: "Corpus" }, children: [], stats: { total_docs: 1 } },
+      { family_id: 3, parent: { doc_id: 5, title: "Balzac" }, children: [], stats: { total_docs: 2 } },
+      { family_id: 2, parent: { doc_id: 3, title: "Corpus" }, children: [], stats: { total_docs: 4 } },
+    ];
+    const conn = {
+      baseUrl: "http://test", token: null,
+      get: async (path: string) => { if (path === "/families") return { families }; throw new Error(`unexpected GET ${path}`); },
+      post: async () => ({}),
+      put: async () => ({}),
+    } as unknown as Conn;
+    const view = new AlignMatrixView(() => conn, { toast: () => {} });
+    const el = view.render();
+    document.body.appendChild(el);
+
+    view.onActivated();
+    await vi.waitFor(() => {
+      expect(el.querySelectorAll("#matrix-family option[value]:not([value=''])").length).toBe(4);
+    });
+    const labels = Array.from(el.querySelectorAll<HTMLOptionElement>("#matrix-family option"))
+      .filter((o) => o.value) // skip the "— choisir —" placeholder (value="")
+      .map((o) => o.textContent);
+    expect(labels).toEqual([
+      "#3 Balzac (2 docs)",
+      "#2 Corpus (4 docs)", // Corpus tie → lower family_id first
+      "#5 Corpus (1 docs)",
+      "#1 Molière (2 docs)",
+    ]);
+  });
+
   it("converge avec le _loadFamilies concurrent d'onActivated (pas de divergence)", async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
     const view = new AlignMatrixView(() => makeConn(calls), { toast: () => {} });
