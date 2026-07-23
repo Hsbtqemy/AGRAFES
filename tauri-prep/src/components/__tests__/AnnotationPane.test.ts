@@ -35,7 +35,7 @@ function modelInfo(name: string, language: string, source: ModelSource, over: Pa
 function fakeConn(cfg: {
   units?: UnitRecord[]; tokens?: TokenRecord[]; models?: ModelInfo[];
   onEnqueue?: (body: unknown) => void; onDownload?: (body: unknown) => void;
-  onUpdate?: (body: unknown) => void;
+  onUpdate?: (body: unknown) => void; onUpdateText?: (body: unknown) => void;
 }): Conn {
   return {
     get: async (path: string) => {
@@ -59,6 +59,11 @@ function fakeConn(cfg: {
       if (path === "/jobs/enqueue") { cfg.onEnqueue?.(body); return { job: { job_id: "j1" } }; }
       if (path === "/models/download") { cfg.onDownload?.(body); return { job: { job_id: "m1" } }; }
       if (path === "/tokens/update") { cfg.onUpdate?.(body); return { updated: 1, token: {} }; }
+      if (path === "/units/update_text") {
+        cfg.onUpdateText?.(body);
+        const b = body as { unit_id: number; text_norm: string };
+        return { unit_id: b.unit_id, doc_id: 1, n: 1, external_id: null, text_raw: "verbatim", text_norm: b.text_norm };
+      }
       return {};
     },
   } as unknown as Conn;
@@ -460,6 +465,106 @@ describe("AnnotationPane", () => {
     await flush();
     expect(host.querySelectorAll(".prep-annot-tok-match").length).toBe(1);
     expect(host.querySelector("#prep-annot-search-count")?.textContent).toBe("1 / 1");
+  });
+
+  // ─── Stylo transversal : correction inline dans la couche Annotation ─────────
+
+  it("expose le stylo (✎) sur les unités de la couche Annotation", async () => {
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      tokens: [token(10, 1, 1, "le", "DET")], // only unit 1 annotated
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    // The affordance is present on both the annotated and the plain unit.
+    expect(row(1).querySelector(".prep-conv-unit-edit")).not.toBeNull();
+    expect(row(2).querySelector(".prep-conv-unit-edit")).not.toBeNull();
+  });
+
+  it("corriger une unité annotée : persiste text_norm (D-C1), marque « périmée », retire l'overlay", async () => {
+    let saved: unknown = null;
+    const conn = fakeConn({
+      units: [unit(1)],
+      tokens: [token(10, 1, 1, "le", "DET"), token(10, 1, 2, "chat", "NOUN")],
+      onUpdateText: (b) => { saved = b; },
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    expect(row(1).querySelectorAll(".annot-prose-token").length).toBe(2); // overlay present
+
+    row(1).querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click();
+    const ta = host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!;
+    ta.value = "le chien";
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-editor-wrap .btn-primary")!.click();
+    await flush();
+
+    // Persisted as text_norm only (keeps text_raw = provenance).
+    expect(saved).toEqual({ unit_id: 10, text_norm: "le chien" });
+    // Overlay dropped, row flagged stale, corrected plain text shown, tokens kept (a chip).
+    const r = row(1);
+    expect(r.classList.contains("prep-annot-unit-row--stale")).toBe(true);
+    expect(r.querySelectorAll(".annot-prose-token").length).toBe(0);
+    expect(r.querySelector(".prep-annot-stale-chip")).not.toBeNull();
+    expect(r.querySelector<HTMLElement>(".prep-conv-unit-text")?.textContent).toBe("le chien");
+    expect(host.querySelector("#prep-annot-summary")?.textContent).toContain("à réannoter");
+  });
+
+  it("corriger une unité NON annotée ne crée pas d'état périmé (rien à invalider)", async () => {
+    let saved: unknown = null;
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      tokens: [token(10, 1, 1, "x", "NOUN")], // unit 2 has no tokens
+      onUpdateText: (b) => { saved = b; },
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+
+    row(2).querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click();
+    host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!.value = "u2 corrigé";
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-editor-wrap .btn-primary")!.click();
+    await flush();
+
+    expect(saved).toEqual({ unit_id: 20, text_norm: "u2 corrigé" });
+    expect(row(2).classList.contains("prep-annot-unit-row--stale")).toBe(false);
+    expect(host.querySelector("#prep-annot-summary")?.textContent).not.toContain("réannoter");
+  });
+
+  it("une unité corrigée au stylo sort du jeu de recherche de tokens (#22)", async () => {
+    const conn = fakeConn({
+      units: [unit(1), unit(2)],
+      tokens: [token(10, 1, 1, "chat", "NOUN"), token(20, 2, 1, "chat", "NOUN")],
+      onUpdateText: () => {},
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    const input = host.querySelector<HTMLInputElement>("#prep-annot-search")!;
+    input.value = "chat";
+    input.dispatchEvent(new Event("input"));
+    expect(host.querySelector("#prep-annot-search-count")?.textContent).toBe("1 / 2");
+    // Correct unit 1's text → its (now stale) tokens must leave the searchable set.
+    row(1).querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click();
+    host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!.value = "chien";
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-editor-wrap .btn-primary")!.click();
+    await flush();
+    expect(host.querySelector("#prep-annot-search-count")?.textContent).toBe("1 / 1");
+  });
+
+  it("changer de document efface l'état « périmé »", async () => {
+    const conn = fakeConn({
+      units: [unit(1)],
+      tokens: [token(10, 1, 1, "le", "DET")],
+      onUpdateText: () => {},
+    });
+    const pane = new AnnotationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    row(1).querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click();
+    host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!.value = "corrigé";
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-editor-wrap .btn-primary")!.click();
+    await flush();
+    expect(host.querySelectorAll(".prep-annot-unit-row--stale").length).toBe(1);
+
+    await pane.setDocument(1, null); // reload the doc → stale state cleared
+    expect(host.querySelectorAll(".prep-annot-unit-row--stale").length).toBe(0);
   });
 
   it("focusToken opens the editor for a loaded token; no-op for an unknown id (#23)", async () => {

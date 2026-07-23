@@ -157,3 +157,44 @@ reste, lui, sans migration : colonne = mig 011.)*
   simple** qu'α : pas d'état staged à porter — l'édit est appliqué et oublié).
 - **Reload** : après β, rafraîchir l'unité affichée depuis le retour de l'endpoint.
 - **D-C7** tranché (annulabilité) avant de chiffrer le lot moteur.
+
+## 9. Branchement Annotation + convergence inspecteur (livré 2026-07-23)
+
+Deux différés du §6 traités. **Constat clé** : D-C2 (flag) et D-C7 (undo) sont posés **dans
+l'endpoint** `update_unit_text` (`units_service.py:385-408`) → **tout** appelant de
+`/units/update_text` en hérite. La « convergence de l'inspecteur sur D-C2/D-C7 » du §6 était donc
+**déjà acquise** (même endpoint). Restaient les deux points ci-dessous.
+
+### 9.1 Couche Annotation — le stylo + péremption des tokens (D-C9)
+`AnnotationPane` rendait déjà via `CanvasUnitList` mais sans `onEditText` → pas de stylo. Branché
+sur `updateUnitTextNorm` comme Rôles/Curation. **Point de design** : dans cette couche, le texte
+visible d'une unité annotée = la **prose issue des tokens** (dérivée), pas `text_norm` ; or
+`update_unit_text` **ne touche pas aux tokens**. Un coup de stylo laisserait donc des tokens
+décrivant l'ancien texte (et la correction serait invisible dans la prose).
+
+- **D-C9 (tranché 2026-07-23)** : **garder les tokens, signaler « périmé »** — même posture que
+  D-C2 pour l'alignement (*signaler la désync, laisser l'humain décider*), et **ne jamais détruire
+  une annotation possiblement corrigée à la main** (éditeur token R5.2d). Après un édit, l'unité est
+  marquée stale : l'overlay retombe sur le `text_norm` corrigé + une puce « ⟳ texte modifié — à
+  réannoter » ; le bouton « Annoter » (doc entier) rafraîchit tout et lève l'état.
+- **Portée** : **front seul, sans migration**. Signal **in-session** (`Set<unitId>`), effacé au
+  changement de doc / à la réannotation. **Borne connue** : un reload complet re-charge les tokens
+  conservés et les réaffiche (l'état « périmé » n'est pas persisté) — les tokens décrivent alors
+  l'ancien texte à un mot près, non corrompu. Un signal durable (colonne d'horodatage
+  d'annotation, comparaison dérivée reconstruction↔`text_norm`) est un durcissement ultérieur, pas
+  requis ici.
+- **Recherche de tokens (R6.5-A « chercher pour éditer »)** : une unité périmée quitte le jeu
+  cherchable (`_tokensInReadingOrder` la saute) et le compteur est rafraîchi à l'édit — sinon la
+  navigation ciblerait un token dont l'overlay vient de disparaître. Résidu accepté : les surlignages
+  de recherche se repeignent à la prochaine interaction (le re-rendu du `CanvasUnitList` déclenché par
+  le stylo n'expose pas de hook post-rendu).
+- **Rejeté** : suppression moteur des tokens (détruirait les corrections manuelles sur une simple
+  coquille) ; ne rien faire (édit invisible dans la prose, malhonnête).
+
+### 9.2 Inspecteur (`UnitInspectorPanel`) — convergence D-C1
+L'édition inline de l'inspecteur appelait `updateUnitText(…, newText)` → envoyait **`text_raw`**,
+**écrasant la provenance d'import** (le moteur mirroir raw→norm). Pire, elle **seedait la textarea
+depuis `text_raw`**, injectant le balisage `<hi>` échappé dans le texte édité (corruption latente
+sur les lignes riches). Basculé sur `updateUnitTextNorm` (D-C1 : édite `text_norm`, garde
+`text_raw`) + seed depuis `line.text` (norm propre). Aucun changement de contrat (route + forme
+inchangées).

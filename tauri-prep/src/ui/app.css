@@ -5255,6 +5255,15 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 .prep-annot-unit-row--extended .annot-sent {
   flex-wrap: wrap; overflow-x: visible; padding: 2px 0; gap: 2px 6px;
 }
+/* Stylo correction on an annotated unit invalidates its tokens: the overlay is dropped for
+   that row (the corrected plain text shows instead) and the row is flagged so the mismatch
+   isn't painted under a stale annotation (kept, signalled — cf. D-C2). */
+.prep-annot-unit-row--stale { border-left: 2px solid #d97706; }
+.prep-annot-stale-chip {
+  flex-shrink: 0; margin-left: auto;
+  font-size: 0.7rem; color: #92600a; background: #fff7ed;
+  border: 1px solid #f0c775; border-radius: 4px; padding: 0 0.35rem; white-space: nowrap;
+}
 
 .prep-conv-unit-row--curated { border-left-color: #f59e0b; background: #fffaf0; }
 .prep-conv-unit-row--curated:hover { background: #fff3d6; }

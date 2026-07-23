@@ -16,7 +16,7 @@
 import "../ui/annotation.css";
 import type { Conn, ConventionRole, TokenRecord, UnitRecord } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
-import { listConventions, listUnits, listTokens, listModels, downloadModel, updateToken } from "../lib/sidecarClient.ts";
+import { listConventions, listUnits, listTokens, listModels, downloadModel, updateToken, updateUnitTextNorm } from "../lib/sidecarClient.ts";
 import { languageLabel, type ModelInfo } from "../lib/models.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { buildProseUnitInline, buildInterlinearSentence, UPOS_TAGS, type ProseToken } from "../ui/annotationProse.ts";
@@ -60,6 +60,11 @@ export class AnnotationPane {
   private _tokensByUnit = new Map<number, ProseToken[]>();
   /** token_id → full record; feeds the on-demand token editor (R5.2d). */
   private _tokenById = new Map<number, TokenRecord>();
+  /** Units whose text was corrected (stylo) since the last annotation run: their tokens
+   *  now describe stale text. Kept (never destroyed — a fix mustn't discard hand-corrected
+   *  POS/lemma) but the overlay falls back to the corrected plain text + a "réannoter" nudge
+   *  (signal, don't destroy — mirrors the D-C2 alignment philosophy). In-session only. */
+  private _staleAnnot = new Set<number>();
   /** In-flight annotation job (via the shared runJobWithPolling controller). */
   private _annotHandle: JobHandle | null = null;
   /** In-flight in-context model download. */
@@ -119,6 +124,9 @@ export class AnnotationPane {
       this._list = new CanvasUnitList(area, {
         // Grammatical overlay: repaint an annotated unit's text as coloured prose.
         decorateRow: (u, el) => this._decorateAnnotated(u, el),
+        // Stylo: transversal in-place text correction (β immediate). Editing an annotated
+        // unit's text invalidates its tokens → flag it stale (see _saveText).
+        onEditText: (uid, textNorm) => this._saveText(uid, textNorm),
       });
     }
 
@@ -171,6 +179,7 @@ export class AnnotationPane {
     this._language = language;
     this._tokensByUnit = new Map();
     this._tokenById = new Map();
+    this._staleAnnot.clear();
     this._resetTokenSearch();
     this._closeTokenEditor();
     this._resetRunBtn();
@@ -196,6 +205,7 @@ export class AnnotationPane {
     this._units = [];
     this._tokensByUnit = new Map();
     this._tokenById = new Map();
+    this._staleAnnot.clear();
     this._resetTokenSearch();
     this._list?.reset();
     this._docId = null;
@@ -300,6 +310,7 @@ export class AnnotationPane {
         // Only apply if we are still on the document we annotated.
         if (this._docId === docId) {
           await this._loadTokens();
+          this._staleAnnot.clear(); // fresh tokens for the whole doc → nothing is stale
           this._list?.render();
           this._renderSummary();
           if (this._tokSearchQuery) this._updateTokenSearch(); // recompute against new tokens
@@ -322,6 +333,35 @@ export class AnnotationPane {
   private _setStatus(text: string): void {
     const s = this._q("#prep-annot-status");
     if (s) s.textContent = text;
+  }
+
+  // ─── Stylo: in-place text correction (β immediate, transversal) ───────────
+
+  /** onEditText for the shared list: persist a stylo correction (β), keeping text_raw
+   *  (D-C1, via updateUnitTextNorm) — the flag-stale + undo side effects live server-side.
+   *  On success, if the unit is annotated its tokens (POS/lemma, possibly hand-corrected)
+   *  still describe the pre-edit text: flag it stale so the overlay drops to the corrected
+   *  plain text + a nudge (kept, signalled — cf. D-C2), rather than paint a misleading
+   *  overlay. Throws so CanvasUnitList keeps the editor open on failure. */
+  private async _saveText(unitId: number, textNorm: string): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) throw new Error("Non connecté.");
+    try {
+      await updateUnitTextNorm(conn, unitId, textNorm);
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+    // Only an annotated unit has an overlay to invalidate; a plain unit has nothing to flag.
+    if (this._tokensByUnit.has(unitId)) {
+      this._staleAnnot.add(unitId);
+      this._renderSummary();
+      // The unit's tokens just left the searchable set (now stale) — refresh count/nav so a
+      // "chercher pour éditer" pass doesn't navigate to a token whose overlay just vanished.
+      if (this._tokSearchQuery) this._refreshTokenSearchAfterEdit();
+      // CanvasUnitList re-renders right after this resolves; _decorateAnnotated will see
+      // the unit as stale and skip its overlay.
+    }
   }
 
   // Token editor (R5.2d): on-demand token annotation editing.
@@ -378,10 +418,13 @@ export class AnnotationPane {
 
   // ─── R6.5-A token search (word/lemma/UPOS) — find-to-edit within the doc ──────
 
-  /** Flat token list in reading order (units in list order, tokens ordered within). */
+  /** Flat token list in reading order (units in list order, tokens ordered within).
+   *  Skips units flagged stale by a stylo edit: their overlay is dropped, so their tokens
+   *  aren't shown and must not be counted/navigated as search hits until re-annotation. */
   private _tokensInReadingOrder(): ProseToken[] {
     const out: ProseToken[] = [];
     for (const u of this._units) {
+      if (this._staleAnnot.has(u.unit_id)) continue;
       const toks = this._tokensByUnit.get(u.unit_id);
       if (toks) out.push(...toks);
     }
@@ -660,6 +703,18 @@ export class AnnotationPane {
     if (!toks || toks.length === 0) return;
     const textEl = el.querySelector<HTMLElement>(".prep-conv-unit-text");
     if (!textEl) return;
+    // Corrected (stylo) since the last annotation run → the tokens describe stale text.
+    // Leave the corrected plain text_norm the base row already rendered and flag the row,
+    // rather than paint a misleading token overlay (kept tokens, signalled — cf. D-C2).
+    if (this._staleAnnot.has(u.unit_id)) {
+      el.classList.add("prep-annot-unit-row--stale");
+      const chip = document.createElement("span");
+      chip.className = "prep-annot-stale-chip";
+      chip.textContent = "⟳ texte modifié — à réannoter";
+      chip.title = "Le texte a été corrigé depuis l'annotation ; relancez « Annoter » pour la mettre à jour.";
+      el.appendChild(chip);
+      return;
+    }
     el.classList.add("prep-annot-unit-row--annotated");
     const opts = { onTokenClick: (id: number) => this._openTokenEditor(id) };
     if (this._viewMode === "extended") {
@@ -690,8 +745,10 @@ export class AnnotationPane {
         + "grammaticale (POS + lemmes).";
       s.classList.add("prep-annot-summary--empty");
     } else {
+      const staleN = this._staleAnnot.size;
       s.textContent = `${n} unité${n > 1 ? "s" : ""} annotée${n > 1 ? "s" : ""} `
-        + "· survolez un mot pour sa catégorie (POS) et son lemme.";
+        + "· survolez un mot pour sa catégorie (POS) et son lemme."
+        + (staleN > 0 ? ` · ⚠ ${staleN} à réannoter (texte modifié)` : "");
       s.classList.remove("prep-annot-summary--empty");
     }
   }

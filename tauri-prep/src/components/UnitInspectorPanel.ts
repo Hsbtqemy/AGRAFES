@@ -23,7 +23,7 @@ import {
   listConventions,
   listTokens,
   updateToken,
-  updateUnitText,
+  updateUnitTextNorm,
   richTextToHtml,
   SidecarError,
   type Conn,
@@ -363,7 +363,12 @@ export class UnitInspectorPanel {
   private _openInlineUnitEdit(row: HTMLElement, panel: HTMLElement): void {
     const unitId = Number(row.dataset.unitId);
     if (!unitId) return;
-    const currentText = row.dataset.textRaw ?? row.querySelector(".prep-meta-preview-text")?.textContent ?? "";
+    const line = this._previewLines.find((l) => l.unit_id === unitId);
+    // Seed from text_norm (D-C1): the stylo edits the normalised text and keeps text_raw
+    // as the verbatim import provenance. Seeding from data-text-raw would also inject any
+    // <hi> rich markup into the textarea, which then landed verbatim in the saved text — a
+    // latent corruption this converges away from (the canvas panes already edit text_norm).
+    const currentText = line?.text ?? row.querySelector(".prep-meta-preview-text")?.textContent ?? "";
     row.classList.add("prep-meta-preview-line--editing");
 
     setHtml(row, raw(`
@@ -391,10 +396,10 @@ export class UnitInspectorPanel {
       const saveBtn = row.querySelector<HTMLButtonElement>(".prep-meta-inline-save");
       if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "…"; }
       try {
-        await updateUnitText(conn, unitId, newText);
-        // Update cached preview line
-        const line = this._previewLines.find(l => l.unit_id === unitId);
-        if (line) { line.text_raw = newText; line.text = newText; }
+        // β immediate, edits text_norm only (D-C1): keeps text_raw, and flags aligned
+        // translations stale + records an undoable action server-side (D-C2/D-C7).
+        await updateUnitTextNorm(conn, unitId, newText);
+        if (line) line.text = newText; // reflect the correction; text_raw is left untouched
         this._deps.log(`✓ Unité ${unitId} mise à jour.`);
         this.renderPreviewPanel();
       } catch (err) {
