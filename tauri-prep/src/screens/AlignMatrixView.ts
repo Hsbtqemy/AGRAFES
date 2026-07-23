@@ -23,7 +23,7 @@ import type { Conn, FamilyRecord, MatrixCellLink, FamilyAlignOptions, AlignBatch
 import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
   setAlignCellStatus, bulkSetUnitStatus, alignFamily, resolveCollisions,
-  retargetCandidates, retargetAlignLink,
+  retargetCandidates, retargetAlignLink, updateUnitTextNorm,
 } from "../lib/sidecarClient.ts";
 import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
 import type { AlignStrategy } from "../lib/alignRunBar.ts";
@@ -78,6 +78,10 @@ export class AlignMatrixView {
   private _loadedFamilyId: number | null = null;
   /** A cut gesture is in flight (open modal) — blocks reentrancy (F5). */
   private _cutBusy = false;
+  /** The <td> hosting the inline stylo (text-correction) editor, or null (one at a time). */
+  private _cellEditTd: HTMLElement | null = null;
+  /** The edited cell's original innerHTML — restored verbatim on cancel. */
+  private _cellEditRestore: string | null = null;
   /** An alignment run is in flight — the button must not fire twice (tranche 5). */
   private _aligning = false;
   /** Teardown of the open cut modal, so dispose()/reset can force-close it (F4). */
@@ -204,7 +208,10 @@ export class AlignMatrixView {
       if (uncoveredBtn) { this._openUncoveredPanel(Number(uncoveredBtn.dataset.uncoveredCol)); return; }
       // T6.2 (D-P2) — « → Révision fine » sur une cellule liée.
       const reviewBtn = t.closest<HTMLButtonElement>(".prep-matrix-review-btn");
-      if (reviewBtn) this._onReviewClick(Number(reviewBtn.dataset.cutRow), Number(reviewBtn.dataset.cutCol));
+      if (reviewBtn) { this._onReviewClick(Number(reviewBtn.dataset.cutRow), Number(reviewBtn.dataset.cutCol)); return; }
+      // Stylo (β) — correct a cell's text in place (source or a clean translation).
+      const editBtn = t.closest<HTMLButtonElement>(".prep-matrix-edit-btn");
+      if (editBtn) this._openCellEdit(editBtn, Number(editBtn.dataset.editRow), editBtn.dataset.editCol ?? "");
     });
     return root;
   }
@@ -254,6 +261,8 @@ export class AlignMatrixView {
   /** Drop the loaded matrix (and any open cut modal / armed confirm) — e.g. conn change. */
   private _resetMatrix(): void {
     this._closeCutModal?.();
+    this._cellEditTd = null; // a stale inline stylo editor must not survive a reset
+    this._cellEditRestore = null;
     // The re-run confirm strip must not survive a corpus switch: its « Recalcul global »
     // would rewrite a family of the OLD database (revue tranche 5, critique).
     this._closeAlignStrip();
@@ -572,6 +581,111 @@ export class AlignMatrixView {
     const row = hubRows.indexOf(view.rows[viewRow]);
     if (row < 0) return null; // an addition row carries no cut gesture (defensive)
     return { view, hubRows, column: hubRows.map((r) => r.cells[col]?.links ?? []), row };
+  }
+
+  // ─── Stylo: in-place text correction (β, DESIGN_inline_text_correction.md) ─────
+
+  /** Open the inline stylo editor on a cell. `col` is "hub" (source pivot) or a numeric
+   *  translation column index. Resolves the unit_id + current text through the view-model
+   *  (the <td> is anonymous), then swaps the cell content for a textarea. The stale-flag on
+   *  aligned translations is posted server-side by updateUnitTextNorm (D-C2). */
+  private _openCellEdit(btn: HTMLElement, viewRow: number, col: string): void {
+    const conn = this._getConn();
+    const view = this._view;
+    if (!conn || !view || this._cutBusy) return;
+    if (conn !== this._loadedConn) { // F1 — the ids belong to another DB now
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'éditer", true);
+      this._resetMatrix();
+      return;
+    }
+    const r = view.rows[viewRow];
+    if (!r) return;
+    let unitId: number | null;
+    let text: string;
+    if (col === "hub") {
+      unitId = r.hubUnitId;
+      text = r.hubText;
+    } else {
+      const c = r.cells[Number(col)];
+      // Re-check the clean predicate defensively (payload could differ from the button).
+      if (!c || !view.hasCellLinks || c.links.length !== 1 || c.links[0].char_start != null) return;
+      unitId = c.links[0].target_unit_id;
+      text = c.text;
+    }
+    if (unitId == null) return;
+    const td = btn.closest<HTMLElement>("td");
+    if (td) this._mountCellEditor(td, unitId, text);
+  }
+
+  /** Replace a cell's content with a single-textarea editor (seeded from its text_norm).
+   *  One editor at a time; Ctrl+Entrée saves, Échap / Annuler restores the cell verbatim. */
+  private _mountCellEditor(td: HTMLElement, unitId: number, text: string): void {
+    this._restoreCellEditor(); // close any editor already open elsewhere
+    this._cellEditTd = td;
+    this._cellEditRestore = td.innerHTML;
+    td.classList.add("prep-matrix-cell--editing");
+    const wrap = document.createElement("div");
+    wrap.className = "prep-matrix-edit";
+    const ta = document.createElement("textarea");
+    ta.className = "prep-matrix-edit-ta";
+    ta.rows = 2;
+    ta.value = text;
+    const actions = document.createElement("div");
+    actions.className = "prep-matrix-edit-actions";
+    const save = document.createElement("button");
+    save.type = "button"; save.className = "btn btn-primary btn-xs prep-matrix-edit-save";
+    save.textContent = "Enregistrer"; save.title = "Ctrl+Entrée";
+    const cancel = document.createElement("button");
+    cancel.type = "button"; cancel.className = "btn btn-ghost btn-xs prep-matrix-edit-cancel";
+    cancel.textContent = "Annuler"; cancel.title = "Échap";
+    actions.append(save, cancel);
+    wrap.append(ta, actions);
+    td.replaceChildren(wrap);
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    const commit = (): void => { void this._saveCellEdit(unitId, ta.value, text); };
+    save.addEventListener("click", (e) => { e.stopPropagation(); commit(); });
+    cancel.addEventListener("click", (e) => { e.stopPropagation(); this._restoreCellEditor(); });
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); }
+      else if (e.key === "Escape") { e.preventDefault(); this._restoreCellEditor(); }
+    });
+  }
+
+  /** Restore the edited cell's original content (cancel / re-open elsewhere). */
+  private _restoreCellEditor(): void {
+    if (this._cellEditTd && this._cellEditRestore != null) {
+      setHtml(this._cellEditTd, raw(this._cellEditRestore)); // captured, already-escaped cell HTML
+      this._cellEditTd.classList.remove("prep-matrix-cell--editing");
+    }
+    this._cellEditTd = null;
+    this._cellEditRestore = null;
+  }
+
+  /** Persist a stylo correction (β): edits text_norm, keeps text_raw, flags aligned
+   *  translations stale server-side. On success re-project the matrix (shows the corrected
+   *  text); on failure keep the editor open for retry. */
+  private async _saveCellEdit(unitId: number, newText: string, oldText: string): Promise<void> {
+    if (newText === oldText) { this._restoreCellEditor(); return; } // no-op
+    const conn = this._getConn();
+    if (!conn) { this._restoreCellEditor(); return; }
+    if (conn !== this._loadedConn) { // F1 — a corpus switch mid-edit
+      this._cb.toast?.("✗ Connexion changée — recharger la matrice avant d'éditer", true);
+      this._resetMatrix();
+      return;
+    }
+    this._cutBusy = true; // block concurrent gestures during the write
+    try {
+      await updateUnitTextNorm(conn, unitId, newText);
+      this._cellEditTd = null; this._cellEditRestore = null; // the reload rebuilds the grid
+      await this._reloadPreservingScroll();
+      this._cb.toast?.("✓ Texte corrigé");
+    } catch (e) {
+      this._cb.toast?.(`✗ ${e instanceof Error ? e.message : String(e)}`, true);
+      // keep the editor open so the user can retry
+    } finally {
+      this._cutBusy = false;
+    }
   }
 
   /**
@@ -1812,6 +1926,10 @@ export class AlignMatrixView {
 
   /** Re-project the matrix without losing the reading position (§4.1 invariant). */
   private async _reloadPreservingScroll(): Promise<void> {
+    // Any re-projection rebuilds the grid → an inline stylo editor (and its restore snapshot)
+    // is discarded with the old <td>; drop the refs so a later cancel can't touch a stale node.
+    this._cellEditTd = null;
+    this._cellEditRestore = null;
     // #matrix-grid-area itself persists (only its innerHTML is swapped) — but the
     // interim « Chargement… » hint collapses the content and clamps the scroll.
     const area = this._root?.querySelector<HTMLElement>("#matrix-grid-area");
@@ -1845,5 +1963,7 @@ export class AlignMatrixView {
     this._loadedConn = null;
     this._loadedFamilyId = null;
     this._cutBusy = false;
+    this._cellEditTd = null;
+    this._cellEditRestore = null;
   }
 }

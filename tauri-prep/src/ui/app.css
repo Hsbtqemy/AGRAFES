@@ -2401,6 +2401,28 @@ button.prep-matrix-cut-word:hover {
   border-color: color-mix(in srgb, #475569 45%, transparent);
   background: color-mix(in srgb, #475569 12%, transparent);
 }
+/* Stylo (β) — ✎ corriger le texte d'une cellule (source ou traduction propre) ; révélé au
+   survol comme les autres gestes, teinte teal ; disponible aussi sur la colonne moyeu. */
+.prep-matrix-edit-btn {
+  margin-left: 4px; padding: 0 5px; font-size: 0.75rem; cursor: pointer;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: color-mix(in srgb, #0c4a46 75%, transparent); opacity: 0; transition: opacity 0.12s;
+}
+.prep-matrix-cell:hover .prep-matrix-edit-btn,
+.prep-matrix-hub:hover .prep-matrix-edit-btn,
+.prep-matrix-edit-btn:focus-visible { opacity: 1; }
+.prep-matrix-edit-btn:hover {
+  border-color: color-mix(in srgb, #0c4a46 45%, transparent);
+  background: color-mix(in srgb, #0c4a46 10%, transparent);
+}
+.prep-matrix-cell--editing { background: color-mix(in srgb, #0c4a46 6%, transparent); }
+.prep-matrix-edit { display: flex; flex-direction: column; gap: 0.35rem; }
+.prep-matrix-edit-ta {
+  width: 100%; box-sizing: border-box; resize: vertical; font: inherit;
+  border: 1px solid #cbd5e1; border-radius: 4px; padding: 0.3rem 0.4rem;
+}
+.prep-matrix-edit-ta:focus { outline: none; border-color: #0c4a46; }
+.prep-matrix-edit-actions { display: flex; gap: 0.4rem; }
 .prep-matrix-cut-dir {
   display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px;
   font-size: 0.82rem;
@@ -5143,11 +5165,13 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 /* Inline split editor (relogged from the legacy saved-table split). */
 .prep-seg-canvas-unit--editing { border-color: #f59e0b; }
 .prep-seg-canvas-split { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.45rem; }
-.prep-seg-canvas-split-ta {
+.prep-seg-canvas-split-ta,
+.prep-seg-canvas-edit-ta {
   width: 100%; box-sizing: border-box; resize: vertical; font: inherit;
   border: 1px solid #cbd5e1; border-radius: 4px; padding: 0.3rem 0.4rem;
 }
-.prep-seg-canvas-split-ta:focus { outline: none; border-color: #0c4a46; }
+.prep-seg-canvas-split-ta:focus,
+.prep-seg-canvas-edit-ta:focus { outline: none; border-color: #0c4a46; }
 .prep-seg-canvas-split-actions { display: flex; gap: 0.4rem; }
 
 /* R5.4c — Tours surface: the coarse boundary control above the grouped preview. */

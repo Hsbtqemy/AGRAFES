@@ -198,3 +198,33 @@ depuis `text_raw`**, injectant le balisage `<hi>` échappé dans le texte édit�
 sur les lignes riches). Basculé sur `updateUnitTextNorm` (D-C1 : édite `text_norm`, garde
 `text_raw`) + seed depuis `line.text` (norm propre). Aucun changement de contrat (route + forme
 inchangées).
+
+## 10. Surfaces hors `CanvasUnitList` — Segment/Brut + matrice d'alignement (livré 2026-07-23)
+
+D-C5 (« transversal ») étendu aux deux surfaces qui **ne** passent pas par `CanvasUnitList` et ne
+recevaient donc pas le stylo « gratuitement ». Les deux sont **front pur** (contrat inchangé, β via
+`updateUnitTextNorm`).
+
+- **Couche Segment/Brut** (`SegmentPane`) : ✎ ajouté à la zone d'actions par unité (`data-act=
+  "edit-text"`), **uniquement sur les unités `isLine`** (les `structure` restent non éditables) ;
+  éditeur inline qui réutilise la coquille du split editor (textarea distincte
+  `prep-seg-canvas-edit-ta` pour ne pas déclencher le handler du split) ; Ctrl+Entrée / Échap ;
+  exclusif avec l'éditeur de coupe. **Piège corrigé** : le modèle local d'unité droppait `unit_id`
+  (il ne portait que `n`) → ajouté au mapping, sinon `updateUnitTextNorm` viserait la mauvaise unité.
+  Persistance = patch local + `_refreshUndoElig` (l'édit est une action Mode-A annulable), pas de
+  reload complet (non structurel).
+- **Matrice d'alignement** (`AlignMatrixView` + builder `alignMatrixGrid`) : ✎ **révélé au survol**
+  sur la cellule **source (moyeu)** — `data-edit-col="hub"`, `unit_id = r.hubUnitId` — et sur les
+  cellules **traduction « propres »** — prédicat `c.links.length === 1 && char_start == null`,
+  `unit_id = c.links[0].target_unit_id`. Exclues (pas d'unité unique bien définie) : vide,
+  non_traduit, ajout, fusionnée, **coupée** (fenêtre partielle), multi-liens. La cellule DOM étant
+  anonyme, l'identité se résout par le view-model (`_view.rows[row]`), le `<td>` par `btn.closest`.
+  Éditeur inline (remplace le contenu de la cellule), sauvegarde → `_reloadPreservingScroll`
+  (re-projection ; la source corrigée réapparaît), annulation → restaure le HTML capturé. Gardes
+  reprises des gestes de coupe : `_cutBusy` pendant l'écriture, garde F1 (conn ≠ `_loadedConn` →
+  toast + reset), teardown dans `_resetMatrix`/`dispose`.
+- **Décision D (2026-07-23, front pur retenu)** : la matrice **ne peint PAS** le flag « périmé »
+  (`source_changed_at`) sur les cellules traduction — le payload `/align/matrix` ne le transporte
+  pas. Le flag reste posé côté serveur (visible bannière « Révision fine » + colonne Curation). Le
+  peindre *dans la grille* = lot **moteur + contrat** (projeter `source_changed_at` par lien) laissé
+  en suivi (« Level B »).

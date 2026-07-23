@@ -62,6 +62,10 @@ function fakeConn(cfg: {
       }
       if (path === "/units/merge") return { ok: true, doc_id: 1, merged_n: b.n1, deleted_n: b.n2, text: "m", fts_stale: true };
       if (path === "/units/split") return { ok: true, doc_id: 1, unit_n: b.unit_n, new_unit_n: b.unit_n + 1, text_a: "a", text_b: "b", fts_stale: true };
+      if (path === "/units/update_text") {
+        const bb = body as { unit_id: number; text_norm: string };
+        return { ok: true, unit_id: bb.unit_id, doc_id: 1, n: 1, external_id: null, text_raw: bb.text_norm, text_norm: bb.text_norm };
+      }
       if (path === "/prep/undo/eligibility") return cfg.elig ?? { eligible: false, reason: "no_action" };
       if (path === "/prep/undo") {
         return { undo_action_id: 1, reverted_action_id: 1, reverted_action_type: "merge_units",
@@ -213,6 +217,64 @@ describe("SegmentPane — Brut view (R5.4b-3)", () => {
   it("disables the undo button when nothing is eligible", async () => {
     await mountBrut(fakeConn({ units: [unit(1)], elig: { eligible: false, reason: "no_action" } }));
     expect(host.querySelector<HTMLButtonElement>("#prep-seg-canvas-undo")!.disabled).toBe(true);
+  });
+
+  // ─── Stylo transversal : correction inline dans la couche Segment/Brut ────────
+
+  it("expose le stylo (✎) sur les unités de ligne, pas sur les unités structure", async () => {
+    await mountBrut(fakeConn({ units: [unit(1), unit(2, { text_norm: "Titre", unit_type: "structure" })] }));
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="1"] [data-act="edit-text"]')).not.toBeNull();
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="2"] [data-act="edit-text"]')).toBeNull();
+  });
+
+  it("le stylo ouvre une textarea seedée du text_norm ; Enregistrer persiste text_norm (garde text_raw)", async () => {
+    const calls: Call[] = [];
+    await mountBrut(fakeConn({ units: [unit(1, { text_norm: "Bonjour", text_raw: "Bonjour" })], calls }));
+    (host.querySelector('.prep-seg-canvas-unit[data-n="1"] [data-act="edit-text"]') as HTMLButtonElement).click();
+    const editor = host.querySelector('.prep-seg-canvas-unit--editing[data-n="1"]')!;
+    const ta = editor.querySelector<HTMLTextAreaElement>(".prep-seg-canvas-edit-ta")!;
+    expect(ta.value).toBe("Bonjour");
+    ta.value = "Bonsoir";
+    (editor.querySelector('[data-act="edit-text-confirm"]') as HTMLButtonElement).click();
+    await flush();
+    // text_norm only (no text_raw key) — D-C1.
+    const call = calls.find((c) => c.path === "/units/update_text");
+    expect(call?.body).toEqual({ unit_id: 10, text_norm: "Bonsoir" });
+    // editor closed, corrected text shown in place.
+    expect(host.querySelector(".prep-seg-canvas-unit--editing")).toBeNull();
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="1"] .prep-seg-canvas-seg-text')?.textContent).toBe("Bonsoir");
+  });
+
+  it("Enregistrer sans changement ne persiste rien (no-op) et referme l'éditeur", async () => {
+    const calls: Call[] = [];
+    await mountBrut(fakeConn({ units: [unit(1, { text_norm: "Bonjour" })], calls }));
+    (host.querySelector('[data-act="edit-text"]') as HTMLButtonElement).click();
+    (host.querySelector('[data-act="edit-text-confirm"]') as HTMLButtonElement).click();
+    await flush();
+    expect(calls.some((c) => c.path === "/units/update_text")).toBe(false);
+    expect(host.querySelector(".prep-seg-canvas-unit--editing")).toBeNull();
+  });
+
+  it("préserve le texte tapé du stylo à travers un re-render de filtre", async () => {
+    await mountBrut(fakeConn({ units: [unit(1, { text_norm: "Bonjour" }), unit(2, { text_norm: "»" })] }));
+    (host.querySelector('.prep-seg-canvas-unit[data-n="1"] [data-act="edit-text"]') as HTMLButtonElement).click();
+    const ta = host.querySelector<HTMLTextAreaElement>(".prep-seg-canvas-edit-ta")!;
+    ta.value = "corrigé à la main";
+    ta.dispatchEvent(new Event("input"));
+    const cb = host.querySelector<HTMLInputElement>("#prep-seg-canvas-f-orphan")!;
+    cb.checked = true;
+    cb.dispatchEvent(new Event("change"));
+    expect(host.querySelector<HTMLTextAreaElement>(".prep-seg-canvas-edit-ta")!.value).toBe("corrigé à la main");
+  });
+
+  it("ouvrir le stylo sur une unité ferme un éditeur de coupe ouvert sur une autre (exclusivité)", async () => {
+    await mountBrut(fakeConn({ units: [unit(1, { text_norm: "Bonjour le monde ici." }), unit(2, { text_norm: "Deux" })] }));
+    (host.querySelector('.prep-seg-canvas-unit[data-n="1"] [data-act="split"]') as HTMLButtonElement).click();
+    expect(host.querySelectorAll(".prep-seg-canvas-split-ta").length).toBe(2); // split editor open on n=1
+    (host.querySelector('.prep-seg-canvas-unit[data-n="2"] [data-act="edit-text"]') as HTMLButtonElement).click();
+    // split (n=1) closed, stylo (n=2) open
+    expect(host.querySelectorAll(".prep-seg-canvas-split-ta").length).toBe(0);
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="2"] .prep-seg-canvas-edit-ta')).not.toBeNull();
   });
 });
 

@@ -145,7 +145,14 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           ? ` <button type="button" class="prep-matrix-merge-btn" data-cut-row="${rowIdx}" data-cut-col="${colIdx}"`
             + ` title="Fusionner — la phrase du segment voisin appartient à CE segment">&#8857;</button>`
           : "";
-        inner = `${_esc(c.text)}${anyBtn}${mergeBtn}${uncutBtn}${removeBtn}${attachBtn}${reviewBtn}`;
+        // Stylo (β) — correct this translation's text_norm in place. Only a clean cell (a
+        // single WHOLE, uncut link) has one well-defined unit to edit; a cut window slices a
+        // fraction of the unit and a multi-link cell has no single unit. Hover-revealed.
+        const editBtn = view.hasCellLinks && c.links.length === 1 && c.links[0].char_start == null
+          ? ` <button type="button" class="prep-matrix-edit-btn" data-edit-row="${rowIdx}" data-edit-col="${colIdx}"`
+            + ` title="Corriger le texte de cette traduction (β)">&#9998;</button>`
+          : "";
+        inner = `${_esc(c.text)}${anyBtn}${mergeBtn}${uncutBtn}${removeBtn}${attachBtn}${reviewBtn}${editBtn}`;
       }
       return `<td class="prep-matrix-cell prep-matrix-cell--${statusCls}">${inner}</td>`;
     }).join("");
@@ -154,10 +161,16 @@ export function buildMatrixGridHtml(view: MatrixView): string {
       "prep-matrix-row"
       + (r.hasWarning ? " prep-matrix-row--warn" : "")
       + (r.paragraphStart ? " prep-matrix-row--para-start" : "");
+    // Stylo (β) on the source segment: editing the pivot's text_norm flags its aligned
+    // translations stale server-side (D-C2). Only a real hub unit (not a flux [ajout] row).
+    const hubEdit = r.hubUnitId != null
+      ? ` <button type="button" class="prep-matrix-edit-btn" data-edit-row="${rowIdx}" data-edit-col="hub"`
+        + ` title="Corriger le texte de la source (β)">&#9998;</button>`
+      : "";
     return `<tr class="${rowCls}">`
       + `<td class="prep-matrix-meta">${_esc(String(r.paragraph))}</td>`
       + `<td class="prep-matrix-meta">${r.segment}</td>`
-      + `<td class="prep-matrix-hub">${_esc(r.hubText)}</td>`
+      + `<td class="prep-matrix-hub">${_esc(r.hubText)}${hubEdit}</td>`
       + cells
       + `</tr>`;
   }).join("");

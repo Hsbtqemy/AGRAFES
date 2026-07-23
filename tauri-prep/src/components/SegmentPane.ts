@@ -23,7 +23,7 @@ import {
   segmentPreview, segment, getDocumentStats, listUnits,
   mergeUnits, splitUnit, prepUndo, prepUndoEligibility, regroupCoarse,
   getDocRelations, segmentPropagatePreview, applyPropagated, listConventions,
-  richTextToHtml,
+  richTextToHtml, updateUnitTextNorm,
 } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
@@ -65,7 +65,7 @@ export class SegmentPane {
    *  line units in place (R5.4b-3). Carries role + verbatim raw + import-original for parity with
    *  SegmentationView's rendering (tranche 3: role badge · richText · « voir l'original » fold). */
   private _units: {
-    n: number; text: string; isLine: boolean;
+    n: number; unitId: number; text: string; isLine: boolean;
     role: string | null; textRaw: string; textSource: string | null;
   }[] = [];
   private _applyBarEl: HTMLElement | null = null;
@@ -87,6 +87,11 @@ export class SegmentPane {
   private _splitEditingN: number | null = null;
   /** In-progress split editor text, preserved across re-renders (e.g. a filter toggle). */
   private _splitDraft: { a: string; b: string } | null = null;
+  /** Unit n currently showing the inline stylo (text-correction) editor, or null. Mutually
+   *  exclusive with _splitEditingN — opening one closes the other. */
+  private _textEditingN: number | null = null;
+  /** In-progress stylo text, preserved across re-renders (e.g. a filter toggle). */
+  private _textDraft: string | null = null;
   /** Unit n to scroll to + flash once after a merge/split reload, or null. */
   private _pendingFocusN: number | null = null;
   /** Last Mode A undo eligibility for this doc — drives the Brut "↶ Annuler" button. */
@@ -211,6 +216,8 @@ export class SegmentPane {
     this._units = [];
     this._splitEditingN = null; // a stale inline split editor must not survive a reload/doc switch
     this._splitDraft = null;
+    this._textEditingN = null; // nor a stale stylo editor
+    this._textDraft = null;
     if (this._toursTimer) { clearTimeout(this._toursTimer); this._toursTimer = null; }
     this._previewToken++; // invalidate any in-flight preview from the previous document
     if (this._previewTimer) { clearTimeout(this._previewTimer); this._previewTimer = null; } // and any scheduled one
@@ -254,7 +261,7 @@ export class SegmentPane {
       const units = await listUnits(conn, docId);
       if (docId !== this._docId) return; // document switched during the await — drop stale units
       this._units = units.map((u) => ({
-        n: u.n, text: u.text_norm ?? u.text_raw ?? "", isLine: u.unit_type === "line",
+        n: u.n, unitId: u.unit_id, text: u.text_norm ?? u.text_raw ?? "", isLine: u.unit_type === "line",
         role: u.unit_role ?? null, textRaw: u.text_raw ?? "", textSource: u.text_source ?? null,
       }));
     } catch {
@@ -420,6 +427,7 @@ export class SegmentPane {
     i: number, view: AnomalyView,
   ): string {
     if (this._splitEditingN === u.n && u.isLine) return this._splitEditorHtml(u);
+    if (this._textEditingN === u.n && u.isLine) return this._textEditorHtml(u);
     const row = view.rows[i];
     const clsMod = row.cls ? ` prep-seg-canvas-unit--${row.cls}` : "";
     const hidden = row.visible ? "" : " hidden";
@@ -450,7 +458,8 @@ export class SegmentPane {
       ? `<button type="button" class="prep-seg-canvas-uabtn" data-act="merge-down" data-n="${u.n}" title="Fusionner avec le suivant">&#8681;</button>`
       : "";
     const split = `<button type="button" class="prep-seg-canvas-uabtn" data-act="split" data-n="${u.n}" title="Couper ce segment">&#9986;</button>`;
-    return `<span class="prep-seg-canvas-unit-actions">${up}${down}${split}</span>`;
+    const edit = `<button type="button" class="prep-seg-canvas-uabtn" data-act="edit-text" data-n="${u.n}" title="Corriger le texte de ce segment">&#9998;</button>`;
+    return `<span class="prep-seg-canvas-unit-actions">${edit}${up}${down}${split}</span>`;
   }
 
   /** Inline split editor: two editable halves pre-filled by the auto-split heuristic (or the
@@ -465,6 +474,23 @@ export class SegmentPane {
           <div class="prep-seg-canvas-split-actions">
             <button type="button" class="btn btn-primary btn-sm" data-act="split-confirm" data-n="${u.n}">Confirmer la coupure</button>
             <button type="button" class="btn btn-ghost btn-sm" data-act="split-cancel">Annuler</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /** Inline stylo editor: a single textarea seeded from the unit's text_norm (or the user's
+   *  in-progress draft, so a re-render — e.g. a filter toggle — doesn't wipe it). Persists via
+   *  updateUnitTextNorm (β, edits text_norm, keeps text_raw). Reuses the split editor's shell. */
+  private _textEditorHtml(u: { n: number; text: string }): string {
+    const val = this._textDraft ?? u.text;
+    return `<div class="prep-seg-canvas-unit prep-seg-canvas-unit--editing" data-n="${u.n}">
+        <div class="prep-seg-canvas-unit-head"><span class="prep-seg-canvas-unit-n">Corriger l&#8217;unit&#233; ${esc(String(u.n))}</span></div>
+        <div class="prep-seg-canvas-split">
+          <textarea class="prep-seg-canvas-edit-ta" rows="2">${esc(val)}</textarea>
+          <div class="prep-seg-canvas-split-actions">
+            <button type="button" class="btn btn-primary btn-sm" data-act="edit-text-confirm" data-n="${u.n}">Enregistrer</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-act="edit-text-cancel">Annuler</button>
           </div>
         </div>
       </div>`;
@@ -491,6 +517,23 @@ export class SegmentPane {
         this._splitDraft = { a, b };
       });
     });
+    // Stylo editor: keep the draft in sync (survive a filter-toggle re-render), Ctrl+Entrée to
+    // save / Échap to cancel, and focus on open.
+    const editTa = el.querySelector<HTMLTextAreaElement>(".prep-seg-canvas-edit-ta");
+    if (editTa) {
+      editTa.addEventListener("input", () => { this._textDraft = editTa.value; });
+      editTa.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          if (this._textEditingN !== null) void this._confirmTextEdit(this._textEditingN);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          this._textEditingN = null; this._textDraft = null; this._renderBrut();
+        }
+      });
+      editTa.focus();
+      editTa.setSelectionRange(editTa.value.length, editTa.value.length);
+    }
   }
 
   /** Scroll to + briefly flash the unit touched by the last merge/split (consumed once). */
@@ -509,9 +552,12 @@ export class SegmentPane {
     const n = Number(btn.dataset.n);
     if (act === "merge-up") void this._merge(n, "up");
     else if (act === "merge-down") void this._merge(n, "down");
-    else if (act === "split") { this._splitEditingN = n; this._splitDraft = null; this._renderBrut(); }
+    else if (act === "split") { this._splitEditingN = n; this._splitDraft = null; this._textEditingN = null; this._renderBrut(); }
     else if (act === "split-cancel") { this._splitEditingN = null; this._splitDraft = null; this._renderBrut(); }
     else if (act === "split-confirm") void this._confirmSplit(n);
+    else if (act === "edit-text") { this._textEditingN = n; this._textDraft = null; this._splitEditingN = null; this._renderBrut(); }
+    else if (act === "edit-text-cancel") { this._textEditingN = null; this._textDraft = null; this._renderBrut(); }
+    else if (act === "edit-text-confirm") void this._confirmTextEdit(n);
   }
 
   /** Merge unit n with its previous ("up") or next ("down") neighbour — both must be adjacent
@@ -552,6 +598,33 @@ export class SegmentPane {
       this._splitDraft = null;
       this._pendingFocusN = n; // the first half keeps n
       await this._onResegmented?.();
+    } catch (e) {
+      this._notify(e instanceof Error ? e.message : String(e), true);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  /** Persist a stylo correction on unit n (β immediate, edits text_norm, keeps text_raw).
+   *  Non-structural, so — unlike merge/split — it patches the unit locally and refreshes the
+   *  Mode-A undo button (this edit is undoable) rather than reloading the whole document. */
+  private async _confirmTextEdit(n: number): Promise<void> {
+    const conn = this._getConn();
+    if (!conn || this._docId === null || this._busy) return;
+    const u = this._units.find((x) => x.n === n);
+    if (!u) return;
+    const box = this._root.querySelector<HTMLElement>(`.prep-seg-canvas-unit--editing[data-n="${n}"]`);
+    const newText = box?.querySelector<HTMLTextAreaElement>(".prep-seg-canvas-edit-ta")?.value ?? "";
+    if (newText === u.text) { this._textEditingN = null; this._textDraft = null; this._renderBrut(); return; } // no-op
+    this._busy = true;
+    try {
+      const res = await updateUnitTextNorm(conn, u.unitId, newText);
+      u.text = res.text_norm; // β edits text_norm; reflect it, keep provenance from the response
+      u.textRaw = res.text_raw;
+      this._textEditingN = null;
+      this._textDraft = null;
+      await this._refreshUndoElig(); // the edit recorded an undoable Mode-A action
+      this._renderBrut();
     } catch (e) {
       this._notify(e instanceof Error ? e.message : String(e), true);
     } finally {
