@@ -9,7 +9,9 @@ et la table `alignment_links`.
 54 documents, 46 674 lignes indexées) et **appels réels au sidecar** (contrat 1.6.62). Chaque constat
 porte sa preuve `fichier:ligne` ou sa mesure. Déclenché par une passe de QA visuelle
 (→ [`QA_SHELL_2026-08-16.md`](QA_SHELL_2026-08-16.md)) qui a fait remonter trois défauts d'alignement ;
-l'audit les reprend sous les identifiants `ALI-*` et les complète.
+l'audit les reprend sous les identifiants `ALI-*` et les complète. Le **§11** approfondit la
+« famille A » en tranchant ses décisions de conception sur pièce, et **corrige deux
+conclusions** des §8 et §10.
 
 ---
 
@@ -54,12 +56,13 @@ l'audit les reprend sous les identifiants `ALI-*` et les complète.
 | ALI-16 | 🟡 | P2 | Aucun effectif par colonne : la comparabilité des grains, qui décide de la qualité, n'est pas lisible. |
 | ALI-17 | 🟠 | P1 | Réaligner après une **coupe d'unité** superpose une couche au lieu de la remplacer — l'unicité porte sur la paire d'unités. |
 | ALI-18 | 🟠 | P1 | Chaque geste re-projette la famille entière, toutes langues comprises : ~2 s pour une cellule sur 7 652. |
-| ALI-19 | 🟠 | P0 | Aucune statistique SQLite (`ANALYZE` jamais lancé) → mauvais index sur un `NOT EXISTS` corrélé. **17,6×** pour 46 ms. |
+| ALI-19 | ✅ | ~~P0~~ | Aucune statistique SQLite (`ANALYZE` jamais lancé) → mauvais index sur un `NOT EXISTS` corrélé. **17,6×** pour 46 ms. |
 | ALI-20 | 🟡 | P2 | Pas de bandeau d'annulation dans l'Alignement, **y compris pour les deux gestes qui sont journalisés** (✎, ¶). |
 | ALI-21 | 🟡 | P2 | Gestes de cellule invisibles au repos, glyphe ↻ ≠ ↺ annoncé, et refus `_cutBusy` totalement muet. |
 | ALI-22 | 🟠 | P1 | Le ⭙ n'a pas d'inverse ; la réparation intuitive (＝) laisse la cible sur **deux** segments, masquée par le bead. **Démontré en base.** |
 
-> ALI-13 est traité en §5 (passe beads) ; ALI-14 à ALI-22 en §7 à §10 (passes du 2026-08-19) ; §10 chiffre le correctif d'ALI-10/ALI-17.
+> ALI-13 est traité en §5 (passe beads) ; ALI-14 à ALI-22 en §7 à §10 (passes du 2026-08-19) ; §10 chiffre le correctif d'ALI-10/ALI-17 ; le **§11** approfondit la famille « données
+> détruites » (ALI-03/10/17/22 + QA-06) et tranche ses décisions de conception.
 
 ---
 
@@ -305,6 +308,11 @@ actuel).
 ---
 
 ## 4. Ordre de traitement proposé
+
+> **Mis à jour par le §11 (2026-08-19).** ALI-19 est **traité**. Et l'approfondissement de
+> la « famille A » (ce qui abîme les données) a montré qu'ALI-03/10/22 + le §10 ne sont pas
+> quatre chantiers mais **un seul** — l'undo ne sait pas restaurer un lien. Pour ces
+> constats, l'ordre applicable est celui du **§11.7**, pas celui ci-dessous.
 
 *(Révisé le 2026-08-19 : la première version n'ordonnait qu'ALI-01→12 et précédait dix constats,
 dont le seul gain gratuit du lot et les deux chemins de destruction démontrés.)*
@@ -707,6 +715,29 @@ scopé à la paire concernée.
 
 ### ALI-19 🟠 P0 — la base n'a aucune statistique : le planificateur choisit le mauvais index
 
+> **✅ TRAITÉ le 2026-08-19** — `multicorpus db-optimize --db <WORKCOPY> --analyze`, run
+> `8d4f9889`, ~0,2 s process complet, taille du fichier inchangée (259 162 112 o).
+> Mesuré avant/après sur la base réelle, meilleur de 3 passes, app fermée :
+>
+> | | avant | après | gain |
+> |---|---|---|---|
+> | `build_alignment_matrix(373)` — Modiano, 3 traductions, 1 913 lignes | 1 160 ms *(mesure de l'audit)* | **63,8 ms** | **×18** |
+> | les deux `NOT EXISTS`, sur les **11 paires** de la base | 1 259,6 ms | **12,9 ms** | **×98** |
+> | `build_alignment_matrix(416)` — Beigbeder | — | 13,9 ms | |
+>
+> La prédiction de l'audit (« 1 160 → 66 ms ») est confirmée à 2 ms près. Le plan a basculé
+> exactement comme annoncé : `SEARCH al USING INDEX idx_alinks_docs (pivot_doc_id=?)` →
+> `SEARCH al USING INDEX idx_alinks_target (target_unit_id=?)`. `sqlite_stat1` porte 35 lignes.
+>
+> **Effets de bord : aucun.** `ANALYZE` ne change que des plans, jamais des résultats ; et aucun
+> fichier de `src/`, `tests/` ou `scripts/` ne mentionne `sqlite_stat1` ni n'énumère les tables de
+> `sqlite_master` (les trois requêtes existantes visent une table par son nom).
+>
+> **Reste à faire** : la base **originale** (`corpus_agrafes.db`) n'a pas été touchée — seule la
+> WORKCOPY l'a été. Et surtout, rien ne rend ce gain **durable** : une base fraîchement importée
+> repartira sans statistiques. Le correctif pérenne est d'appeler `ANALYZE` en fin d'import et
+> après une mutation de masse, ou de le brancher sur `PRAGMA optimize` à la fermeture du sidecar.
+
 `sqlite_stat1` **n'existe pas** dans la base de travail : `ANALYZE` n'a jamais tourné. Sans
 statistiques, SQLite résout le `NOT EXISTS` d'ALI-18 avec `idx_alinks_docs (pivot_doc_id)` — il
 balaie les 5 594 liens de la famille **pour chacune** des 1 886 unités de la traduction, soit
@@ -984,3 +1015,152 @@ une cellule dont le lien absorbé recouvre une cible déjà portée par un autre
 point qu'ALI-13 avait laissé passer.
 *Test RED* : ⭙ puis ＝ sur le voisin ⇒ la cible ne doit pas se retrouver sur deux pivots ; aujourd'hui
 elle s'y retrouve, en silence.
+
+---
+
+## 11. Approfondissement « famille A » — ce qui abîme les données (2026-08-19, quatrième temps)
+
+Les cinq constats qui détruisent des données (ALI-03, ALI-10, ALI-17, ALI-22, QA-06) ont été repris
+**au code et à la base**, non pour les redécrire mais pour trancher les décisions de conception qui
+bloquaient l'écriture d'un ticket. Trois des quatre se tranchent sur pièce ; une reste ouverte.
+
+### 11.1 Le diagnostic unifiant : l'undo ne sait pas restaurer un lien
+
+Ce ne sont pas cinq problèmes, c'est **une capacité manquante vue cinq fois**.
+
+`undo.py` ne touche `alignment_links` que de deux façons — `UPDATE … SET source_changed_at`
+(l. 144, re-marquage périmé) et `DELETE` (l. 340, 377). **Il n'y a aucun `INSERT`, nulle part.**
+Et `prep_action_unit_snapshots` (migration 019, l. 56-65) porte exactement quatre colonnes
+« avant » : `text_raw_before`, `text_norm_before`, `unit_role_before`, `meta_json_before` — toutes
+centrées sur l'**unité**, aucune sur le **lien**. Vérifié à l'échelle du schéma : sur les 15 tables,
+aucune n'archive un lien.
+
+Quand un geste détruit un lien, il n'existe littéralement aucun endroit où le mettre.
+
+**Corollaire : la famille se scinde en deux, et pas là où §4 la coupait.**
+
+| | ce qui disparaît | infrastructure requise |
+|---|---|---|
+| **A1** — ALI-03, ALI-22, ALI-10, run destructif du §10 | un **lien** | une table d'archive : **une migration**, un mécanisme, 4 points d'appel |
+| **A2** — QA-06 (Pré-remplir) | un **`parent_n`** | **rien** — voir 11.4 |
+
+**ALI-17 est à part** : il ne détruit rien, il **accumule**. Son correctif est le miroir d'A1
+(« supprimer les liens du run *X* »), que l'archive rend réversible au lieu de définitif.
+
+### 11.2 Décision « où vivent les liens archivés » — tranchée par le code
+
+Le §10 proposait `align_run_purge`, scopée au **run**. Mais ALI-03 et ALI-22 ne sont pas des runs.
+L'ordre des écritures dans `_handle_units_merge` règle la question :
+
+```
+sidecar.py:4951    action_id = record_prep_action(…)      ← l'action existe déjà
+sidecar.py:4989    DELETE FROM alignment_links WHERE…     ← 38 lignes plus bas
+```
+
+L'action est enregistrée **avant** la destruction, **dans la même transaction**, avec `action_id`
+en portée. L'`INSERT` d'archive se pose là, sans rien inventer. → **l'archive appartient à
+`prep_action_history`** (table `prep_action_link_snapshots` en miroir de celle des unités, plus un
+`run_id` nullable pour couvrir aussi le cas du §10). Un seul chemin de restitution à tester.
+
+**Le paysage se lit alors clairement — il y a trois régimes de comptabilité, pas deux :**
+
+| geste | trace | annulable |
+|---|---|---|
+| unités (fusion, coupe, texte, rôle, ¶) | `prep_action_history` + instantanés | oui |
+| runs (alignement, import) | table `runs` | non |
+| **liens (⭙, ✕, ＝, ✂)** | **rien** | non |
+
+`align_links_service.py` ne contient **aucune** occurrence de `record_action`, et `sidecar.py`
+n'en a que 4 en tout (l. 3648, 3654, 5570, 5713). Les gestes de lien sont le seul régime
+entièrement muet.
+
+### 11.3 Obstacle non vu jusqu'ici : les deux chemins ne sont pas symétriques
+
+```
+merge  : record_prep_action (4951)  →  DELETE liens (4989)        ✅ archivable en l'état
+split  : DELETE liens (5094)        →  record_prep_action (5123)  ❌ ordre inversé
+```
+
+Dans `_handle_units_split`, les liens sont détruits **avant** que l'action existe. Le remède est
+trivial — capturer les lignes dans une liste locale avant le `DELETE`, insérer après — mais c'est
+exactement ce qui se transforme en `// NOTE:` si ce n'est pas décidé avant le ticket.
+
+### 11.4 A2 (QA-06) ne demande aucune infrastructure — vérifié
+
+`parent_n` vit dans `meta_json`, donc `meta_json_before` le sauve **déjà** :
+
+- le type d'action `set_paragraph` est déjà dans le `CHECK` (migration 034) ;
+- `_undo_set_paragraph` (`undo.py:187-204`) boucle sur un nombre **quelconque** d'instantanés et
+  restaure `meta_json` verbatim — il n'est pas limité à une unité ;
+- `set_paragraph_boundary_document` (`coarse_grain.py:438`, appel l. 513) prend déjà
+  `record_action` — alors que `regroup_document_coarse` (`coarse_grain.py:269`), **deux fonctions
+  plus haut dans le même fichier**, ne le prend pas.
+
+Le correctif est la propagation d'un paramètre. **Zéro migration obligatoire, zéro artefact de
+contrat.**
+
+**Volume mesuré** — un « Pré-remplir » sur le doc 416 archiverait **1 231 lignes**. La table en
+porte déjà 12 727, et ses trois plus grosses actions font **1 258, 1 258 et 1 226 lignes** : le
+précédent existe, ce n'est pas un cas nouveau.
+
+*Verrue relevée au passage* : `text_norm_before` est `NOT NULL`, donc l'instantané embarquerait
+**91,8 Ko de texte** pour protéger **20,3 Ko de `meta_json`** — 4,5× plus lourd que ce qu'il sauve.
+Non bloquant ; la colonne mériterait d'être nullable comme `text_raw_before`.
+
+**Décision « réutiliser `set_paragraph` ou créer un type »** — le volume étant réglé, le choix est
+purement de **lisibilité de l'historique**. Or le grief central de QA-06 est précisément que la
+mutation de masse est *invisible dans l'audit*. Un type qui annonce `set_paragraph` n'en réglerait
+que la moitié. → **type `regroup_coarse`, migration 035**, sur le patron exact de 032/033/034.
+
+### 11.5 ALI-22 : le correctif (a) n'est pas indépendant d'A1
+
+État exact des trois liens du cas, relu en base :
+
+| lien | pivot → cible | `run_id` | `bead_uid` | origine |
+|---|---|---|---|---|
+| 46628 | 239214 → 237353 | `manual` | `cell#239214#419` | **créé par le ⭙** |
+| 46629 | 239213 → 237353 | `manual` | `NULL` | créé par le ＝ |
+| 42915 | 239214 → 237354 | `d84c2fd5…` | `cell#239214#419` | d'origine |
+
+Le lien créé par un ⭙ **est** identifiable — `run_id='manual'` **et** `bead_uid LIKE 'cell#%'`
+(7 liens sur 14 manuels dans toute la base). L'audit avait raison sur ce point.
+
+**Mais la conclusion était fausse.** Un ↻ pourrait supprimer ce que le ⭙ a créé ; il ne peut pas
+rendre ce que le ⭙ a **supprimé** — le lien du voisin est parti avec son `link_id` et son `run_id`.
+Le recréer, c'est exactement l'approximation reprochée au ＝ Rattacher en ALI-20.
+
+→ Le correctif **(a) dépend d'A1**. Seul **(c)** — ne pas beader quand la cible absorbée est déjà
+portée ailleurs — reste court et autonome, et referme ALI-13.
+
+### 11.6 §10 : à quelle fréquence les deux cas de refus se produiraient-ils ?
+
+Sur les 53 runs d'alignement, **9 seulement portent encore des liens** (les autres ont été purgés
+par des runs ultérieurs).
+
+| cas | fréquence | détail |
+|---|---|---|
+| (a) run partiellement révisé depuis | **2 / 9** | 2 liens et 1 lien respectivement |
+| (b) segmentation modifiée depuis | **0 / 9** | — |
+
+Deux lectures s'imposent, et aucune ne va de soi :
+
+* **Le zéro du cas (b) ne prouve rien.** Le seul cas (b) connu — Modiano, la coupe d'unité entre
+  deux runs, §8 — n'apparaît pas parce que ses liens ont été purgés pendant l'audit. La mesure ne
+  voit que les runs survivants. La garde reste nécessaire.
+* **Le refus en bloc du cas (a) serait disproportionné** : bloquer l'annulation d'un run de 1 226
+  liens parce qu'**un seul** porte un statut posé après coup. La §10 recommandait « refuser plutôt
+  que restituer partiellement » ; la mesure invite à nuancer.
+
+> **Seule question encore ouverte de la famille A** : sur le cas (a), refuser en bloc, ou annuler
+> en **préservant** les liens revus et en le disant (« 1 lien validé conservé »). Le second est plus
+> utile mais rouvre la restitution partielle que §10 voulait éviter. À trancher avant le ticket A1.
+
+### 11.7 Plan qui en découle
+
+1. **A2 / QA-06** — `record_action` sur `regroup_document_coarse`, migration 035 (`regroup_coarse`),
+   bouton d'undo placé sur l'onglet Tours. Indépendant de tout le reste ; sert de répétition au
+   triplet `record_action` → instantané → undo qu'A1 emploiera en grand.
+2. **ALI-22 (c)** — la garde anti-bead. Court, autonome, referme ALI-13.
+3. **A1** — `prep_action_link_snapshots`, en corrigeant au passage l'ordre de
+   `_handle_units_split`. Débloque ALI-03, ALI-22 (a), ALI-10, et le « supprimer les liens du
+   run *X* » d'ALI-17.
