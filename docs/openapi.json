@@ -628,6 +628,60 @@
           }
         ]
       },
+      "AlignRunUndoRequest": {
+        "properties": {
+          "run_id": {
+            "description": "the alignment run to revert",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "AlignRunUndoResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "links_deleted": {
+                "description": "links the run had created, now removed",
+                "type": "integer"
+              },
+              "links_kept": {
+                "description": "links the run created but a human reviewed since — kept, not deleted",
+                "type": "integer"
+              },
+              "links_not_restored": {
+                "description": "archived links skipped: pair re-occupied, or one of their units no longer exists",
+                "type": "integer"
+              },
+              "links_restored": {
+                "description": "purged links put back from the archive, identical (link_id and src_run_id included)",
+                "type": "integer"
+              },
+              "reason": {
+                "nullable": true,
+                "type": "string"
+              },
+              "run_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "run_id",
+              "links_deleted",
+              "links_kept",
+              "links_restored",
+              "links_not_restored"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "AlignedUnit": {
         "properties": {
           "doc_id": {
@@ -4362,8 +4416,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.65",
-    "x-contract-version": "1.6.65"
+    "version": "1.6.66",
+    "x-contract-version": "1.6.66"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -4862,6 +4916,63 @@
           }
         },
         "summary": "Suggest candidate target units for retargeting an alignment link"
+      }
+    },
+    "/align/run/undo": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignRunUndoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlignRunUndoResponse"
+                }
+              }
+            },
+            "description": "Revert report"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request / nothing to revert"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown run"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Superseded by a later run"
+          }
+        },
+        "summary": "Revert one alignment run — drop what it created, restore what it purged (ALI-17)"
       }
     },
     "/align/source_changed_summary": {

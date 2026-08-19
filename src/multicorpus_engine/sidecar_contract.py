@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.65"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.66"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -292,6 +292,22 @@ API_VERSION = CONTRACT_VERSION
 #         alignments_restore_skipped (a re-align may have re-occupied the unique
 #         (pivot,target) pair — those links are left alone and counted, never
 #         clobbered). Additive response fields → no new route → snapshot unchanged.
+
+# 1.6.66: un run d'alignement devient reversible (ALI-17 / ALI-10, migration 036).
+#         NEW route POST /align/run/undo. Migration 035 could not own this archive:
+#         its action_id points at prep_action_history, whose doc_id is a SINGLE
+#         document, while an alignment run spans a pivot AND N targets and undo there
+#         is linear per document. Hence a second table, align_run_purge, same
+#         discipline (all columns archived → identical restitution). Only
+#         replace_existing=true destroys anything: 15 destructive runs out of 53 on
+#         the reference corpus, the other 38 cost zero storage. The three call sites
+#         create their run BEFORE purging, so no reordering was needed. Links the user
+#         reviewed after the run (status set) are KEPT and reported rather than
+#         blocking the whole revert — measured 2 runs out of 9, over 2 and 1 links out
+#         of 1226, which made a blanket refusal disproportionate. A later run on the
+#         same pair makes the revert 409 CONFLICT: restoring would superpose a
+#         generation, which is precisely the accumulation ALI-17 describes.
+#         NEW route → openapi + snapshot + .md all move.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1391,6 +1407,32 @@ def openapi_spec() -> dict[str, Any]:
                         },
                         "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "500": {"description": "Internal error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/align/run/undo": {
+                "post": {
+                    "summary": "Revert one alignment run — drop what it created, restore what it purged (ALI-17)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/AlignRunUndoRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Revert report",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/AlignRunUndoResponse"},
+                                }
+                            },
+                        },
+                        "400": {"description": "Bad request / nothing to revert", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Unknown run", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "409": {"description": "Superseded by a later run", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
             },
@@ -4195,6 +4237,28 @@ def openapi_spec() -> dict[str, Any]:
                                     "items": {"$ref": "#/components/schemas/CuratePreviewExample"},
                                 },
                                 "fts_stale": {"type": "boolean"},
+                            },
+                        },
+                    ]
+                },
+                "AlignRunUndoRequest": {
+                    "type": "object",
+                    "required": ["run_id"],
+                    "properties": {"run_id": {"type": "string", "description": "the alignment run to revert"}},
+                },
+                "AlignRunUndoResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["run_id", "links_deleted", "links_kept", "links_restored", "links_not_restored"],
+                            "properties": {
+                                "run_id": {"type": "string"},
+                                "links_deleted": {"type": "integer", "description": "links the run had created, now removed"},
+                                "links_kept": {"type": "integer", "description": "links the run created but a human reviewed since — kept, not deleted"},
+                                "links_restored": {"type": "integer", "description": "purged links put back from the archive, identical (link_id and src_run_id included)"},
+                                "links_not_restored": {"type": "integer", "description": "archived links skipped: pair re-occupied, or one of their units no longer exists"},
+                                "reason": {"type": "string", "nullable": True},
                             },
                         },
                     ]

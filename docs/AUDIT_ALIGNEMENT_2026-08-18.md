@@ -54,7 +54,7 @@ conclusions** des §8 et §10.
 | ALI-14 | 🟢 | P3 | L'avertissement d'ancrage dit quoi faire, jamais **pourquoi** : segmenter et ancrer sont confondus. |
 | ALI-15 | 🟠 | P1 | Impossible de réaligner **une seule langue** depuis l'UI ; le moteur sait le faire, le wrapper front existe et n'est appelé nulle part. |
 | ALI-16 | 🟡 | P2 | Aucun effectif par colonne : la comparabilité des grains, qui décide de la qualité, n'est pas lisible. |
-| ALI-17 | 🟠 | P1 | Réaligner après une **coupe d'unité** superpose une couche au lieu de la remplacer — l'unicité porte sur la paire d'unités. |
+| ALI-17 | ⏳ | ~~P1~~ | Réaligner après une **coupe d'unité** superpose une couche au lieu de la remplacer — l'unicité porte sur la paire d'unités. |
 | ALI-18 | 🟠 | P1 | Chaque geste re-projette la famille entière, toutes langues comprises : ~2 s pour une cellule sur 7 652. |
 | ALI-19 | ✅ | ~~P0~~ | Aucune statistique SQLite (`ANALYZE` jamais lancé) → mauvais index sur un `NOT EXISTS` corrélé. **17,6×** pour 46 ms. |
 | ALI-20 | 🟡 | P2 | Pas de bandeau d'annulation dans l'Alignement, **y compris pour les deux gestes qui sont journalisés** (✎, ¶). |
@@ -620,6 +620,48 @@ laissent aucune trace) qui empêche de le savoir. Et les quatre runs tournaient 
 interface (`job-align-*`), avant la barre « Aligner » de la tranche 5.
 
 ### ALI-17 🟠 P1 — un réalignement après une édition de segmentation superpose une couche
+
+> **✅ MOITIÉ MOTEUR TRAITÉE le 2026-08-19** — migration **036**, contrat **1.6.66**, nouvelle route
+> `POST /align/run/undo`. Le correctif (c) proposé plus bas (« offrir *supprimer les liens du run X* »)
+> est livré, et va plus loin : le run est **réversible**, pas seulement supprimable.
+>
+> **Pourquoi une seconde table plutôt que celle de la migration 035** : `prep_action_history.doc_id`
+> est **un** document, alors qu'un run couvre un pivot **et N cibles** (Modiano = trois traductions
+> en un run) ; et l'annulation y est linéaire **par document**, donc un run replié dans la pile d'un
+> seul document serait otage des autres actions de ce document. Deux propriétaires structurellement
+> différents → deux tables, une seule discipline. Le §11.2 annonçait « un `run_id` nullable » sur une
+> table unique : **c'était une erreur**, et elle est corrigée ici.
+>
+> **Distinction que le §10 ne faisait pas** : `run_id` (le run qui a **purgé**) et `src_run_id` (le run
+> qui avait **créé** le lien). Les confondre ferait supprimer la mauvaise génération à l'annulation.
+>
+> **Aucun réordonnancement n'a été nécessaire** — contrairement au cas de la coupe (§11.3) : les trois
+> appelants de `_prepare_alignment_replace` créent leur run **avant** de purger (6523→6526, 6751→6754,
+> 9546→9559). Vérifié avant d'écrire.
+>
+> **Ce qui coûte quelque chose** : seuls les runs `replace_existing=true` archivent — 15 sur 53 dans la
+> base de référence ; les 38 autres n'ont rien à stocker.
+>
+> **La question ouverte du §11.6 est résolue, et par composition plutôt que par arbitrage.** Un lien
+> que l'utilisateur a **revu après le run** (`status` posé) est **gardé**, pas supprimé. Il continue
+> donc d'occuper sa paire `(pivot_unit_id, target_unit_id)`, donc la restitution correspondante se
+> saute d'elle-même et **est comptée**. Le rapport dit les quatre chiffres —
+> `links_deleted`, `links_kept`, `links_restored`, `links_not_restored` — et chacun est vrai. Ni refus
+> en bloc, ni restitution partielle silencieuse. La mesure qui rendait le refus en bloc
+> disproportionné tient toujours : 2 runs sur 9, portant 2 et 1 liens sur 1 226.
+>
+> **La garde qui porte ce constat** : si un run **plus récent** a déjà remplacé les liens de la paire,
+> l'annulation est refusée en **409**, en nommant le run à annuler d'abord. Restituer par-dessus
+> superposerait une couche — exactement l'accumulation décrite ici.
+>
+> Tests : huit cas dans `tests/test_align_run_undo.py` — cycle nominal avec `link_id`/`run_id` rendus
+> à l'identique, run additif (rien archivé), lien revu gardé et compté, run postérieur bloquant,
+> run inconnu / mauvais type / déjà annulé, unité disparue (sautée, non fatale), et l'archive qui
+> couvre **exactement** ce que la suppression efface sous `preserve_accepted`.
+>
+> **Reste** : le geste front — un « ↺ Annuler ce run » dans la barre Aligner, où `alignRunSummary`
+> (`alignRunBar.ts:87`) affiche déjà le résumé du run. Sans lui, la capacité n'est atteignable qu'en
+> HTTP.
 
 Le mécanisme est général et tient en une ligne : l'unicité porte sur **la paire d'unités**
 (`idx_alinks_pivot_target_unique ON (pivot_unit_id, target_unit_id)`), donc un appariement *décalé*
@@ -1387,7 +1429,12 @@ C'est un arbitrage produit, pas une correction évidente. Porté au `Reste` de `
    existe, la restitution est centrale dans `execute_undo`, et les **deux gestes unitaires**
    (fusion, coupe) archivent — l'ordre inversé de `_handle_units_split` est traité par une lecture
    avant le `DELETE`, sans déplacer son `record_prep_action`. **ALI-03 est refermé.**
-   *Restent* : l'archive côté **run** (ALI-17, ALI-10 — resegmentation et propagation), qui porte
-   la seule question ouverte de la famille (§11.6), et la garde `needsAlignmentConfirm` d'ALI-03.
+   L'archive côté **run** est livrée elle aussi (migration 036, contrat 1.6.66,
+   `POST /align/run/undo`) : **ALI-17 est traité côté moteur** et la question du §11.6 est
+   résolue par composition, pas par arbitrage.
+   *Restent* : le **geste front** du « ↺ Annuler ce run » — sans lui la capacité n'est
+   atteignable qu'en HTTP ; la **resegmentation** (`segmenter.py:476` et `:703`, l'autre moitié
+   d'ALI-10), qui est un petit incrément sur la mécanique d'ALI-03 puisque `resegment` est déjà
+   une action de préparation ; et la garde `needsAlignmentConfirm` d'ALI-03.
    ALI-22 (a) — un ↻ sur une cellule issue d'un ⭙ — devient possible maintenant que l'archive
    existe, mais le geste front reste à écrire.

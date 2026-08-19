@@ -318,14 +318,195 @@ def resolve_token_mode(token_mode: str) -> str | None:
     return mode
 
 
+# Columns archived when a run purges a link, in the order they are read and written.
+# Mirrors action_history.LINK_SNAPSHOT_COLUMNS; kept as one list so the SELECT, the
+# INSERT and the restore can never drift apart.
+_RUN_PURGE_COLUMNS: tuple[str, ...] = (
+    "link_id", "run_id", "pivot_unit_id", "target_unit_id", "external_id",
+    "pivot_doc_id", "target_doc_id", "created_at", "status", "source_changed_at",
+    "bead_id", "bead_uid", "target_char_start", "target_char_end",
+)
+
+
+def _archive_run_purge(
+    conn: sqlite3.Connection,
+    run_id: str | None,
+    pivot_doc_id: int,
+    target_doc_id: int,
+    *,
+    keep_accepted: bool,
+) -> int:
+    """Copy into ``align_run_purge`` the links the caller is about to delete.
+
+    The predicate mirrors the DELETE that follows, ``keep_accepted`` included: an
+    archive wider than the deletion would resurrect links the run never touched.
+    """
+    if not run_id:
+        return 0
+    cols = ", ".join(_RUN_PURGE_COLUMNS)
+    where = "pivot_doc_id = ? AND target_doc_id = ?"
+    if keep_accepted:
+        where += " AND (status IS NULL OR status != 'accepted')"
+    rows = conn.execute(
+        f"SELECT {cols} FROM alignment_links WHERE {where}",
+        (pivot_doc_id, target_doc_id),
+    ).fetchall()
+    if not rows:
+        return 0
+    # (run_id, link_id, src_run_id, …): the archived row's own run_id becomes
+    # src_run_id — the run that CREATED the link — while run_id identifies the run
+    # that purged it. Confusing the two would make an undo delete the wrong generation.
+    conn.executemany(
+        "INSERT OR IGNORE INTO align_run_purge"
+        " (run_id, link_id, src_run_id, pivot_unit_id, target_unit_id, external_id,"
+        "  pivot_doc_id, target_doc_id, created_at, status, source_changed_at,"
+        "  bead_id, bead_uid, target_char_start, target_char_end)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [(run_id, r[0], r[1], *tuple(r)[2:]) for r in rows],
+    )
+    return len(rows)
+
+
+class AlignRunUndoError(Exception):
+    """Raised when an alignment run cannot be reverted. ``code`` maps to the wire code."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def undo_alignment_run(conn: sqlite3.Connection, run_id: str) -> dict[str, object]:
+    """Revert an alignment run: drop the links it created, put back the ones it purged.
+
+    Returns a report; raises :class:`AlignRunUndoError` when the run is not revertible.
+    The two halves are asymmetric on purpose:
+
+    * **the links it created** need no archive — ``alignment_links.run_id`` carries the
+      run, so a ``DELETE … WHERE run_id = ?`` is exact (index added by migration 036);
+    * **the links it purged** come back from ``align_run_purge`` (migration 036), with
+      their original ``link_id`` and ``src_run_id``, so the restitution is identical
+      rather than an approximate re-creation.
+
+    Two links are deliberately NOT deleted and are reported instead of silently removed:
+    those the user reviewed *after* the run (``status`` set). Refusing the whole undo for
+    them would be disproportionate — measured on the reference corpus, 2 runs out of 9
+    are concerned, over 2 and 1 links out of 1 226. So the discipline established by
+    ALI-03 applies here too: keep the human decision, skip what conflicts, and say it.
+    A kept link keeps occupying its ``(pivot_unit_id, target_unit_id)`` pair, so the
+    matching restitution skips itself and is counted — the two mechanics compose.
+    """
+    row = conn.execute(
+        "SELECT run_id, kind FROM runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    if row is None:
+        raise AlignRunUndoError("unknown_run", f"No run with run_id={run_id!r}")
+    if row["kind"] != "align":
+        raise AlignRunUndoError(
+            "not_an_align_run", f"Run {run_id!r} is a {row['kind']!r} run, not an alignment"
+        )
+
+    created = conn.execute(
+        "SELECT COUNT(*) FROM alignment_links WHERE run_id = ?", (run_id,)
+    ).fetchone()[0]
+    archived = conn.execute(
+        "SELECT COUNT(*) FROM align_run_purge WHERE run_id = ?", (run_id,)
+    ).fetchone()[0]
+    if not created and not archived:
+        raise AlignRunUndoError(
+            "nothing_to_revert",
+            f"Run {run_id!r} has no surviving link and no archive: it was already "
+            f"reverted, or replaced by a later run.",
+        )
+
+    # A later run that replaced these links makes this one un-revertible: putting the
+    # archive back would superpose a generation on top of the current one — exactly the
+    # accumulation ALI-17 describes. Detected on the pairs this run touched.
+    pairs = {
+        (int(r[0]), int(r[1]))
+        for r in conn.execute(
+            "SELECT DISTINCT pivot_doc_id, target_doc_id FROM alignment_links WHERE run_id=?"
+            " UNION"
+            " SELECT DISTINCT pivot_doc_id, target_doc_id FROM align_run_purge WHERE run_id=?",
+            (run_id, run_id),
+        )
+    }
+    for pivot_doc, target_doc in sorted(pairs):
+        later = conn.execute(
+            "SELECT r.run_id FROM align_run_purge p JOIN runs r ON r.run_id = p.run_id"
+            " WHERE p.pivot_doc_id=? AND p.target_doc_id=? AND p.run_id <> ?"
+            "   AND r.created_at > (SELECT created_at FROM runs WHERE run_id = ?)"
+            " LIMIT 1",
+            (pivot_doc, target_doc, run_id, run_id),
+        ).fetchone()
+        if later is not None:
+            raise AlignRunUndoError(
+                "superseded",
+                f"A later run ({later[0]}) has already replaced the links of pair "
+                f"{pivot_doc}→{target_doc}. Revert that one first.",
+            )
+
+    # 1. Drop what the run created, except what a human reviewed afterwards.
+    kept = conn.execute(
+        "SELECT COUNT(*) FROM alignment_links WHERE run_id = ? AND status IS NOT NULL",
+        (run_id,),
+    ).fetchone()[0]
+    deleted = conn.execute(
+        "DELETE FROM alignment_links WHERE run_id = ? AND status IS NULL", (run_id,)
+    ).rowcount or 0
+
+    # 2. Put back what it purged. Same two skip causes as the prep-action restore:
+    #    the pair is occupied again (by a kept link, or by later manual work), or one of
+    #    the two units no longer exists — a FOREIGN KEY violation is NOT swallowed by
+    #    OR IGNORE, so it must be filtered out rather than left to abort the revert.
+    cols = ", ".join(_RUN_PURGE_COLUMNS)
+    qualified = ", ".join(
+        f"p.{'src_run_id' if c == 'run_id' else c}" for c in _RUN_PURGE_COLUMNS
+    )
+    rows = conn.execute(
+        f"SELECT {qualified} FROM align_run_purge p"
+        f" WHERE p.run_id = ?"
+        f"   AND EXISTS (SELECT 1 FROM units u WHERE u.unit_id = p.pivot_unit_id)"
+        f"   AND EXISTS (SELECT 1 FROM units u WHERE u.unit_id = p.target_unit_id)",
+        (run_id,),
+    ).fetchall()
+    before = conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0]
+    if rows:
+        conn.executemany(
+            f"INSERT OR IGNORE INTO alignment_links ({cols})"
+            f" VALUES ({', '.join('?' * len(_RUN_PURGE_COLUMNS))})",
+            [tuple(r) for r in rows],
+        )
+    after = conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0]
+    restored = after - before
+
+    # The archive is consumed: keeping it would let a second undo resurrect the same
+    # generation on top of the one just restored.
+    conn.execute("DELETE FROM align_run_purge WHERE run_id = ?", (run_id,))
+    conn.commit()
+    return {
+        "run_id":            run_id,
+        "links_deleted":     int(deleted),
+        "links_kept":        int(kept),
+        "links_restored":    int(restored),
+        "links_not_restored": int(archived - restored),
+    }
+
+
 def _prepare_alignment_replace(
     conn: sqlite3.Connection,
     *,
     pivot_doc_id: int,
     target_doc_ids: list[int],
     preserve_accepted: bool,
+    run_id: str | None = None,
 ) -> tuple[dict[int, set[tuple[int, int]]], int, int]:
     """Delete previous links before a global recalculation.
+
+    When ``run_id`` is given, every link about to be destroyed is archived into
+    ``align_run_purge`` first (migration 036), making the run reversible. All three
+    call sites create their run *before* calling this, so the id is always available —
+    no reordering was needed. A run that purges nothing archives nothing.
 
     Returns:
         protected_pairs_by_target, deleted_count, preserved_count
@@ -347,6 +528,10 @@ def _prepare_alignment_replace(
             ).fetchall()
             protected_pairs = {(int(r[0]), int(r[1])) for r in rows}
             preserved_count += len(protected_pairs)
+            _archive_run_purge(
+                conn, run_id, pivot_doc_id, target_doc_id,
+                keep_accepted=True,
+            )
             cur = conn.execute(
                 """
                 DELETE FROM alignment_links
@@ -356,6 +541,10 @@ def _prepare_alignment_replace(
                 (pivot_doc_id, target_doc_id),
             )
         else:
+            _archive_run_purge(
+                conn, run_id, pivot_doc_id, target_doc_id,
+                keep_accepted=False,
+            )
             cur = conn.execute(
                 """
                 DELETE FROM alignment_links
@@ -478,6 +667,7 @@ _WRITE_PATHS = frozenset({
     "/align/links/batch_update",
     "/align/cell_status",
     "/align/collisions/resolve",
+    "/align/run/undo",
     # Other DB-mutating operations (fixed in 1.4.1)
     "/curate",
     "/segment",
@@ -953,6 +1143,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_align_matrix(body)
             elif path == "/align/quality":
                 self._handle_align_quality(body)
+            elif path == "/align/run/undo":
+                self._handle_align_run_undo(body)
             elif path == "/align/link/create":
                 self._handle_align_link_create(body)
             elif path == "/align/link/update_status":
@@ -3403,6 +3595,30 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "stats": {"links_returned": len(links)},
             "links": links,
         }))
+
+    def _handle_align_run_undo(self, body: dict) -> None:
+        """POST /align/run/undo — revert one alignment run (ALI-17 / §10).
+
+        Thin adapter: the domain logic lives in ``undo_alignment_run`` and raises a
+        typed error whose code maps to the wire code here.
+        """
+        run_id = body.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            self._send_error("run_id must be a non-empty string",
+                             code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            with self._lock():
+                data = undo_alignment_run(self._conn(), run_id)
+        except AlignRunUndoError as exc:
+            if exc.code == "unknown_run":
+                self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=404)
+            elif exc.code == "superseded":
+                self._send_error(exc.message, code=ERR_CONFLICT, http_status=409)
+            else:
+                self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=400)
+            return
+        self._send_json(success_payload({**data, "reason": None}))
 
     def _handle_align_quality(self, body: dict) -> None:
         """Read-only alignment quality metrics for a pivot↔target pair."""
@@ -6528,6 +6744,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                             pivot_doc_id=family_root_id,
                             target_doc_ids=[target_doc_id],
                             preserve_accepted=preserve_accepted,
+                            run_id=run_id,
                         )
 
                     pair_reports = _run_alignment_strategy(
@@ -6756,6 +6973,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         pivot_doc_id=pivot_doc_id,
                         target_doc_ids=target_doc_ids,
                         preserve_accepted=preserve_accepted,
+                        run_id=run_id,
                     )
                 reports = _run_alignment_strategy(
                     self._conn(),
@@ -9561,6 +9779,7 @@ class CorpusServer:
                         pivot_doc_id=int(pivot_doc_id),
                         target_doc_ids=[int(t) for t in target_doc_ids],
                         preserve_accepted=preserve_accepted,
+                        run_id=created_run_id,
                     )
                 reports = _run_alignment_strategy(
                     conn,

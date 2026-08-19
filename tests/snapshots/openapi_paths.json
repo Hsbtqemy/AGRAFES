@@ -36,6 +36,7 @@
   "POST /align/matrix",
   "POST /align/quality",
   "POST /align/retarget_candidates",
+  "POST /align/run/undo",
   "POST /annotate",
   "POST /conventions",
   "POST /conventions/delete",
