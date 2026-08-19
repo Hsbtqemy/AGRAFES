@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Journal de bord</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
+<style>
+/* ============================================================
+   Journal de bord — apparat critique
+   minium = ouvert · outremer = interaction · verdet = achevé
+   mono = dérivé de git/du parseur · sérif = écrit à la main
+   ============================================================ */
+:root{
+  --verge:#E6E7E1; --plat:#FAFAF7; --plat2:#F1F2ED;
+  --encre:#14171B; --encre2:#4A5259; --encre3:#79828A;
+  --minium:#B7332B; --outremer:#2B4C8C; --outremer-pale:#DFE5F2; --verdet:#3D7A5D;
+  --pl-close-bg:#14171B; --pl-close-fg:#D6D8D1; --pl-close-fg2:#8F958F;
+  --sr:'Newsreader',Charter,'Bitstream Charter',Georgia,serif;
+  --mo:ui-monospace,'SF Mono','Cascadia Code',Consolas,'Liberation Mono',monospace;
+  --t1:.6875rem; --t2:.8125rem; --t3:1rem; --t4:1.25rem; --t5:1.875rem;
+  --gout:7.75rem;
+}
+@media (prefers-color-scheme:dark){:root{
+  --verge:#101317; --plat:#191D22; --plat2:#20252B;
+  --encre:#E4E6E0; --encre2:#A3ABB2; --encre3:#727B83;
+  --minium:#E4685C; --outremer:#8CACEC; --outremer-pale:#1C2740; --verdet:#6FBC93;
+  --pl-close-bg:#272D34; --pl-close-fg:#C6CAC4; --pl-close-fg2:#7E868D;
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--verge);color:var(--encre);
+  font:400 var(--t3)/1.6 var(--sr);-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2.5px solid var(--outremer);outline-offset:2px;border-radius:2px}
+a{color:var(--outremer)}
+
+/* ---------- chrome ---------- */
+.tete{background:var(--plat);border-bottom:2px solid var(--encre)}
+.tete-in,.corps{max-width:64rem;margin:0 auto;padding:0 1.5rem}
+.tete-in{padding-top:1.5rem}
+.marque{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin:0}
+.marque b{font:600 var(--t4)/1 var(--mo);letter-spacing:-.02em}
+.branche{font:400 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.1em;
+  color:var(--outremer);background:var(--outremer-pale);padding:.35em .6em;border-radius:2px}
+.etat{font:400 var(--t2)/1.5 var(--mo);color:var(--encre2);margin:.55rem 0 0}
+.ong{display:flex;gap:.25rem;margin-top:1.1rem}
+.ong a{font:500 var(--t2)/1 var(--mo);text-decoration:none;color:var(--encre2);
+  padding:.6rem .9rem;border-radius:2px 2px 0 0;background:var(--plat2)}
+.ong a:hover{color:var(--encre)}
+.ong a.on{background:var(--encre);color:var(--plat)}
+.corps{padding-top:2.25rem;padding-bottom:6rem}
+
+/* ---------- intitulés ---------- */
+.sec{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;
+  font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.13em;
+  color:var(--encre3);margin:2.75rem 0 .75rem}
+.sec:first-child{margin-top:0}
+.sec .n{font-variant-numeric:tabular-nums}
+
+/* ---------- la plaque de sigle ---------- */
+.plaque{background:var(--minium);color:#fff;padding:1rem .85rem;min-width:0;
+  display:flex;flex-direction:column;justify-content:space-between;gap:.5rem}
+.sigle{font:600 1.75rem/1 var(--mo);letter-spacing:-.045em;word-break:break-all}
+.carte .sigle{font-size:var(--sig,1.75rem)}
+.mesure{font:400 1.375rem/1 var(--mo);font-variant-numeric:tabular-nums}
+.mesure i{font:400 var(--t1)/1 var(--mo);font-style:normal;opacity:.75;margin-left:.15em}
+.mot{font:500 var(--t1)/1.3 var(--mo);text-transform:uppercase;letter-spacing:.11em;opacity:.82}
+.s-dif .plaque{background:transparent;box-shadow:inset 0 0 0 2.5px var(--minium);color:var(--minium)}
+.s-clos .plaque,.s-liv .plaque{background:var(--pl-close-bg);color:var(--pl-close-fg)}
+.s-clos .mot,.s-clos .mesure i,.s-liv .mesure i{color:var(--pl-close-fg2);opacity:1}
+.s-liv .mot{color:var(--verdet);opacity:1}
+
+/* ---------- carte ---------- */
+.pile{display:flex;flex-direction:column;gap:.375rem}
+.carte{position:relative;display:grid;grid-template-columns:var(--gout) 1fr;
+  background:var(--plat);border-radius:2px;overflow:hidden}
+.carte:hover{background:var(--plat2)}
+.carte:focus-within{outline:2.5px solid var(--outremer);outline-offset:2px}
+/* nappe cliquable : évite d'imbriquer une ancre de carte autour des pastilles */
+.cible{color:inherit;text-decoration:none}
+.cible::after{content:"";position:absolute;inset:0}
+.cible:focus-visible{outline:none}
+.corps-c{padding:1rem 1.25rem;min-width:0;display:flex;flex-direction:column;gap:.35rem}
+.titre-c{font:500 var(--t4)/1.3 var(--sr);margin:0;letter-spacing:-.01em}
+.lemme{font:400 var(--t3)/1.5 var(--sr);color:var(--encre2);margin:0;overflow-wrap:break-word}
+.pied{font:400 var(--t2)/1.4 var(--mo);color:var(--encre3);margin:.15rem 0 0;
+  display:flex;gap:.9rem;flex-wrap:wrap}
+.pied .r{color:var(--minium)}
+.pied .r0{color:var(--verdet)}
+.pied .fr{color:var(--encre3)}
+.pied .fr.nf{color:var(--encre2);font-weight:500}
+
+/* liste repliée */
+.repli{display:flex;flex-wrap:wrap;gap:.375rem}
+.repli a{font:500 var(--t2)/1 var(--mo);text-decoration:none;color:var(--pl-close-fg);
+  background:var(--pl-close-bg);padding:.6rem .75rem;border-radius:2px}
+.repli a:hover{color:#fff}
+.repli a .v{color:var(--verdet)}
+.repli a .nf{color:var(--pl-close-fg2)}
+
+/* ---------- folio ---------- */
+.retour{font:500 var(--t2)/1 var(--mo);text-decoration:none;color:var(--encre2);
+  display:inline-block;margin-bottom:1.25rem}
+.retour:hover{color:var(--outremer)}
+.folio{display:grid;grid-template-columns:15rem 1fr;gap:2.5rem;align-items:start}
+.apparat{position:sticky;top:1.25rem;display:flex;flex-direction:column;gap:.375rem}
+.apparat .plaque{border-radius:2px;padding:1.15rem 1rem;gap:1.5rem}
+.apparat .sigle{font-size:2.25rem}
+.meta{margin:0;background:var(--plat);border-radius:2px;padding:.9rem 1rem;
+  font:400 var(--t2)/1.45 var(--mo)}
+.meta div{padding:.45rem 0}
+.meta div+div{border-top:1px solid var(--plat2)}
+.meta dt{font-size:var(--t1);text-transform:uppercase;letter-spacing:.1em;color:var(--encre3)}
+.meta dd{margin:.25rem 0 0;overflow-wrap:break-word}
+.titre-f{font:600 var(--t5)/1.15 var(--sr);letter-spacing:-.022em;margin:0 0 .9rem}
+.lemme-f{font:400 1.125rem/1.55 var(--sr);margin:0;padding:.9rem 1.1rem;
+  background:var(--plat);border-left:3px solid var(--minium);border-radius:0 2px 2px 0}
+.s-clos .lemme-f,.s-liv .lemme-f{border-left-color:var(--pl-close-bg)}
+.s-dif .lemme-f{border-left-style:double;border-left-width:5px}
+.lemme-f b{font:600 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.11em;
+  color:var(--encre3);display:block;margin-bottom:.35rem}
+
+/* ---------- cases ---------- */
+.cases{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.1875rem}
+.case{display:grid;grid-template-columns:auto 1fr;gap:.8rem;align-items:start;
+  background:var(--plat);border-radius:2px;padding:.7rem .95rem}
+.case:hover{background:var(--plat2)}
+.case input{appearance:none;-webkit-appearance:none;width:1.15rem;height:1.15rem;
+  margin:.2rem 0 0;flex:none;border:2px solid var(--encre3);border-radius:2px;
+  background:var(--verge);cursor:pointer}
+.case input:hover{border-color:var(--verdet)}
+.case input:checked{background:var(--verdet);border-color:var(--verdet)}
+.case input:checked::after{content:"";display:block;width:.3rem;height:.6rem;
+  margin:.08rem 0 0 .32rem;border:solid var(--plat);border-width:0 2.5px 2.5px 0;
+  transform:rotate(43deg)}
+.case label{font:400 var(--t3)/1.5 var(--sr);cursor:pointer;overflow-wrap:break-word}
+.case input:checked~label{color:var(--encre3);text-decoration:line-through;
+  text-decoration-color:var(--encre3);text-decoration-thickness:1px}
+
+/* ---------- prose ---------- */
+.prose{max-width:38rem}
+.prose p{font:400 var(--t3)/1.7 var(--sr);color:var(--encre2);margin:0 0 .9rem}
+.prose strong{font-weight:600;color:var(--encre)}
+.prose code,.lemme code,.lemme-f code,.case code,.vide code{font:400 .85em/1 var(--mo);
+  background:var(--plat2);padding:.15em .35em;border-radius:2px;color:var(--encre)}
+.zone{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.13em;
+  color:var(--encre3);margin:2rem 0 .6rem}
+
+/* ---------- pastilles ---------- */
+.pill{font:500 .875em/1 var(--mo);text-decoration:none;padding:.18em .4em;
+  border-radius:2px;white-space:nowrap;position:relative;z-index:1}
+.pill.i{color:var(--outremer);background:var(--outremer-pale)}
+.pill.e{color:var(--encre2);background:var(--plat2);box-shadow:inset 0 -1px 0 var(--encre3)}
+.pill:hover{filter:brightness(.94)}
+
+/* ---------- fil ---------- */
+.filtre{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.5rem}
+.filtre label{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;
+  letter-spacing:.11em;color:var(--encre3)}
+.filtre select{font:400 var(--t2)/1 var(--mo);color:var(--encre);background:var(--plat);
+  border:2px solid var(--plat2);border-radius:2px;padding:.55rem .6rem;cursor:pointer}
+.jour{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.13em;
+  color:var(--plat);background:var(--encre);display:inline-block;
+  padding:.5rem .75rem;border-radius:2px;margin:1.75rem 0 .5rem}
+.cmts{display:flex;flex-direction:column;gap:.1875rem}
+.cmt{display:grid;grid-template-columns:5.5rem 1fr;gap:.9rem;background:var(--plat);
+  border-radius:2px;padding:.6rem .95rem;align-items:baseline}
+.masses{width:100%;border-collapse:collapse;font:400 var(--t2)/1.4 var(--mo)}
+.masses th{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.1em;
+  color:var(--encre3);text-align:right;padding:0 0 .55rem;font-weight:500}
+.masses th:first-child,.masses td.a{text-align:left}
+.masses td{background:var(--plat);padding:.5rem .8rem;vertical-align:middle}
+.masses tr td:first-child{border-radius:2px 0 0 2px}
+.masses tr td:last-child{border-radius:0 2px 2px 0}
+.masses tbody tr+tr td{border-top:1px solid var(--verge)}
+/* le nom prend le mou, courbe et chiffres restent collés à droite */
+.masses td.a{width:100%}
+.masses td.v{width:1%}
+.masses td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:var(--encre2)}
+.masses td.v.moins{color:var(--verdet);font-weight:500}
+.masses td.c{padding:0 .8rem}
+/* largeur en dur : dans une colonne qui se rétrécit sur son contenu, un width:100%
+   sur le SVG se résout circulairement et la courbe disparaît. */
+.spark{display:block;width:132px;height:26px;overflow:visible}
+.spark polyline{fill:none;stroke:var(--minium);stroke-width:1.5;
+  vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.cmt.jal .h{color:var(--verdet);text-align:right}
+.cmt.jal .s i{display:block;font:400 var(--t1)/1.6 var(--mo);font-style:normal;color:var(--encre3)}
+.cmt .h{font:400 var(--t2)/1.5 var(--mo);color:var(--encre3)}
+.cmt .s{font:400 .9375rem/1.5 var(--sr);overflow-wrap:break-word}
+
+/* ---------- boutons, vides, toast ---------- */
+.bt{font:500 var(--t2)/1 var(--mo);color:var(--plat);background:var(--encre);
+  border:0;border-radius:2px;padding:.6rem .85rem;cursor:pointer}
+.bt:hover{background:var(--encre2)}
+.bt.danger{background:var(--minium);color:#fff}
+.vide{background:var(--plat);border-radius:2px;padding:1.75rem;max-width:38rem}
+.vide p{font:400 var(--t3)/1.6 var(--sr);color:var(--encre2);margin:0 0 .6rem}
+.vide p:last-child{margin:0}
+.vide b{font-weight:600;color:var(--encre)}
+.toast{position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%);
+  font:500 var(--t2)/1.4 var(--mo);background:var(--encre);color:var(--plat);
+  padding:.75rem 1.1rem;border-radius:2px;opacity:0;pointer-events:none;
+  transition:opacity .18s;max-width:calc(100vw - 3rem)}
+.toast.on{opacity:1}
+.toast.ko{background:var(--minium);color:#fff}
+
+/* ---------- responsive ---------- */
+@media (max-width:760px){
+  .folio{grid-template-columns:1fr;gap:1.5rem}
+  .apparat{position:static}
+  .titre-f{font-size:1.5rem}
+}
+@media (max-width:560px){
+  .tete-in,.corps{padding-left:1rem;padding-right:1rem}
+  .carte{grid-template-columns:1fr}
+  .plaque,.apparat .plaque{flex-direction:row;align-items:baseline;gap:.75rem;
+    padding:.7rem .95rem}
+  .carte .sigle,.apparat .sigle{font-size:1.375rem}
+  .mesure{font-size:1rem}
+  .mot{margin-left:auto;text-align:right}
+  .cmt{grid-template-columns:1fr;gap:.15rem}
+  .ong a{padding:.55rem .7rem}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="tete">
+  <div class="tete-in">
+    <p class="marque"><b id="repo">…</b><span class="branche" id="br">…</span></p>
+    <p class="etat" id="sil"></p>
+    <nav class="ong" id="tabs">
+      <a href="#/">chantiers</a><a href="#/qa">passes</a><a href="#/masses">masses</a><a href="#/fil">fil</a>
+    </nav>
+  </div>
+</header>
+
+<main id="vue" class="corps"></main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+let D = null, RXL = null;
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+
+const vsc = p => `vscode://file/${D.racine.replace(/\\/g, "/")}/${p}`;
+
+/* pastilles — posées APRÈS échappement ; un code absent de liens reste du texte */
+function pastilles(html){
+  if (!D) return html;
+  if (!RXL){
+    const k = Object.keys(D.liens).sort((a, b) => b.length - a.length)
+      .map(x => x.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&"));
+    RXL = k.length ? new RegExp(`(^|[^\\w-])(${k.join("|")})(?![\\w-])`, "g") : /$^/;
+  }
+  html = html.replace(RXL, (m, pre, code) => {
+    const cible = D.liens[code];
+    if (!cible) return m;
+    return cible.startsWith("#")
+      ? `${pre}<a class="pill i" href="${cible}">${code}</a>`
+      : `${pre}<a class="pill e" href="${vsc(cible)}">${code}</a>`;
+  });
+  return html.replace(/(^|[^\w\/-])(docs\/[\w.\-]+\.md)/g,
+    (m, pre, p) => `${pre}<a class="pill e" href="${vsc(p)}">${p.replace("docs/", "")}</a>`);
+}
+
+const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>")
+                     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+const ligne = t => pastilles(inline(esc(t)));
+const prose = md => pastilles(esc(md).split(/\n{2,}/)
+  .map(p => "<p>" + inline(p.replace(/\n/g, " ")) + "</p>").join(""));
+
+const OUVERT = s => s === "interrompu" || s === "différé";
+const SLUG = { "interrompu":"int", "différé":"dif", "clos":"clos", "livré":"liv" };
+const slug = s => SLUG[s] || "int";
+const byCode = c => D.chantiers.find(x => x.code === c);
+const byFile = f => D.passes.find(p => p.file === f);
+const jour = s => new Date(s + "T00:00:00")
+  .toLocaleDateString("fr-FR", { weekday:"long", day:"numeric", month:"long" });
+const sansCode = t => t.replace(/^\s*\S+\s*[—–]\s*/, "");
+const vide = html => `<div class="vide">${html}</div>`;
+
+/* la plaque : sigle, silence, statut. Rien d'autre. */
+const taille = n => Math.min(1.75, Math.round(1010 / n) / 100);
+const plaque = c => `<div class="plaque" style="--sig:${taille(c.code.length)}rem">
+  <span class="sigle">${esc(c.code)}</span>
+  <span class="mesure">${c.silence ?? "—"}<i>j</i></span>
+  <span class="mot">${esc(c.statut)}</span></div>`;
+
+/* ---------------- accueil ---------------- */
+function vueChantiers(){
+  if (!D.chantiers.length) return vide(
+    `<p>Aucune fiche dans <code>pilotage/</code>.</p>
+     <p>Une fiche de chantier est un <code>.md</code> avec un front-matter
+     <code>chantier:</code> et <code>statut:</code>, et ses reliquats en cases sous un
+     titre <code>## Reste</code>. Le gabarit est dans <code>pilotage/_TEMPLATE.md</code>.</p>`);
+
+  const tri = l => l.sort((a, b) => (a.silence ?? 1e9) - (b.silence ?? 1e9));
+  const int = tri(D.chantiers.filter(c => c.statut === "interrompu"));
+  const dif = tri(D.chantiers.filter(c => c.statut === "différé"));
+  const fer = tri(D.chantiers.filter(c => !OUVERT(c.statut)));
+
+  const carte = c => {
+    const r = c.reste.filter(x => !x.fait).length;
+    return `<article class="carte s-${slug(c.statut)}">${plaque(c)}
+        <div class="corps-c">
+          <h3 class="titre-c"><a class="cible"
+            href="#/c/${encodeURIComponent(c.code)}">${esc(sansCode(c.titre))}</a></h3>
+          ${c.arrete ? `<p class="lemme">${ligne(c.arrete)}</p>` : ""}
+          <p class="pied">
+            <span class="${r ? "r" : "r0"}">${r ? r + " reste" + (r > 1 ? "s" : "") : "aucun reliquat"}</span>
+            ${c.dernier ? `<span>${c.dernier.hash} · ${c.dernier.date}</span>` : ""}
+            ${c.front ? `<span class="fr${c.front.integre ? "" : " nf"}">${esc(c.front.ref)}</span>` : ""}
+          </p>
+        </div>
+      </article>`;
+  };
+  const bloc = (l, t) => !l.length ? "" :
+    `<h2 class="sec"><span>${t}</span><span class="n">${l.length}</span></h2>
+     <div class="pile">${l.map(carte).join("")}</div>`;
+
+  return bloc(int, "Interrompus — arrêtés en plein travail")
+       + bloc(dif, "Différés — fermés volontairement, reliquat connu")
+       + (int.length || dif.length ? "" : vide(
+           `<p>Aucun chantier ouvert — les ${D.chantiers.length} fiches sont closes ou livrées.</p>
+            <p>Quand tu en reprends un, repasse son <code>statut:</code> à
+            <code>interrompu</code> dans sa fiche et il remontera ici.</p>`))
+       + (fer.length ? `<h2 class="sec"><span>Clos et livrés</span><span class="n">${fer.length}</span></h2>
+           <div class="repli">${fer.map(c =>
+             `<a href="#/c/${encodeURIComponent(c.code)}">${esc(c.code)}${
+               c.statut === "livré" ? ` <span class="v">livré</span>` : ""}${
+               c.front && !c.front.integre ? ` <span class="nf">${esc(c.front.ref)}</span>` : ""}</a>`).join("")}</div>` : "");
+}
+
+/* ---------------- fiche ---------------- */
+function vueFiche(code){
+  const c = byCode(code);
+  if (!c) return `<a class="retour" href="#/">← chantiers</a>` + vide(
+    `<p>Aucune fiche pour le code <b>${esc(code)}</b>.</p>
+     <p>Les codes connus sont ceux du front-matter <code>chantier:</code> des fichiers
+     de <code>pilotage/</code>.</p>`);
+
+  const ouv = c.reste.filter(r => !r.fait).length;
+  const passes = c.passes.map(byFile).filter(Boolean);
+  const meta = [
+    c.dernier && ["dernier commit", `${c.dernier.hash} · ${c.dernier.date}`],
+    c.front && ["intégration", c.front.integre ? esc(c.front.ref)
+      : `${esc(c.front.ref)} — absent de ${(D.refs || []).map(esc).join(", ")}`],
+    ["silence", `${c.silence ?? "—"} jours actifs`],
+    ["commits", String(c.commits)],
+    c.audit && ["source", pastilles(esc(c.audit))],
+    ["fiche", `<a href="${vsc(c.file)}">${esc(c.file)}</a>`]
+  ].filter(Boolean);
+
+  return `<a class="retour" href="#/">← chantiers</a>
+   <div class="folio s-${slug(c.statut)}">
+    <aside class="apparat">${plaque(c)}
+      <dl class="meta">${meta.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>
+    </aside>
+    <div>
+      <h1 class="titre-f">${esc(c.titre)}</h1>
+      ${c.arrete ? `<p class="lemme-f"><b>Arrêté sur</b>${ligne(c.arrete)}</p>` : ""}
+
+      <h2 class="sec"><span>Reste</span>${c.reste.length
+        ? `<span class="n">${c.reste.length - ouv} / ${c.reste.length}</span>` : ""}</h2>
+      ${c.reste.length
+        ? `<ul class="cases">${c.reste.map(r => item(c.file, r)).join("")}</ul>`
+        : vide(`<p>Aucun reliquat déclaré.</p>
+            <p>Si tu trouves du travail restant, ajoute une ligne <code>- [ ]</code> sous
+            <code>## Reste</code> dans <a href="${vsc(c.file)}">${esc(c.file)}</a> — elle
+            apparaîtra ici, cochable.</p>`)}
+
+      ${passes.length ? `<h2 class="sec"><span>Passes de QA</span></h2>
+        <div class="pile">${passes.map(rowPasse).join("")}</div>` : ""}
+
+      ${c.contexte ? `<h2 class="sec"><span>Contexte</span></h2>
+        <div class="prose">${prose(c.contexte)}</div>` : ""}
+    </div>
+   </div>`;
+}
+
+const item = (file, r) => {
+  const id = `k${file.replace(/\W/g, "")}${r.ligne}`;
+  return `<li class="case"><input type="checkbox" id="${id}" ${r.fait ? "checked" : ""}
+    data-file="${esc(file)}" data-ligne="${r.ligne}">
+    <label for="${id}">${ligne(r.texte)}</label></li>`;
+};
+
+/* ---------------- passes ---------------- */
+const etat = p => !p.derniere ? "jamais jouée"
+  : p.faits === p.total ? "complète" : `dernière ${p.derniere}`;
+
+const rowPasse = p => `<article class="carte s-clos">
+    <div class="plaque">
+      <span class="mesure">${p.faits}<i>/ ${p.total}</i></span>
+      <span class="mot">${esc(etat(p))}</span>
+    </div>
+    <div class="corps-c">
+      <h3 class="titre-c"><a class="cible"
+        href="#/qa/${encodeURIComponent(p.file)}">${esc(p.nom)}</a></h3>
+      <p class="pied">
+        ${p.chantier ? `<span>chantier ${pastilles(esc(p.chantier))}</span>`
+                     : `<span>transversale</span>`}
+        ${p.duree ? `<span>${esc(p.duree)}</span>` : ""}
+        <span>${p.zones.length} zones</span>
+      </p>
+    </div>
+  </article>`;
+
+function vueQA(){
+  if (!D.passes.length) return vide(
+    `<p>Aucune passe dans <code>pilotage/qa/</code>.</p>
+     <p>Une passe est une procédure <b>rejouable</b>, pas un état. Crée
+     <code>pilotage/qa/&lt;nom&gt;.md</code> avec un front-matter <code>passe:</code>,
+     et regroupe les points en cases sous des titres <code>###</code> de zone.</p>`);
+
+  const bloc = (l, t) => !l.length ? "" :
+    `<h2 class="sec"><span>${t}</span><span class="n">${l.length}</span></h2>
+     <div class="pile">${l.map(rowPasse).join("")}</div>`;
+  return bloc(D.passes.filter(p => !p.derniere), "Jamais jouées")
+       + bloc(D.passes.filter(p => p.derniere), "Déjà jouées");
+}
+
+function vuePasse(file){
+  const p = byFile(file);
+  if (!p) return `<a class="retour" href="#/qa">← passes</a>` + vide(
+    `<p>Aucune passe à ce chemin.</p>`);
+
+  return `<a class="retour" href="#/qa">← passes</a>
+    <h1 class="titre-f">${esc(p.titre)}</h1>
+    <p class="etat" style="margin:0 0 1.5rem">
+      ${p.faits} / ${p.total} cochés · ${esc(etat(p))}${p.duree ? " · " + esc(p.duree) : ""}
+      ${p.chantier ? " · chantier " + pastilles(esc(p.chantier)) : " · transversale"}
+      &nbsp;<button class="bt" id="reset" data-armed="0">réinitialiser</button>
+    </p>
+    ${p.intro ? `<div class="prose">${prose(p.intro)}</div>` : ""}
+    ${p.zones.map(z => `<h3 class="zone">${esc(z.nom)}</h3>
+      <ul class="cases">${z.items.map(i => item(p.file, i)).join("")}</ul>`).join("")}`;
+}
+
+/* ---------------- fil ---------------- */
+let scope = "tout";
+function vueFil(){
+  if (!D.commits.length) return vide(
+    `<p>Aucun commit sur la fenêtre courante.</p>
+     <p>Relance le serveur avec une fenêtre plus large :
+     <code>node journal.mjs --days 180</code>.</p>`);
+
+  const n = {};
+  D.commits.forEach(c => n[c.scope] = (n[c.scope] || 0) + 1);
+  const scopes = Object.entries(n).sort((a, b) => b[1] - a[1]);
+  const list = D.commits.filter(c => scope === "tout" || c.scope === scope);
+  const jours = {};
+  list.forEach(c => (jours[c.date] ||= []).push(c));
+
+  return `<div class="filtre">
+      <label for="sc">scope</label>
+      <select id="sc">
+        <option value="tout"${scope === "tout" ? " selected" : ""}>tout (${D.commits.length})</option>
+        ${scopes.map(([s, k]) =>
+          `<option value="${esc(s)}"${s === scope ? " selected" : ""}>${esc(s)} (${k})</option>`).join("")}
+      </select>
+    </div>
+    ${!list.length ? vide(`<p>Aucun commit pour le scope <b>${esc(scope)}</b>.</p>`) :
+      Object.keys(jours).sort().reverse().map(d => `
+        <div class="jour">${jour(d)}</div>
+        <div class="cmts">${jours[d].map(c => `<div class="cmt">
+          <span class="h">${c.hash}</span>
+          <span class="s">${ligne(c.sujet)}</span></div>`).join("")}</div>`).join("")}`;
+}
+
+/* ---------------- masses ---------------- */
+/* Une courbe par aire, normalisée sur elle-même : les masses vont de 1 170 à 28 655
+   lignes, une échelle commune écraserait tout sauf les deux plus grosses. */
+function courbe(v, w = 132, h = 26){
+  if (v.length < 2) return "";
+  const lo = Math.min(...v), hi = Math.max(...v), amp = hi - lo || 1;
+  const pts = v.map((n, i) =>
+    `${(i * w / (v.length - 1)).toFixed(1)},${(h - 1 - (n - lo) / amp * (h - 2)).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <polyline points="${pts}"/></svg>`;
+}
+
+function vueMasses(){
+  const m = D.masses;
+  if (!m || !m.aires.length) return vide(
+    `<p>Aucune masse mesurable — <code>git log --numstat</code> n'a rien rendu.</p>`);
+
+  const sgn = n => (n > 0 ? "+" : "") + n.toLocaleString("fr-FR");
+  return `<h2 class="sec"><span>Masses de code</span>
+      <span class="n">${m.mois[0]} → ${m.mois[m.mois.length - 1]}</span></h2>
+    <table class="masses">
+      <thead><tr><th>aire</th><th></th><th>lignes</th><th>${m.fenetre} mois</th></tr></thead>
+      <tbody>${m.aires.map(a => `<tr>
+        <td class="a">${esc(a.nom)}</td>
+        <td class="c">${courbe(a.valeurs)}</td>
+        <td class="v">${a.total.toLocaleString("fr-FR")}</td>
+        <td class="v ${a.delta < 0 ? "moins" : ""}">${sgn(a.delta)}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+    ${!m.jalons.length ? "" : `
+      <h2 class="sec"><span>Jalons</span><span class="n">retraits de plus de 1 000 lignes</span></h2>
+      <div class="cmts">${m.jalons.map(j => `<div class="cmt jal">
+        <span class="h">${j.delta.toLocaleString("fr-FR")}</span>
+        <span class="s">${ligne(j.sujet)}<i>${j.hash} · ${j.date}</i></span></div>`).join("")}</div>`}`;
+}
+
+/* ---------------- routage ---------------- */
+function rendre(){
+  const h = decodeURIComponent(location.hash.slice(2) || "");
+  const vue = document.getElementById("vue");
+  let html, onglet = "#/";
+  if (h.startsWith("c/"))       html = vueFiche(h.slice(2));
+  else if (h === "qa")          { html = vueQA();               onglet = "#/qa"; }
+  else if (h.startsWith("qa/")) { html = vuePasse(h.slice(3));  onglet = "#/qa"; }
+  else if (h === "fil")         { html = vueFil();              onglet = "#/fil"; }
+  else if (h === "masses")      { html = vueMasses();           onglet = "#/masses"; }
+  else                          html = vueChantiers();
+
+  vue.innerHTML = html;
+  document.querySelectorAll("#tabs a").forEach(a =>
+    a.classList.toggle("on", a.getAttribute("href") === onglet));
+
+  vue.querySelectorAll("input[type=checkbox]").forEach(cb => cb.addEventListener("change", cocher));
+  const sc = document.getElementById("sc");
+  if (sc) sc.addEventListener("change", () => { scope = sc.value; rendre(); });
+  const rz = document.getElementById("reset");
+  if (rz) rz.addEventListener("click", () => armer(rz, h.slice(3)));
+}
+
+/* ---------------- écritures ---------------- */
+async function poster(url, corps){
+  const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" },
+                               body: JSON.stringify(corps) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+}
+
+async function cocher(ev){
+  const cb = ev.target, { file, ligne } = cb.dataset, avant = !cb.checked;
+  try {
+    await poster("/cocher", { file, ligne: Number(ligne), fait: cb.checked });
+    await charger();
+    toast("écrit dans " + file);
+  } catch (e) {
+    cb.checked = avant;                       // remise dans l'état précédent
+    toast(e.message, true);
+  }
+}
+
+/* confirmation en deux temps — pas de dialogue natif */
+let tArm;
+function armer(bt, file){
+  if (bt.dataset.armed === "1"){ clearTimeout(tArm); return reinit(file); }
+  const p = byFile(file); if (!p) return;
+  bt.dataset.armed = "1"; bt.classList.add("danger");
+  bt.textContent = `décocher les ${p.total} cases — confirmer`;
+  tArm = setTimeout(() => {
+    bt.dataset.armed = "0"; bt.classList.remove("danger"); bt.textContent = "réinitialiser";
+  }, 4000);
+}
+
+async function reinit(file){
+  try {
+    await poster("/reinitialiser", { file });
+    await charger();
+    toast("passe réinitialisée — l'état précédent reste dans git");
+  } catch (e) { toast(e.message, true); }
+}
+
+let tT;
+function toast(m, ko){
+  const t = document.getElementById("toast");
+  t.textContent = m; t.classList.toggle("ko", !!ko); t.classList.add("on");
+  clearTimeout(tT); tT = setTimeout(() => t.classList.remove("on"), 2600);
+}
+
+/* ---------------- chargement ---------------- */
+async function charger(){
+  const r = await fetch("journal.json", { cache:"no-store" });
+  D = await r.json(); RXL = null;
+  document.getElementById("repo").textContent = D.repo;
+  document.getElementById("br").textContent = D.branche;
+  document.getElementById("sil").textContent = D.dernierJour
+    ? `dernier commit le ${jour(D.dernierJour)} — il y a ${D.silenceCourant} jours`
+    : "aucun commit";
+  rendre();
+}
+
+addEventListener("hashchange", rendre);
+charger().catch(() => {
+  document.getElementById("vue").innerHTML = vide(
+    `<p>Impossible de joindre le serveur.</p>
+     <p>Lance <code>node journal.mjs</code> à la racine du dépôt, puis recharge.</p>`);
+});
+</script>
+</body>
+</html>

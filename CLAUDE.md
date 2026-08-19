@@ -100,6 +100,24 @@ python scripts/smoke_sidecar.py <out>/sidecar-manifest.json        # serve + /he
 - **Never hand-edit version numbers.** Run `python scripts/bump_version.py --engine X.Y.Z --shell X.Y.Z`, which syncs `pyproject.toml`, `src/multicorpus_engine/__init__.py`, and the shell's `tauri.conf.json` / `shell.ts` / `package.json`. (Note: `tauri-prep`/`tauri-app` carry their own independent versions — the docs are not always consistent here.)
 - Commit/push only when asked. Default PR branch is **`dev`** (some docs still say `development` — `dev` is what the repo uses).
 
+## Pilotage
+
+Un chantier interrompu a un fichier `pilotage/<CODE>.md`. Une QA visuelle est une
+passe rejouable dans `pilotage/qa/<nom>.md`. Voir `pilotage/_TEMPLATE.md`.
+
+IMPORTANT — respecter exactement `## Reste`, `## QA`, et les H3 de zone :
+l'outil ne lit que ces sections.
+
+- Fin de session : mettre à jour le `Reste` du chantier travaillé.
+- QA visuelle : écrire une passe dans `pilotage/qa/`, jamais dans le fil de
+  conversation. Regrouper les points par zone en H3.
+- Ne jamais cocher soi-même une case d'une passe de QA.
+- Ne pas créer de fichier pour un finding traité en un seul commit.
+
+Le journal se lit avec `node journal.mjs` puis `localhost:4123` (git + `pilotage/`,
+lecture seule sauf les cases, dont l'écriture est bornée à `pilotage/`).
+
+
 ## Project conventions & gotchas
 
 - **`docs/DECISIONS.md`** (ADRs) and the audit docs (`docs/AUDIT_*.md`, `AUDIT_FOLLOW_UP.md`) are the authoritative design record. Design notes are frozen *before* a ticket is opened (e.g. `docs/DESIGN_sharedocs_ingestion.md`, the `TICKET_*` files).
