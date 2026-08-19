@@ -5,7 +5,7 @@ statut: interrompu
 
 # JOURNAL — journal de bord local
 
-**Arrêté sur** — correctif des ancres imbriquées : la carte n'est plus une `<a>`, le plateau reprend toute la hauteur, commit `cdd43c6`, 19 août 2026.
+**Arrêté sur** — front d'intégration par chantier : jusqu'où le dernier commit est remonté (`origin/main` / `dev` / branche courante), 19 août 2026.
 
 ## Reste
 
@@ -18,6 +18,8 @@ statut: interrompu
 - [x] `journal.mjs` : le compteur `commits` n'applique pas la garde `fourretout` alors que `dernierCommit` le fait — R2 et R4 comptent quelques commits de trop
 - [ ] `journal.mjs` : la section `## QA` d'une fiche n'est pas lue — le rattachement est dérivé du `chantier:` de la passe. Le contrat du gabarit décrit une section inerte
 - [ ] Aucune fiche pour les 14 findings `QA-01`…`QA-14` de la passe shell du 16 août — décider s'ils méritent des fiches ou un seul chantier de correction
+- [ ] Le front d'intégration contredit le vocabulaire de `statut:` : R6 affiche « livré » et « absent de origin/main, dev ». Décider si `livré` suppose un front, ou si les deux axes restent indépendants
+- [ ] Le front n'est calculé que pour les fiches — ni le fil ni les passes ne le portent. Coupe volontaire, à rouvrir seulement si le fil devient illisible une fois plusieurs branches vivantes
 
 ## Contexte
 
@@ -61,6 +63,24 @@ traverse les glyphes fait compter le texte comme du fond manquant (premier diagn
 faux, qui allait faire « corriger » un `space-between` innocent) ; et `journal.mjs` ne se
 recharge pas à chaud, `pkill` n'atteint pas le processus Windows, donc une vérification
 après édition du serveur mesure l'ancien code tant qu'on n'a pas tué le PID.
+
+**Le dépôt n'a pas de fourche, il a une droite** (mesuré le 19 août). Commits présents
+quelque part mais absents de `refonte` : 12, et ce sont ceux de mars que retient le tag
+`archive/shell-split`. Tout le reste s'emboîte : `origin/main` ⊂ `dev` (+16) ⊂ `refonte`
+(+219). Il n'y a donc rien à dessiner — l'axe utile n'est pas la topologie mais le **front
+d'intégration**, un mot par fiche. Il est dérivé de `git rev-list` sur les refs passées en
+`--refs` (défaut `origin/main,dev`), donc aussi frais que le dernier `git fetch` : un front
+`dev` peut être en retard sur le vrai dev distant si on n'a pas fetché.
+
+**Danger identifié, à ne pas oublier au merge de refonte.** `dernierCommit` teste `c.sujet`,
+jamais `c.corps` : un squash pousse les 219 sujets dans un corps que le journal ne lit pas.
+Si la branche est ensuite supprimée, 8 fiches sur 13 perdent leur ancre le même jour (R3 59
+commits, R5 34, R6 25, R4 14, R2 7, JOURNAL 5, IMP-01 3, FE-02 1). Or la pratique récente du
+dépôt est le squash (43 commits à un parent en `… (#NNN)`, le dernier le 20 juillet ; les
+merge commits se sont arrêtés le 30 juin). Deux parades : `dev` étant ancêtre de `refonte`,
+un `git merge` est un fast-forward qui préserve tout ; sinon `git tag archive/refonte` avant
+le squash — le dépôt le fait déjà, `archive/shell-split` retient à lui seul 12 commits
+qu'aucune branche ne contient, et `git log --all` les lit.
 
 Le vocabulaire de `statut:` manque une valeur : R2, R4, U-03, A-01 et cette fiche ont tous
 été fermés ou parqués **volontairement**, sans rien d'une interruption accidentelle, mais

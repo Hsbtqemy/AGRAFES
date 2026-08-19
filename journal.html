@@ -89,6 +89,8 @@ a{color:var(--outremer)}
   display:flex;gap:.9rem;flex-wrap:wrap}
 .pied .r{color:var(--minium)}
 .pied .r0{color:var(--verdet)}
+.pied .fr{color:var(--encre3)}
+.pied .fr.nf{color:var(--encre2);font-weight:500}
 
 /* liste repliée */
 .repli{display:flex;flex-wrap:wrap;gap:.375rem}
@@ -96,6 +98,7 @@ a{color:var(--outremer)}
   background:var(--pl-close-bg);padding:.6rem .75rem;border-radius:2px}
 .repli a:hover{color:#fff}
 .repli a .v{color:var(--verdet)}
+.repli a .nf{color:var(--pl-close-fg2)}
 
 /* ---------- folio ---------- */
 .retour{font:500 var(--t2)/1 var(--mo);text-decoration:none;color:var(--encre2);
@@ -291,6 +294,7 @@ function vueChantiers(){
           <p class="pied">
             <span class="${r ? "r" : "r0"}">${r ? r + " reste" + (r > 1 ? "s" : "") : "aucun reliquat"}</span>
             ${c.dernier ? `<span>${c.dernier.hash} · ${c.dernier.date}</span>` : ""}
+            ${c.front ? `<span class="fr${c.front.integre ? "" : " nf"}">${esc(c.front.ref)}</span>` : ""}
           </p>
         </div>
       </article>`;
@@ -308,7 +312,8 @@ function vueChantiers(){
        + (fer.length ? `<h2 class="sec"><span>Clos et livrés</span><span class="n">${fer.length}</span></h2>
            <div class="repli">${fer.map(c =>
              `<a href="#/c/${encodeURIComponent(c.code)}">${esc(c.code)}${
-               c.statut === "livré" ? ` <span class="v">livré</span>` : ""}</a>`).join("")}</div>` : "");
+               c.statut === "livré" ? ` <span class="v">livré</span>` : ""}${
+               c.front && !c.front.integre ? ` <span class="nf">${esc(c.front.ref)}</span>` : ""}</a>`).join("")}</div>` : "");
 }
 
 /* ---------------- fiche ---------------- */
@@ -323,6 +328,8 @@ function vueFiche(code){
   const passes = c.passes.map(byFile).filter(Boolean);
   const meta = [
     c.dernier && ["dernier commit", `${c.dernier.hash} · ${c.dernier.date}`],
+    c.front && ["intégration", c.front.integre ? esc(c.front.ref)
+      : `${esc(c.front.ref)} — absent de ${(D.refs || []).map(esc).join(", ")}`],
     ["silence", `${c.silence ?? "—"} jours actifs`],
     ["commits", String(c.commits)],
     c.audit && ["source", pastilles(esc(c.audit))],

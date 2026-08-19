@@ -15,6 +15,9 @@ const PORT = Number(opt("port", 4123));
 const DIR  = opt("dir", "pilotage");
 const DAYS = Number(opt("days", 60));
 const ROOT = process.cwd();
+// Refs d'intégration, de l'amont vers l'aval. Un chantier vit sur la première qui
+// contient son dernier commit ; à défaut sur la branche courante, donc pas intégré.
+const REFS = opt("refs", "origin/main,dev").split(",").map(s => s.trim()).filter(Boolean);
 
 const git = (...a) => {
   try { return execFileSync("git", a, { cwd: ROOT, encoding: "utf8", maxBuffer: 64e6 }).trim(); }
@@ -128,11 +131,11 @@ const bloc = (text, nom) => {
 // ---------- git ----------
 function historique() {
   const jours = [...new Set(git("log", "--all", "--format=%ad", "--date=short").split("\n").filter(Boolean))].sort();
-  const raw = git("log", "--all", "--format=%h\x1f%ad\x1f%s\x1f%b\x1e", "--date=short");
+  const raw = git("log", "--all", "--format=%h\x1f%H\x1f%ad\x1f%s\x1f%b\x1e", "--date=short");
   const commits = raw.split("\x1e").map(c => c.trim()).filter(Boolean).map(c => {
-    const [hash, date, sujet, corps] = c.split("\x1f");
+    const [hash, full, date, sujet, corps] = c.split("\x1f");
     const sc = /^([a-z]+)(?:\(([^)]+)\))?:/.exec(sujet || "");
-    return { hash, date, sujet: sujet || "", corps: (corps || "").trim(),
+    return { hash, full, date, sujet: sujet || "", corps: (corps || "").trim(),
              type: sc ? sc[1] : null, scope: sc ? (sc[2] || sc[1]) : "—" };
   });
   return { jours, commits };
@@ -147,6 +150,16 @@ function dernierCommit(commits, code) {
   const rx = new RegExp(`(^|[^A-Za-z0-9-])${code.replace(/[.]/g, "\\.")}([^A-Za-z0-9-]|$)`);
   for (const c of commits) if (rx.test(c.sujet) && !fourretout(c.sujet)) return c;
   return null;
+}
+
+// Front d'intégration : jusqu'où le travail est remonté. Dérivé, jamais déclaré.
+function fronts() {
+  const set = (r) => new Set(git("rev-list", r).split("\n").filter(Boolean));
+  const l = REFS.map(nom => ({ nom, integre: true, hashes: set(nom) })).filter(f => f.hashes.size);
+  const tete = git("rev-parse", "--abbrev-ref", "HEAD");
+  if (tete && tete !== "HEAD" && !REFS.includes(tete))
+    l.push({ nom: tete, integre: false, hashes: set(tete) });
+  return l;
 }
 
 // ---------- index de navigation ----------
@@ -173,11 +186,14 @@ async function build() {
   const { jours, commits } = historique();
   const { chantiers, passes } = await pilotage();
   const liens = await index();
+  const fr = fronts();
 
   for (const ch of chantiers) {
     const last = dernierCommit(commits, ch.code);
     ch.dernier = last ? { hash: last.hash, date: last.date, sujet: last.sujet } : null;
     ch.silence = last ? joursActifs(jours, last.date) : null;
+    const f = last ? fr.find(x => x.hashes.has(last.full)) : null;
+    ch.front = f ? { ref: f.nom, integre: f.integre } : null;
     const rxc = new RegExp(`(^|[^A-Za-z0-9-])${ch.code.replace(/[.]/g, "\\.")}([^A-Za-z0-9-]|$)`);
     ch.commits = commits.filter(c => rxc.test(c.sujet) && !fourretout(c.sujet)).length;
     ch.passes = passes.filter(p => p.chantier === ch.code).map(p => p.file);
@@ -189,6 +205,7 @@ async function build() {
   return {
     repo: (git("rev-parse", "--show-toplevel") || ROOT).split(/[\\/]/).pop(),
     branche: git("rev-parse", "--abbrev-ref", "HEAD") || "—",
+    refs: REFS,
     racine: ROOT,
     genere: new Date().toISOString(),
     dernierJour: jours[jours.length - 1] || null,
