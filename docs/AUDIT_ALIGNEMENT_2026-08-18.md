@@ -1096,16 +1096,37 @@ exactement ce qui se transforme en `// NOTE:` si ce n'est pas décidé avant le 
   `record_action` — alors que `regroup_document_coarse` (`coarse_grain.py:269`), **deux fonctions
   plus haut dans le même fichier**, ne le prend pas.
 
-Le correctif est la propagation d'un paramètre. **Zéro migration obligatoire, zéro artefact de
-contrat.**
+Le correctif est la propagation d'un paramètre. **Zéro migration obligatoire.**
+
+> **Correction (relecture du 2026-08-19, déclenchée par « il ne faut pas décider d'un truc avant
+> de partir sur A2 ? »)** — la première rédaction ajoutait « zéro artefact de contrat ». **C'est
+> faux.** Pour que le front puisse proposer l'annulation, la réponse doit porter l'`action_id`,
+> comme le fait déjà `/segment/paragraph_boundary`. Or `SegmentCoarseResponse` **est schématisée**
+> (`sidecar_contract.py:3618`, avec `required` et `properties` explicites). Le coût réel est donc
+> de **trois artefacts** : `sidecar_contract.py`, `docs/openapi.json` régénéré (il embarque les
+> 119 schémas), et `docs/SIDECAR_API_CONTRACT.md:373` qui énumère la réponse mot pour mot. La règle
+> « paramètre optionnel sur route existante = 0 artefact » vaut pour les paramètres de **requête**,
+> pas pour un champ de **réponse**.
+>
+> Bonne nouvelle en revanche : le précédent est **complet et documenté**.
+> `SegmentParagraphBoundaryResponse` porte déjà `action_id` en `nullable`
+> (`sidecar_contract.py:3645`) et la ligne 374 du contrat écrit déjà « undoable (Mode A,
+> `action_type=set_paragraph`) ». C'est un calque, pas une conception.
 
 **Volume mesuré** — un « Pré-remplir » sur le doc 416 archiverait **1 231 lignes**. La table en
 porte déjà 12 727, et ses trois plus grosses actions font **1 258, 1 258 et 1 226 lignes** : le
 précédent existe, ce n'est pas un cas nouveau.
 
-*Verrue relevée au passage* : `text_norm_before` est `NOT NULL`, donc l'instantané embarquerait
-**91,8 Ko de texte** pour protéger **20,3 Ko de `meta_json`** — 4,5× plus lourd que ce qu'il sauve.
-Non bloquant ; la colonne mériterait d'être nullable comme `text_raw_before`.
+~~*Verrue relevée au passage* : `text_norm_before` est `NOT NULL`, donc l'instantané embarquerait
+**91,8 Ko de texte**…~~ — **retiré, c'était faux.** L'adaptateur de `/segment/paragraph_boundary`
+écrit `"text_norm_before": ""` (`sidecar.py:5560`) : la contrainte `NOT NULL` est satisfaite par une
+chaîne vide, puisque `_undo_set_paragraph` ne restaure que `meta_json` et n'a que faire du texte.
+Un regroupement ferait de même. L'instantané ne coûte donc que ses lignes, pas le texte du document.
+J'avais mesuré ce que la colonne *pourrait* contenir, pas ce que ce chemin y écrit.
+
+*Motif d'instantané, réglé par précédent* : `set_paragraph_boundary_document` ne photographie que
+les unités qui **changent réellement** (liste `changes`, `coarse_grain.py:503-518`) et appelle
+`record_action` **avant** les écritures. Rien à décider, il n'y a qu'à suivre le voisin.
 
 **Décision « réutiliser `set_paragraph` ou créer un type »** — le volume étant réglé, le choix est
 purement de **lisibilité de l'historique**. Or le grief central de QA-06 est précisément que la
@@ -1155,10 +1176,67 @@ Deux lectures s'imposent, et aucune ne va de soi :
 > en **préservant** les liens revus et en le disant (« 1 lien validé conservé »). Le second est plus
 > utile mais rouvre la restitution partielle que §10 voulait éviter. À trancher avant le ticket A1.
 
-### 11.7 Plan qui en découle
 
-1. **A2 / QA-06** — `record_action` sur `regroup_document_coarse`, migration 035 (`regroup_coarse`),
-   bouton d'undo placé sur l'onglet Tours. Indépendant de tout le reste ; sert de répétition au
+### 11.7 Décisions avant le ticket A2 — il n'y en a qu'une (2026-08-19)
+
+Relecture déclenchée par « il ne faut pas décider d'un truc avant de partir sur A2 ? », puis par
+« je ne sais pas vraiment quoi trancher ». La première rédaction de ce paragraphe annonçait **trois**
+décisions. Vérification faite, **deux n'existent pas**, et sur la troisième la recommandation était
+inversée.
+
+**D-A2-1 · Type d'action : réutiliser `set_paragraph` ou créer `regroup_coarse` ?** — seule vraie
+décision. → **Réutiliser `set_paragraph`.**
+
+Le raisonnement initial (« un historique qui annonce `set_paragraph` pour 1 231 unités ne règle que
+la moitié du grief de QA-06 ») **repose sur une erreur** : le libellé affiché ne vient pas du type
+d'action. `formatUndoActionLabel` (`prepUndo.ts:136-141`) rend
+`` `Annuler : ${eligibility.description}` `` — et `description` est du **texte libre** écrit par le
+moteur à l'enregistrement (« Édition du texte (unité 251320) » dans l'historique réel). Le bandeau
+peut donc dire « Annuler : Pré-remplir (tours) — 1 231 segments » **quel que soit le type**.
+L'honnêteté du libellé est acquise des deux côtés, et le grief de QA-06 — *aucune* action
+enregistrée — est refermé dès qu'une action existe.
+
+Argument manqué la première fois, et qui penche **contre** le nouveau type : l'undo est dispatché
+par `action_type`, et `_undo_set_paragraph` fait déjà exactement ce qu'il faut (restaurer
+`meta_json` sur N unités). Un `regroup_coarse` imposerait une branche de dispatch **au comportement
+identique**, pour une distinction purement sémantique.
+
+| | réutiliser `set_paragraph` | créer `regroup_coarse` |
+|---|---|---|
+| migration | **aucune** | 035 (boilerplate de 034) |
+| artefacts de contrat | 3 (l'`action_id` dans la réponse) | 3, plus l'énumération |
+| libellé vu par l'utilisateur | « Annuler : Pré-remplir (tours) — 1 231 segments » | identique |
+| code d'undo | réutilisé tel quel | branche dupliquée, comportement identique |
+| ce qu'on perd | interroger l'historique **par type** — aucune requête de ce genre n'existe | rien |
+
+Le type se lit alors « une action qui a déplacé des `parent_n` », ce qui est exactement vrai des deux
+gestes ; la `description` porte la spécificité.
+
+**D-A2-2 · Le bouton d'undo sur Tours — dissoute.** L'undo du moteur est **strictement linéaire** :
+`ORDER BY performed_at DESC, action_id DESC LIMIT 1` (`undo.py:53`) rend la dernière action non
+annulée du document, quel que soit son type ; **aucun moyen d'annuler une action plus ancienne**.
+« Filtrer par type sur cette surface » ne peut donc pas signifier « n'annuler que les paragraphes »,
+seulement **cacher le bouton** quand la dernière action est d'un autre type — un bouton qui
+disparaît sans explication étant pire qu'un bouton qui nomme ce qu'il va annuler. On le pose, il se
+comporte comme celui de Brut.
+
+**D-A2-3 · L'énumération périmée — dissoute.** Une ligne de markdown sans contrepartie : on la
+solde en passant. La dette est d'ailleurs **double**, et le second endroit est du code :
+`SIDECAR_API_CONTRACT.md:377` documente `action_type ∈ {curation_apply, merge_units, split_unit,
+resegment}` (il manque `update_text`, `set_role`, `set_paragraph`), et `PREP_ACTION_TYPES`
+(`prepUndo.ts:27-35`) liste 7 valeurs en **oubliant `set_paragraph`** — alors que son commentaire
+affirme « matches CHECK constraint », qui en compte 8 depuis la migration 034.
+
+**Périmètre final d'A2** : propager `record_action` à `regroup_document_coarse` ; exposer
+`action_id` dans `SegmentCoarseResponse` (3 artefacts : `sidecar_contract.py`, `docs/openapi.json`
+régénéré, `SIDECAR_API_CONTRACT.md:373`) ; poser le bouton d'undo sur l'onglet Tours ; solder les
+deux énumérations. **Aucune migration.**
+
+### 11.8 Plan qui en découle
+
+1. **A2 / QA-06** (périmètre arrêté en **11.7**) — `record_action` sur `regroup_document_coarse`, `action_id`
+   dans la réponse (3 artefacts de contrat), bouton d'undo posé sur l'onglet Tours, énumérations soldées.
+   **Aucune migration.** Indépendant de tout le reste ; sert de répétition au
    triplet `record_action` → instantané → undo qu'A1 emploiera en grand.
 2. **ALI-22 (c)** — la garde anti-bead. Court, autonome, referme ALI-13.
 3. **A1** — `prep_action_link_snapshots`, en corrigeant au passage l'ordre de
