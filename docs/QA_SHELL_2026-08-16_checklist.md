@@ -182,10 +182,45 @@ Repère de départ : **1 267 liens** 416→364, **33** marqués périmés.
 
 ### Bloc 6 — Balayage visuel (purge CSS `aa7ded3`, 2 477 l. retirées)
 
-- [ ] 6.1 Importer · 6.2 ShareDocs · 6.3 Documents · 6.4 Exporter · 6.5 Paramètres
-- [ ] 6.6 Contrôle (Révision fine — peu visité, bon candidat)
-- [ ] 6.7 Transitoires : toast, modale de confirmation, bandeau d'erreur, badge de statut
-- [ ] 6.8 Shell : Explorer + Recherche (CSS prep + app dans un seul webview)
+- [x] 6.1 Importer · 6.2 ShareDocs · 6.3 Documents · 6.4 Exporter · 6.5 Paramètres
+  ```
+  ✅ MÉCANIQUE (2026-08-19, cf. QA_SHELL §4) — sonde console « classe dans le DOM sans règle CSS »
+  croisée avec les 289 classes supprimées par aa7ded3 : INTERSECTION VIDE, aucune régression.
+  Portée : prep rend ses SIX écrans au démarrage (app.ts:449-456), donc une seule exécution les
+  couvre tous — deux exécutions (Contrôle, puis Importer) ont rendu une sortie IDENTIQUE.
+  Réserve : ne couvre ni le contenu construit après chargement, ni le cas combinateur (.a .b
+  supprimé, .b gardé) — pour celui-là, faire défiler les écrans une fois, en cherchant du NU.
+  ```
+- [x] 6.6 Contrôle (Révision fine — peu visité, bon candidat)
+  ```
+  ✅ MÉCANIQUE — écran AFFICHÉ lors de la 1re exécution, donc ses classes étaient dans le DOM.
+  Aucune orpheline issue de la purge. Même réserve combinateur.
+  ```
+- [x] 6.7 Transitoires : toast, modale de confirmation, bandeau d'erreur, badge de statut
+  ```
+  ✅ MÉCANIQUE (2026-08-19) — sonde relancée depuis Annotation, MODALE BASSE OUVERTE.
+  Deux orphelines nouvelles, toutes deux bénignes et jamais stylées :
+  prep-annot-search (l'input est stylé par prep-conv-search, qui a survécu à la purge
+  alors que 8 de ses sœurs prep-conv-* ont été supprimées) et prep-annot-editor-save
+  (bouton stylé par btn btn-primary btn-sm ; la classe prep- n'est qu'un sélecteur JS).
+  Intersection avec les 289 classes purgées : VIDE.
+  → Corrobore QA-02 par un chemin indépendant : le bouton « Enregistrer » EST stylé,
+  donc le défaut était bien l'invalidation de peinture (container-type), pas un style perdu.
+  ```
+- [x] 6.8 Shell : Explorer + Recherche (CSS prep + app dans un seul webview)
+  ```
+  ✅ MÉCANIQUE (2026-08-19) — sonde depuis Explorer › Concordancier, module monté (5 classes
+  app-* dans le DOM), orphelines = shell-mru-section seule (jamais stylée).
+  ⚠ La sonde par préfixe est TROP ÉTROITE ici : tauri-app n'applique pas la règle de CLAUDE.md
+  et émet surtout stats-* (27), help-* (9), cql-* (4) et des noms nus (card, meta, spinner…).
+  Contrôle refait par l'autre bout, indépendant du nommage : intersection entre les 296 classes
+  supprimées par aa7ded3 et TOUT ce que tauri-app émet = VIDE. La purge ne pouvait pas
+  atteindre l'Explorer.
+  CAS COMBINATEUR TRAITÉ : des 7 classes non préfixées supprimées, .active .btn .chip .pri
+  existent toujours (jetons de sélecteurs composés retirés) ; curate-col-left et
+  seg-param-select appartenaient aux écrans legacy supprimés ; .alt a réellement disparu et
+  plus AUCUN code des trois fronts ne l'émet.
+  ```
 
 
 
@@ -194,22 +229,35 @@ Repère de départ : **1 267 liens** 416→364, **33** marqués périmés.
 *(Trois items de la première version de la checklist — organisée par fonctionnalité — que la
 réorganisation par écran avait laissés de côté.)*
 
-- [ ] 7.1 `≡ Documents` → fiche d'un document → **inspecteur d'unité** sur une ligne **riche**
+- [x] 7.1 `≡ Documents` → fiche d'un document → **inspecteur d'unité** sur une ligne **riche**
   ```
   (gras/italique, donc `<hi>` dans `text_raw`) : la textarea s'ouvre sur le **texte propre**,
   sans balisage échappé ; après sauvegarde `text_raw` **n'est pas écrasé** (convergence D-C1,
   le bug le plus vicieux du lot) — 🔎 vérif base
+  ✅ VÉRIFIÉ EN BASE (2026-08-19, doc 423 « 9-CI-OrEn-Obs-2022 », les 4 seules unités du corpus
+  dont text_raw porte du <hi>). Actions #179/#180/#181 sur u245582 (n=3) et u245580 (n=1) :
+  la textarea s'est ouverte sur le texte propre, et après sauvegarde text_raw conserve
+  <hi rend="italic">…</hi> et <hi rend="bold">…</hi> INTACTS. Cas probant n=3 : text_raw garde
+  ses DEUX espaces après la virgule, text_norm n'en a plus qu'un — la correction n'a touché
+  que le plan normalisé. Snapshot d'undo correct aussi (raw_before balisé, norm_before propre).
   ```
-- [ ] 7.2 `⌥ Segmentation` sur **364 Beigbeder-Francs_EN** → le bouton « Propager la segmentation »
+- [x] 7.2 `⌥ Segmentation` sur **364 Beigbeder-Francs_EN** → le bouton « Propager la segmentation »
   ```
   apparaît (masqué tant que le doc n'a pas de source déclarée — `_togglePropagateBtn`,
   `SegmentPane.ts:959-962`) → **aperçu seulement** : badges de rôle affichés, paratexte **non
   doublé** (borne unité 3 honorée), rôles structurels traités en frontières de section —
   c'est le trio de fix du 22/07 (`2c9adda`, `297bf6a`, `ab7a63e`).
-  ⚠️ **Ne pas cliquer « Appliquer » avant d'avoir fini le bloc 5** : l'apply recoupe la
-  traduction et détruirait les 1327 liens dont la matrice dépend.
+  ⚠️ **Ne pas cliquer « Appliquer »** : l'apply recoupe la traduction et détruirait les 1327
+  liens dont la matrice dépend — sans trace ni annulation (ALI-10, le mécanisme du §10 n'existe
+  pas encore). Seconde raison depuis 2026-08-19 : l'apply découperait la section 3 de l'anglais
+  en 1 229 morceaux.
+  ✅ APERÇU VÉRIFIÉ (2026-08-19) — bouton présent, sections traitées, avertissement émis :
+  « Section « 3 » : écart 862 phrases (367 vs 1229 attendues) ». Diagnostic → QA-12 :
+  l'appariement des sections est POSITIONNEL (par rang, aveugle aux intitulés) et 8 des 10
+  sections de la cible n'ont AUCUNE référence — donc aucun avertissement. Reste à confirmer
+  à l'œil : badges de rôle affichés, paratexte non doublé en tête (borne EN à n=3).
   ```
-- [ ] 7.3 Nav : `⌥ Segmentation`, `◇ Curation`, `◎ Annotation` ouvrent les **couches du canvas**
+- [x] 7.3 Nav : `⌥ Segmentation`, `◇ Curation`, `◎ Annotation` ouvrent les **couches du canvas**
   ```
   (plus aucun écran legacy derrière), aucun lien mort
   ```
@@ -218,5 +266,30 @@ réorganisation par écran avait laissés de côté.)*
 
 ### Bloc 8 — Final
 
-- [ ] 8.1 Console sans erreur rouge accumulée
-- [ ] 8.2 🔎 bilan base : `update_text` / `set_paragraph` / `source_changed_at`, aucun `text_raw` perdu
+- [x] 8.1 Console sans erreur rouge accumulée
+  ```
+  ✅ AVEC RÉSERVE (2026-08-19) — console relevée en fin de passe : AUCUNE accumulation.
+  Le trafic courant est du log d'info sidecarCore (/health via sidecar_fetch_loopback, OK 200).
+  Deux entrées non-info, toutes deux diagnostiquées et consignées, aucune n'étant du bruit :
+  • 1 ERREUR ROUGE — CORS + net::ERR_FAILED 200 sur le /health de la modale Diagnostic.
+    Ce n'est PAS une panne du sidecar (le /health par le pont Rust réussit à la même seconde) :
+    c'est le seul fetch() brut du shell, et le panneau en déduit « Running : no ». → QA-13.
+  • 1 AVERTISSEMENT — aria-hidden posé sur le tiroir Journal alors que son bouton ✕ a encore
+    le focus. Accessibilité, sans effet fonctionnel. → QA-14.
+  RAPPEL : les ERR_NETWORK_CHANGED / « Failed to fetch dynamically imported module » relevés
+  plus tôt dans la passe relèvent de QA-11 et sont déjà expliqués ; ils ne comptent pas ici.
+  ```
+- [x] 8.2 🔎 bilan base : `update_text` / `set_paragraph` / `source_changed_at`, aucun `text_raw` perdu
+  ```
+  ✅ BILAN (2026-08-19). 84 actions depuis le 16/08 : merge_units 31, update_text 20,
+  set_paragraph 20, set_role 7, undo 5, curation_apply 1.
+  INTÉGRITÉ : les 20 instantanés d'édition confrontés à l'état courant → text_raw modifié
+  dans 0 cas (D-C1 tenu sur la passe entière) ; 12 éditions sur 20 ont réellement changé
+  text_norm ; 0 unité au text_raw vide ; les 4 unités à balisage <hi> intactes.
+  ¶ : 24 actions set_paragraph, 4 437 unités porteuses d'un parent_n.
+  source_changed_at : 0 au bilan — LÉGITIME et non une perte (vérifié : toutes les éditions
+  du doc 416 précèdent la création des liens du 18/08 21:10, donc l'alignement a été calculé
+  SUR le texte corrigé). Chaîne D-C2 re-testée en direct : édition de u251320 à 14:10:57 →
+  lien 38569 marqué à la même seconde. L'undo REPOSE le drapeau au lieu de l'effacer
+  (undo.py:221) — conservateur par conception, pas un défaut.
+  ```
