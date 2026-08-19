@@ -168,7 +168,8 @@ EN), puis dérive variable (vérifié aux segments 300, 800, 1200).
 > **Conflit d'unicité assumé et rapporté** : un réalignement entre l'action et son annulation peut
 > reprendre la paire `(pivot_unit_id, target_unit_id)`, unique depuis la migration 008. Ces liens
 > sont **laissés en place** et comptés dans `alignments_restore_skipped` — le travail plus récent
-> n'est jamais écrasé, et l'annulation reste atomique au lieu d'échouer à mi-chemin. Le bandeau le
+> n'est jamais écrasé, et l'annulation reste atomique au lieu d'échouer à mi-chemin. Le compteur
+> couvre **deux** causes (cf. §11.9) : paire reprise, **ou** unité disparue entre-temps. Le bandeau le
 > dit (« 2 liens rendus, 1 non rendu (paire déjà reprise) ») : taire ce cas laisserait croire à une
 > restitution complète.
 >
@@ -1321,6 +1322,56 @@ affirme « matches CHECK constraint », qui en compte 8 depuis la migration 034.
 `action_id` dans `SegmentCoarseResponse` (3 artefacts : `sidecar_contract.py`, `docs/openapi.json`
 régénéré, `SIDECAR_API_CONTRACT.md:373`) ; poser le bouton d'undo sur l'onglet Tours ; solder les
 deux énumérations. **Aucune migration.**
+
+
+### 11.9 Passe de vérification des trois correctifs (2026-08-19, cinquième temps)
+
+Les tests unitaires du lot appellent le **moteur** avec un *recorder* écrit à la main qui **imite**
+l'adaptateur. Le code réel des adaptateurs n'était donc couvert par rien. Passe rejouée en **HTTP**,
+sidecar lancé depuis les sources sur une **copie** de la base de travail (259 Mo, migrations 001→035
+appliquées, contrat live vérifié à 1.6.65).
+
+**Ce qui tient.**
+
+| contrôle | résultat |
+|---|---|
+| `/segment/coarse` → action enregistrée | `#184 set_paragraph — « Pré-remplir (tours) · 1 226 segments regroupés »`, contexte `{"gesture":"regroup_coarse","preset":"tours"}`, **1 226 instantanés**, `action_id` renvoyé == action réelle |
+| `/prep/undo` du regroupement | `units_restored: 1226`, les 1 231 `parent_n` **revenus à l'identique** |
+| `/units/merge` → archive | 1 lien archivé, 0 vivant après la fusion |
+| `/prep/undo` de la fusion | `alignments_restored: 1`, comparaison des **14 colonnes** : identique |
+| `/align/quality` (373→419) | `shared_target_count: 2` == calcul direct |
+| agrégat famille | 366 : **10**, 368 : **11**, 373 : **2** — total **23**, exact |
+
+**🔴 Un défaut introduit par ce lot, trouvé et corrigé.**
+
+`restore_link_snapshots` s'appuyait sur `INSERT OR IGNORE` pour enjamber les liens non restituables.
+**`OR IGNORE` enjambe une violation d'UNICITÉ mais pas une violation de CLÉ ÉTRANGÈRE** — celle-ci
+lève (`sqlite3.IntegrityError`, reproduit). Chemin atteignable : fusionner dans le doc A (l'archive
+tient des liens vers le doc B), supprimer le doc B, annuler la fusion → **l'annulation entière
+échouait**, au lieu d'ignorer un lien.
+
+Correctif : filtrer avant l'insertion sur l'existence des deux unités (`EXISTS … units`), et compter
+le total archivé plutôt que les lignes lues, pour que `skipped` couvre **les deux** causes. Le sens
+du champ change donc, et la documentation le dit : « paire déjà reprise **ou** unité disparue ».
+Test RED prouvé sur le code d'avant.
+
+**🟠 Une incohérence préexistante, mesurée et non corrigée.**
+
+Les deux gestes qui écrivent `meta_json.parent_n` **ne s'accordent pas sur la borne de paratexte** :
+
+| geste | doc 416, `text_start_n = 4` |
+|---|---|
+| `POST /segment/paragraph_boundary` (¶ par segment) | **refuse** — HTTP 400 sur l'unité n=2 |
+| `POST /segment/coarse` (« Pré-remplir ») | **écrit** — les unités 1, 2, 3 repartent avec `parent_n = 1` |
+
+Le moteur a pourtant une règle explicite (le grain de paragraphe s'arrête au texte : *« Text-scope
+only (paratext n < text_start_n excluded) »*), et l'un des deux écrivains l'ignore. Ce n'est **pas**
+une régression de ce lot — `regroup_document_coarse` a toujours sélectionné toutes les lignes du
+document — mais le lot le rend visible, et c'est un nouveau membre de la famille de bugs
+« aperçu/apply et bornes `text_start_n` » déjà rencontrée deux fois.
+
+**Non corrigé délibérément** : scoper le regroupement changerait le grain de documents existants.
+C'est un arbitrage produit, pas une correction évidente. Porté au `Reste` de `pilotage/R6.md`.
 
 ### 11.8 Plan qui en découle
 

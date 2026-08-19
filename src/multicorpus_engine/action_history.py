@@ -187,22 +187,38 @@ def insert_link_snapshots(
 def restore_link_snapshots(conn: sqlite3.Connection, action_id: int) -> dict[str, int]:
     """Re-insert the links archived for ``action_id``. No commit.
 
-    Returns ``{"restored": n, "skipped": m}``. A link is skipped when its
-    (pivot_unit_id, target_unit_id) pair is occupied again — a re-align between the
-    action and its undo can do that — because migration 008 makes that pair unique.
-    ``INSERT OR IGNORE`` keeps the undo atomic instead of aborting it halfway; the
-    counts are reported to the caller rather than swallowed.
+    Returns ``{"restored": n, "skipped": m}``. A link is skipped for either of two
+    reasons, and both are counted, never swallowed:
+
+    * its ``(pivot_unit_id, target_unit_id)`` pair is occupied again — a re-align
+      between the action and its undo does that, and migration 008 makes the pair
+      unique. ``INSERT OR IGNORE`` steps over it, leaving the newer link alone;
+    * one of its two units no longer exists — the other document was deleted or
+      resegmented in the meantime. This one **must be filtered out before the
+      insert**: ``OR IGNORE`` steps over a UNIQUE violation but a FOREIGN KEY
+      violation still raises, which would abort the whole undo instead of skipping
+      one link (verified 2026-08-19, sqlite3.IntegrityError).
 
     ``link_id`` is restored verbatim: AUTOINCREMENT never reuses a freed rowid, so
     the archived id is still free and the restitution is identical, not approximate.
     """
     cols = ", ".join(LINK_SNAPSHOT_COLUMNS)
+    total = conn.execute(
+        "SELECT COUNT(*) FROM prep_action_link_snapshots WHERE action_id = ?",
+        (int(action_id),),
+    ).fetchone()[0]
+    if not total:
+        return {"restored": 0, "skipped": 0}
+    qualified = ", ".join(f"s.{c}" for c in LINK_SNAPSHOT_COLUMNS)
     rows = conn.execute(
-        f"SELECT {cols} FROM prep_action_link_snapshots WHERE action_id = ?",
+        f"SELECT {qualified} FROM prep_action_link_snapshots s"
+        f" WHERE s.action_id = ?"
+        f"   AND EXISTS (SELECT 1 FROM units u WHERE u.unit_id = s.pivot_unit_id)"
+        f"   AND EXISTS (SELECT 1 FROM units u WHERE u.unit_id = s.target_unit_id)",
         (int(action_id),),
     ).fetchall()
     if not rows:
-        return {"restored": 0, "skipped": 0}
+        return {"restored": 0, "skipped": total}
     before = conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0]
     conn.executemany(
         f"INSERT OR IGNORE INTO alignment_links ({cols})"
@@ -211,4 +227,4 @@ def restore_link_snapshots(conn: sqlite3.Connection, action_id: int) -> dict[str
     )
     after = conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0]
     restored = after - before
-    return {"restored": restored, "skipped": len(rows) - restored}
+    return {"restored": restored, "skipped": total - restored}

@@ -1259,3 +1259,38 @@ def test_undo_split_restores_the_links_it_destroyed(
         "SELECT pivot_unit_id, external_id FROM alignment_links ORDER BY link_id").fetchall()
     # The created half's link went with the unit it belonged to; the original is back.
     assert [(r["pivot_unit_id"], r["external_id"]) for r in rows] == [(uid, 11)]
+
+
+def test_undo_skips_a_link_whose_unit_disappeared(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Passe adverse du 2026-08-19 : INSERT OR IGNORE enjambe une violation d'UNICITE
+    mais PAS une violation de CLE ETRANGERE -- celle-ci leve et faisait echouer toute
+    l'annulation. Cas atteignable : fusion dans le doc A (l'archive tient des liens
+    vers le doc B), suppression du doc B, puis annulation de la fusion."""
+    from multicorpus_engine.action_history import (
+        ACTION_MERGE_UNITS, record_prep_action, restore_link_snapshots,
+        snapshot_links_for_units,
+    )
+
+    doc_id, _ = _seed_doc(db_conn, ["Une.", "Deux."])
+    tgt_doc, [t1] = _seed_doc(db_conn, ["One."])
+    uid1 = int(db_conn.execute(
+        "SELECT unit_id FROM units WHERE doc_id=? AND n=1", (doc_id,)).fetchone()["unit_id"])
+    _add_link(db_conn, uid1, t1, pivot_doc=doc_id, target_doc=tgt_doc)
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_MERGE_UNITS,
+        description="Fusion", context={},
+    )
+    assert snapshot_links_for_units(db_conn, action_id, [uid1]) == 1
+    db_conn.execute(
+        "DELETE FROM alignment_links WHERE pivot_unit_id=? OR target_unit_id=?", (uid1, uid1))
+    # Le document cible disparait entre l'action et son annulation.
+    db_conn.execute("DELETE FROM units WHERE unit_id=?", (t1,))
+    db_conn.commit()
+
+    out = restore_link_snapshots(db_conn, action_id)
+    db_conn.commit()
+
+    assert out == {"restored": 0, "skipped": 1}
+    assert db_conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0] == 0
