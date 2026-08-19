@@ -5,7 +5,7 @@ statut: interrompu
 
 # JOURNAL — journal de bord local
 
-**Arrêté sur** — refonte visuelle de `journal.html` (apparat critique : plaque de sigle, folio, aplats), 19 août 2026.
+**Arrêté sur** — correctif des ancres imbriquées : la carte n'est plus une `<a>`, le plateau reprend toute la hauteur, commit `cdd43c6`, 19 août 2026.
 
 ## Reste
 
@@ -14,6 +14,7 @@ statut: interrompu
 - [ ] `pilotage/qa/smoke-u02.md` porte `chantier: U-02`, qui n'a pas de fiche — la passe n'est rattachée à rien à l'écran
 - [ ] Les 9 points de `smoke-u02` sous « À recadrer » visent des écrans supprimés en R6.5 — les recadrer vers le canvas ou les supprimer
 - [ ] Élaguer les notes du 16 août dans `pilotage/qa/shell-v040.md` : l'énoncé doit porter le protocole, la preuve va dans le rapport
+- [ ] La nappe `.cible::after` couvre la carte : le texte d'une carte n'est plus sélectionnable à la souris — compromis connu du motif, à trancher si la sélection sert
 - [x] `journal.mjs` : le compteur `commits` n'applique pas la garde `fourretout` alors que `dernierCommit` le fait — R2 et R4 comptent quelques commits de trop
 - [ ] `journal.mjs` : la section `## QA` d'une fiche n'est pas lue — le rattachement est dérivé du `chantier:` de la passe. Le contrat du gabarit décrit une section inerte
 - [ ] Aucune fiche pour les 14 findings `QA-01`…`QA-14` de la passe shell du 16 août — décider s'ils méritent des fiches ou un seul chantier de correction
@@ -50,6 +51,16 @@ tracker `docs/AUDIT_FOLLOW_UP.md` et au corps du commit, jamais posée sur le se
 portent sur autre chose que le chantier interrompu — mais ces 3 observations sont
 antérieures au régime de travail actuel, et un chantier simplement *déplacé* par un autre
 revient après 12-13 jours (R5, R6). À traiter comme plausible, pas comme acquis.
+
+**Méthode de vérification visuelle, acquise le 19 août.** Chrome et Edge sont installés
+sur la machine : `chrome --headless=new --screenshot` et `--dump-dom` permettent de
+capturer la page servie et d'inspecter le DOM rendu, sans quitter la session. C'est ce qui
+a trouvé le bug des ancres imbriquées — invisible en lisant le CSS, qui était correct.
+Deux pièges rencontrés dans la même passe : échantillonner une colonne de pixels qui
+traverse les glyphes fait compter le texte comme du fond manquant (premier diagnostic
+faux, qui allait faire « corriger » un `space-between` innocent) ; et `journal.mjs` ne se
+recharge pas à chaud, `pkill` n'atteint pas le processus Windows, donc une vérification
+après édition du serveur mesure l'ancien code tant qu'on n'a pas tué le PID.
 
 Le vocabulaire de `statut:` manque une valeur : R2, R4, U-03, A-01 et cette fiche ont tous
 été fermés ou parqués **volontairement**, sans rien d'une interruption accidentelle, mais
