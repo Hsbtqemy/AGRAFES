@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.63"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.64"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -264,6 +264,19 @@ API_VERSION = CONTRACT_VERSION
 #         dispatch branch and nothing else. Additive response field → no new route → snapshot
 #         unchanged; openapi moves (version + schema); .md response line updated. No migration
 #         (parent_n in meta_json). Logic in coarse_grain.regroup_document_coarse.
+
+# 1.6.64: doublons de cible mesurés (ALI-22). The three collision counts of the product
+#         (qa_report, /align/quality, the family aggregate) all GROUP BY pivot_unit_id:
+#         they see a pivot carrying several beads, never a TARGET sentence claimed by
+#         several pivot segments. Contrary to what the audit first recorded, the bead is
+#         not what hides it — the query never looks that way, and an aligner link with no
+#         bead takes part in it too. Measured on the reference corpus: 0 collisions
+#         reported, 23 shared targets present, one of them held by THREE pivots.
+#         Adds shared_target_count next to collision_count (payloads) and shared_targets
+#         to the qa_report rows; raises that pair's severity to warning. Deliberately NOT
+#         folded into the gate's blocking align_collisions sum — it reports, it does not
+#         change what an export refuses. Additive response fields → no new route →
+#         snapshot unchanged; openapi moves (version + schema).
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -4206,7 +4219,8 @@ def openapi_spec() -> dict[str, Any]:
                                         "coverage_pct": {"type": "number"},
                                         "orphan_pivot_count": {"type": "integer"},
                                         "orphan_target_count": {"type": "integer"},
-                                        "collision_count": {"type": "integer"},
+                                        "collision_count": {"type": "integer", "description": "pivot segments carrying more than one bead"},
+                                        "shared_target_count": {"type": "integer", "description": "target sentences claimed by more than one pivot segment (the other axis — ALI-22)"},
                                         "status_counts": {
                                             "type": "object",
                                             "properties": {

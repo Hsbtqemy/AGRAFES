@@ -181,8 +181,30 @@ def _check_alignment_pairs(conn: sqlite3.Connection) -> list[dict]:
         except Exception:
             collisions = 0
 
+        # Shared targets: the OTHER axis. The count above groups by pivot_unit_id, so it
+        # can only see a pivot carrying several beads; a *target* sentence attached to
+        # several pivot segments is invisible to it — and to the two sibling counts in
+        # sidecar.py. That is a real defect (one translated sentence claimed by two source
+        # segments), produced by ⭙ Fusionner + ＝ Rattacher (ALI-22) but not only: an
+        # aligner link with no bead can take part in it too. Measured on the reference
+        # corpus: 0 collisions reported, 23 shared targets present.
+        # Deliberately NOT folded into the blocking `align_collisions` sum of the gate —
+        # it raises severity to a warning, it does not change what an export refuses.
+        try:
+            shared_targets = conn.execute(
+                """SELECT COUNT(*) FROM (
+                    SELECT target_unit_id FROM alignment_links
+                    WHERE pivot_doc_id=? AND target_doc_id=?
+                      AND (status IS NULL OR status <> 'rejected')
+                    GROUP BY target_unit_id
+                    HAVING COUNT(DISTINCT pivot_unit_id) > 1)""",
+                (piv_id, tgt_id),
+            ).fetchone()[0] or 0
+        except Exception:
+            shared_targets = 0
+
         severity = "ok"
-        if collisions > 0:
+        if collisions > 0 or shared_targets > 0:
             severity = "warning"
         if coverage_pivot < 50.0 and piv_total > 0:
             severity = "error"
@@ -201,6 +223,7 @@ def _check_alignment_pairs(conn: sqlite3.Connection) -> list[dict]:
             "coverage_pivot_pct": coverage_pivot,
             "coverage_target_pct": coverage_target,
             "collisions": collisions,
+            "shared_targets": shared_targets,
             "severity": severity,
         })
     return results
@@ -362,6 +385,9 @@ def generate_qa_report(
     align_warning = sum(1 for a in align_checks if a["severity"] == "warning")
     align_error = sum(1 for a in align_checks if a["severity"] == "error")
     align_collisions = sum(a.get("collisions", 0) for a in align_checks)
+    # Reported, never gated: shared targets raise a pair to "warning" but stay out of the
+    # blocking align_collision category, so this addition cannot change an export verdict.
+    align_shared_targets = sum(a.get("shared_targets", 0) for a in align_checks)
     anchor_inconsistencies = sum(a.get("inconsistency_count", 0) for a in anchor_checks)
     relation_issues = sum(
         len(c.get("relation_issues", [])) for c in meta_checks
@@ -407,6 +433,7 @@ def generate_qa_report(
             "align_warning": align_warning,
             "align_error": align_error,
             "align_collisions": align_collisions,
+            "align_shared_targets": align_shared_targets,
             "anchor_pairs_checked": len(anchor_checks),
             "anchor_inconsistencies": anchor_inconsistencies,
             "relation_issues": relation_issues,

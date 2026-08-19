@@ -442,6 +442,7 @@
               "stats": {
                 "properties": {
                   "collision_count": {
+                    "description": "pivot segments carrying more than one bead",
                     "type": "integer"
                   },
                   "coverage_pct": {
@@ -457,6 +458,10 @@
                     "type": "integer"
                   },
                   "orphan_target_count": {
+                    "type": "integer"
+                  },
+                  "shared_target_count": {
+                    "description": "target sentences claimed by more than one pivot segment (the other axis — ALI-22)",
                     "type": "integer"
                   },
                   "status_counts": {
@@ -4357,8 +4362,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.63",
-    "x-contract-version": "1.6.63"
+    "version": "1.6.64",
+    "x-contract-version": "1.6.64"
   },
   "openapi": "3.0.3",
   "paths": {

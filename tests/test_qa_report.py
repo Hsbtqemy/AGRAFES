@@ -228,6 +228,81 @@ def test_alignment_qa_same_bead_id_across_runs_still_collides(db_conn: sqlite3.C
     assert pairs[0]["collisions"] == 1
 
 
+def test_alignment_qa_shared_target_is_counted(db_conn: sqlite3.Connection) -> None:
+    """ALI-22 — one TARGET sentence claimed by two pivot segments. The collision count
+    groups by pivot, so it reports 0; the damage is on the other axis and used to be
+    invisible everywhere in the product."""
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p1 = _insert_unit(db_conn, d1, 1, 1)
+    p2 = _insert_unit(db_conn, d1, 2, 2)
+    t = _insert_unit(db_conn, d2, 1, 1)
+    _insert_align_link(db_conn, d1, d2, p1, t)
+    _insert_align_link(db_conn, d1, d2, p2, t)  # same target, other pivot
+
+    from multicorpus_engine.qa_report import _check_alignment_pairs
+    pairs = _check_alignment_pairs(db_conn)
+    assert pairs[0]["collisions"] == 0        # each pivot carries exactly one link
+    assert pairs[0]["shared_targets"] == 1    # RED before the fix (key absent)
+    assert pairs[0]["severity"] == "warning"
+
+
+def test_alignment_qa_shared_target_survives_a_bead(db_conn: sqlite3.Connection) -> None:
+    """The bead is NOT what hides it — the audit got this wrong. Give the ⭙-created link
+    the cell bead of its own pivot, exactly as the gesture does: the target is still
+    claimed twice, and must still be counted."""
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p1 = _insert_unit(db_conn, d1, 1, 1)
+    p2 = _insert_unit(db_conn, d1, 2, 2)
+    t = _insert_unit(db_conn, d2, 1, 1)
+    t2 = _insert_unit(db_conn, d2, 2, 2)
+    _insert_align_link(db_conn, d1, d2, p2, t2, run_id="auto", bead_uid="cell#p2")
+    _insert_align_link(db_conn, d1, d2, p2, t, run_id="manual", bead_uid="cell#p2")  # ⭙
+    _insert_align_link(db_conn, d1, d2, p1, t, run_id="manual")                      # ＝
+
+    from multicorpus_engine.qa_report import _check_alignment_pairs
+    pairs = _check_alignment_pairs(db_conn)
+    assert pairs[0]["collisions"] == 0      # p2's two links share one bead → legitimate
+    assert pairs[0]["shared_targets"] == 1  # but `t` hangs off BOTH p1 and p2
+
+
+def test_alignment_qa_rejected_link_is_not_a_shared_target(db_conn: sqlite3.Connection) -> None:
+    """Same exclusion as everywhere else (ALN-03/F8): a rejected link is dead and must
+    not make a target look shared — otherwise « rejeter » could never clear the warning."""
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p1 = _insert_unit(db_conn, d1, 1, 1)
+    p2 = _insert_unit(db_conn, d1, 2, 2)
+    t = _insert_unit(db_conn, d2, 1, 1)
+    _insert_align_link(db_conn, d1, d2, p1, t)
+    _insert_align_link(db_conn, d1, d2, p2, t, status="rejected")
+
+    from multicorpus_engine.qa_report import _check_alignment_pairs
+    pairs = _check_alignment_pairs(db_conn)
+    assert pairs[0]["shared_targets"] == 0
+
+
+def test_shared_targets_do_not_block_the_export_gate(db_conn: sqlite3.Connection) -> None:
+    """Deliberate: the new count reports, it does not change what an export refuses.
+    Only `collisions` feeds the blocking align_collision category (strict policy)."""
+    d1 = _populate_doc(db_conn, "Pivot", "fr")
+    d2 = _populate_doc(db_conn, "Target", "en")
+    p1 = _insert_unit(db_conn, d1, 1, 1)
+    p2 = _insert_unit(db_conn, d1, 2, 2)
+    t = _insert_unit(db_conn, d2, 1, 1)
+    _insert_align_link(db_conn, d1, d2, p1, t)
+    _insert_align_link(db_conn, d1, d2, p2, t)
+
+    from multicorpus_engine.qa_report import generate_qa_report
+    report = generate_qa_report(db_conn, policy="strict")
+    pair = report["alignment_qa"][0]
+    assert pair["shared_targets"] == 1 and pair["collisions"] == 0
+    assert report["summary"]["align_shared_targets"] == 1
+    assert report["summary"]["align_collisions"] == 0
+    assert "align_collision" not in report["gates"]["blocking"]
+
+
 # ── Test 6: metadata readiness — missing title → blocking ─────────────────────
 
 def test_metadata_readiness_missing_title(db_conn: sqlite3.Connection) -> None:

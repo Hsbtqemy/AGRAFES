@@ -1181,6 +1181,8 @@ export class AlignPanel {
             <span class="prep-align-qd-val ${(s.orphan_target_count ?? 0) === 0 ? "ok" : "warn"}">${s.orphan_target_count ?? 0}</span>
             <span class="prep-align-qd-label" title="Liens en conflit (même pivot → deux segments cible différents)">Collisions</span>
             <span class="prep-align-qd-val ${s.collision_count === 0 ? "ok" : "err"}">${s.collision_count}</span>
+            <span class="prep-align-qd-label" title="L'autre axe : une phrase cible rattachée à plusieurs segments pivot. Les « Collisions » ci-dessus groupent par pivot et ne peuvent pas les voir.">Cibles partagées</span>
+            <span class="prep-align-qd-val ${(s.shared_target_count ?? 0) === 0 ? "ok" : "err"}">${s.shared_target_count ?? 0}</span>
             <span class="prep-align-qd-label">Liens total</span>
             <span class="prep-align-qd-val">${s.total_links}</span>
             <span class="prep-align-qd-label" title="Liens acceptés manuellement / rejetés / non révisés">Statuts</span>

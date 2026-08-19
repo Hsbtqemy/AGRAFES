@@ -1804,6 +1804,9 @@ export interface FamilyStats {
   /** D-P9 — collisions agrégées (segment pivot lié à > 1 bead sur une cible, rejetés exclus).
    *  Absent sur un sidecar antérieur à D-P9-1. */
   collision_count?: number;
+  /** ALI-22 — l'autre axe : phrases cible rattachées à > 1 segment pivot. La métrique de
+   *  collision ci-dessus groupe par pivot et ne peut pas les voir. Absent avant 1.6.64. */
+  shared_target_count?: number;
 }
 
 export interface FamilyRecord {
@@ -2158,6 +2161,9 @@ export interface AlignQualityStats {
   orphan_pivot_count: number;
   orphan_target_count: number;
   collision_count: number;
+  /** ALI-22 — phrases cible rattachées à plus d'un segment pivot (contrat 1.6.64).
+   *  Optionnel : un sidecar plus ancien ne le renvoie pas. */
+  shared_target_count?: number;
   status_counts: { unreviewed: number; accepted: number; rejected: number };
 }
 

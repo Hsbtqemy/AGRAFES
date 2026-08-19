@@ -59,7 +59,7 @@ conclusions** des §8 et §10.
 | ALI-19 | ✅ | ~~P0~~ | Aucune statistique SQLite (`ANALYZE` jamais lancé) → mauvais index sur un `NOT EXISTS` corrélé. **17,6×** pour 46 ms. |
 | ALI-20 | 🟡 | P2 | Pas de bandeau d'annulation dans l'Alignement, **y compris pour les deux gestes qui sont journalisés** (✎, ¶). |
 | ALI-21 | 🟡 | P2 | Gestes de cellule invisibles au repos, glyphe ↻ ≠ ↺ annoncé, et refus `_cutBusy` totalement muet. |
-| ALI-22 | 🟠 | P1 | Le ⭙ n'a pas d'inverse ; la réparation intuitive (＝) laisse la cible sur **deux** segments, masquée par le bead. **Démontré en base.** |
+| ALI-22 | ✅ | ~~P1~~ | Le ⭙ n'a pas d'inverse ; la réparation intuitive (＝) laisse la cible sur **deux** segments, masquée par le bead. **Démontré en base.** |
 
 > ALI-13 est traité en §5 (passe beads) ; ALI-14 à ALI-22 en §7 à §10 (passes du 2026-08-19) ; §10 chiffre le correctif d'ALI-10/ALI-17 ; le **§11** approfondit la famille « données
 > détruites » (ALI-03/10/17/22 + QA-06) et tranche ses décisions de conception.
@@ -977,6 +977,50 @@ bouton mort.
 
 ### ALI-22 🟠 P1 — le ⭙ n'a pas d'inverse, et la tentative naturelle laisse un doublon (démontré)
 
+> **✅ TRAITÉ le 2026-08-19 — mais pas par le correctif annoncé.** Le (c) proposé ci-dessous
+> (« ne pas beader une cellule dont le lien absorbé recouvre une cible déjà portée ») **ne peut pas
+> fonctionner**, et la phrase « le bead posé par le ⭙ masque le doublon à `/align/quality` »
+> **était fausse**. Vérifié au code avant d'écrire une ligne :
+>
+> * Les **trois** implémentations de la métrique de collision du produit — `qa_report.py:172`,
+>   `sidecar.py:3473` (paire) et `sidecar.py:6901` (agrégat famille) — font toutes
+>   `GROUP BY pivot_unit_id … HAVING COUNT(DISTINCT COALESCE(bead_uid, 'L'||link_id)) > 1`.
+>   Elles comptent un **pivot** portant plusieurs beads. Une **cible** portée par plusieurs
+>   pivots n'y entre par aucun chemin : le bead n'y est pour rien, la requête ne regarde
+>   jamais de ce côté.
+> * Le (c) ne se déclencherait pas : **au moment du ⭙, l'autre porteur vient d'être supprimé**.
+>   Et s'abstenir de beader ne rendrait rien visible, puisque le compte est sur l'autre axe.
+>
+> **Correctif retenu — mesurer l'axe cible.** `shared_target_count` (payloads) /
+> `shared_targets` (lignes du rapport QA) compte les phrases rattachées à plus d'un segment
+> pivot, aux trois mêmes endroits, avec la même exclusion des liens `rejected`. La paire passe
+> en `severity="warning"`. **Délibérément hors de la somme bloquante** `align_collisions` du
+> portillon : ça informe, ça ne change pas ce qu'un export refuse. Contrat **1.6.64** (champs
+> additifs, aucune route neuve → snapshot inchangé).
+>
+> **Mesuré sur le corpus de référence** — la métrique historique dit **0**, la nouvelle en
+> trouve **23** :
+>
+> | paire | collisions (pivot) | cibles partagées |
+> |---|---|---|
+> | 366 → 369 | 0 | **10** |
+> | 368 → 367 | 0 | **11** |
+> | 373 → 419 | 0 | **2** |
+>
+> Et le ⭙ n'en est pas la seule source : la cible 237365 est portée par **trois** pivots, dont
+> un lien d'aligneur **sans bead**. Un correctif ciblé sur le geste aurait laissé passer
+> celui-là.
+>
+> **ALI-13 n'est pas refermé pour autant** — contrairement à ce qu'annonçait le (c). ALI-13 porte
+> sur l'axe **pivot** (le bead de cellule fait passer un pivot à deux liens pour un 1-2 assumé),
+> et c'est un choix de conception assumé depuis R3.2. Ce qui change, c'est que le dommage réel
+> qu'il rendait possible est désormais **visible par l'autre bout**.
+>
+> Tests : quatre cas dans `tests/test_qa_report.py`, dont un qui pose le bead de cellule
+> exactement comme le geste le fait et vérifie que la cible partagée est **quand même** comptée,
+> et un qui verrouille la non-régression du portillon. RED sur le code d'avant (4 échecs).
+> Vérifié en outre sur la vraie base : l'implémentation retrouve les 23 doublons comptés à la main.
+
 Le ⭙ Fusionner écrit deux choses, atomiquement (`AlignMatrixView.ts:1243-1266`) : il **crée** un
 lien `manual` du segment courant vers la cible du voisin (`createAlignLink`), puis **supprime** le
 lien du voisin. Aucun bouton ne défait cette paire d'écritures — la note de conception donne le ✂
@@ -1238,7 +1282,10 @@ deux énumérations. **Aucune migration.**
    dans la réponse (3 artefacts de contrat), bouton d'undo posé sur l'onglet Tours, énumérations soldées.
    **Aucune migration.** Indépendant de tout le reste ; sert de répétition au
    triplet `record_action` → instantané → undo qu'A1 emploiera en grand.
-2. **ALI-22 (c)** — la garde anti-bead. Court, autonome, referme ALI-13.
+2. **ALI-22** — ✅ **FAIT le 2026-08-19**, mais **pas par la garde anti-bead** : celle-ci ne
+   pouvait pas fonctionner (cf. le bloc sous ALI-22). Remplacée par la mesure de l'axe
+   **cible** — 23 doublons réels que la métrique historique comptait 0. Contrat 1.6.64.
+   **ALI-13 reste ouvert** : il porte sur l'axe pivot, et n'est pas refermé par ce lot.
 3. **A1** — `prep_action_link_snapshots`, en corrigeant au passage l'ordre de
    `_handle_units_split`. Débloque ALI-03, ALI-22 (a), ALI-10, et le « supprimer les liens du
    run *X* » d'ALI-17.

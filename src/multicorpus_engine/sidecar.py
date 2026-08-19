@@ -3486,6 +3486,26 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         ).fetchone()
         collision_count = collision_row[0] if collision_row else 0
 
+        # ── Shared targets: the OTHER axis (ALI-22) ──────────────────────────
+        # The count above groups by pivot_unit_id — it sees a pivot carrying several
+        # beads, never a TARGET sentence claimed by several pivot segments. The bead
+        # plays no part in hiding it: the query simply never looks that way. Same
+        # rejected-link exclusion, same pair scope.
+        shared_target_row = conn.execute(
+            f"""
+            SELECT COUNT(*) FROM (
+                SELECT target_unit_id
+                FROM alignment_links al
+                WHERE {link_where}
+                  AND (al.status IS NULL OR al.status <> 'rejected')
+                GROUP BY target_unit_id
+                HAVING COUNT(DISTINCT pivot_unit_id) > 1
+            )
+            """,
+            link_params,
+        ).fetchone()
+        shared_target_count = shared_target_row[0] if shared_target_row else 0
+
         # ── Sample orphan pivot units (first 5 with no link for this pair) ──
         sample_orphan_pivot = [
             {"unit_id": r[0], "external_id": r[1], "text": r[2]}
@@ -3538,6 +3558,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "orphan_pivot_count": orphan_pivot,
                 "orphan_target_count": orphan_target,
                 "collision_count": collision_count,
+                "shared_target_count": shared_target_count,
                 "status_counts": {
                     "unreviewed": n_unreviewed,
                     "accepted": n_accepted,
@@ -6910,6 +6931,21 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             if root is not None:
                 collisions_by_root[root] += 1
 
+        # Shared targets aggregated the same way (ALI-22): a target sentence claimed by
+        # several pivot segments. Invisible to the count above, which groups by pivot.
+        shared_targets_by_root: dict[int, int] = defaultdict(int)
+        for pv, tg in conn.execute(
+            f"SELECT pivot_doc_id, target_doc_id FROM alignment_links"
+            f" WHERE (pivot_doc_id IN ({ph}) OR target_doc_id IN ({ph}))"
+            f"   AND (status IS NULL OR status <> 'rejected')"
+            f" GROUP BY pivot_doc_id, target_doc_id, target_unit_id"
+            f" HAVING COUNT(DISTINCT pivot_unit_id) > 1",
+            list(all_doc_ids) * 2,
+        ).fetchall():
+            root = pair_to_root.get((min(pv, tg), max(pv, tg)))
+            if root is not None:
+                shared_targets_by_root[root] += 1
+
         # ── 5. Build family objects ──────────────────────────────────────────
         families = []
         for parent_id in sorted(all_parent_ids):
@@ -6926,6 +6962,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # D-P9 — vérification (statut des liens) + collisions, agrégées au grain famille.
             n_accepted, n_rejected, n_unreviewed = status_by_root.get(parent_id, (0, 0, 0))
             collision_count = collisions_by_root.get(parent_id, 0)
+            shared_target_count = shared_targets_by_root.get(parent_id, 0)
 
             # Pairs: parent ↔ each child
             pairs = [(parent_id, c["doc_id"]) for c in children]
@@ -6990,6 +7027,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                         "unreviewed": n_unreviewed,
                     },
                     "collision_count": collision_count,
+                    "shared_target_count": shared_target_count,
                 },
             })
 
