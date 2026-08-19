@@ -4362,8 +4362,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.64",
-    "x-contract-version": "1.6.64"
+    "version": "1.6.65",
+    "x-contract-version": "1.6.65"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -7729,6 +7729,14 @@
                 "schema": {
                   "properties": {
                     "alignments_reflagged": {
+                      "type": "integer"
+                    },
+                    "alignments_restore_skipped": {
+                      "description": "archived links whose (pivot,target) pair was re-occupied since — left alone, newer work is not clobbered",
+                      "type": "integer"
+                    },
+                    "alignments_restored": {
+                      "description": "alignment links put back from the action archive (migration 035)",
                       "type": "integer"
                     },
                     "fts_stale": {

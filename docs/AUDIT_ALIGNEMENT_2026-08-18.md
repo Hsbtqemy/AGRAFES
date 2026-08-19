@@ -40,7 +40,7 @@ conclusions** des §8 et §10.
 |----|-----|------|---------|
 | ALI-01 | 🔴 | P0 | La matrice projette `text_raw` ; le stylo, l'aligneur, la FTS et la curation travaillent sur `text_norm`. Les corrections sont invisibles et la surface de contrôle n'est pas la surface de calcul. |
 | ALI-02 | 🟠 | P1 | Stratégie `position` : la borne exclut le paratexte mais ne **rebase** pas la numérotation → n'est correcte que si les deux documents ont exactement le même nombre de lignes d'en-tête. |
-| ALI-03 | 🟠 | P1 | La fusion d'unités supprime les liens **sans confirmation**, et l'annulation ne les restaure **jamais**. |
+| ALI-03 | ✅ | ~~P1~~ | La fusion d'unités supprime les liens **sans confirmation**, et l'annulation ne les restaure **jamais**. |
 | ALI-04 | 🟠 | P1 | Gale–Church dépend entièrement du grain de paragraphes ; **rien ne compare les deux grains** (l'avertissement d'ALI-12 ne couvre que la présence d'une ancre) → grain dégénéré = alignement absurde présenté avec assurance. |
 | ALI-05 | 🟡 | P3 | DP `length_bounded` : le garde-fou **existe** (`_MAX_LENGTHS = 5 000`) — constat initial corrigé en passe adverse ; subsiste que le pire cas admis alloue deux matrices pleines (~400 Mo). |
 | ALI-06 | 🟠 | P1 | Le « % » du sélecteur de cible est une **proximité de marqueur**, pas une ressemblance de texte. |
@@ -132,6 +132,52 @@ EN), puis dérive variable (vérifié aux segments 300, 800, 1200).
 `n`. Quelques lignes ; annule d'un coup tout décalage constant d'en-tête. Mettre ADR-013 à jour.
 
 ### ALI-03 🟠 — la fusion détruit des liens sans prévenir, et l'undo ne les rend pas
+
+> **✅ TRAITÉ le 2026-08-19** — migration **035**, contrat **1.6.65**. La moitié « snapshot »
+> du correctif est livrée ; la moitié « confirmation » ne l'est pas (voir plus bas).
+>
+> **Ce qui manquait était une capacité, pas une ligne** : `undo.py` ne touchait
+> `alignment_links` que par `UPDATE … source_changed_at` et `DELETE` — **aucun `INSERT`** — et
+> `prep_action_unit_snapshots` n'a que des colonnes d'unité. Il n'existait donc aucun endroit
+> où mettre un lien détruit.
+>
+> `prep_action_link_snapshots` (mig. 035) archive **toutes** les colonnes d'un lien, `link_id`
+> et `run_id` compris. C'est ce qui rend la restitution **identique** et non une re-création
+> approximative — le défaut qu'ALI-20 reproche au ＝ Rattacher. Le test compare les 14 colonnes
+> de tous les liens avant et après le cycle : `after == before`.
+>
+> *Détail qui n'était pas dans le prototype du §10* : `source_changed_at` est archivé lui aussi.
+> Un lien déjà marqué périmé doit revenir **périmé**, pas paraître fraîchement vérifié.
+>
+> **Branché sur les deux gestes unitaires destructifs**, et le §11.3 s'est vérifié sur pièce :
+>
+> | geste | ordre des écritures | traitement |
+> |---|---|---|
+> | `/units/merge` | action **avant** le `DELETE` | archive directe |
+> | `/units/split` | action **après** le `DELETE` | lecture avant le `DELETE`, écriture une fois l'`action_id` créé |
+>
+> Aucun `record_prep_action` n'a été déplacé : déplacer l'enregistrement d'un handler qui
+> fonctionne était le risque inutile, lire tôt et écrire tard ne l'est pas.
+>
+> **La restitution est centrale**, dans `execute_undo` et non par type d'action : tout geste qui
+> archivera des liens plus tard sera restitué sans code neuf, et un geste qui n'en archive pas est
+> un no-op. Elle tourne **après** l'undo spécifique — `_undo_merge_units` re-marque périmés les
+> liens de ses unités et `_undo_split_unit` supprime ceux qu'un réalignement a posés sur la moitié
+> créée ; restituer ensuite préserve le `source_changed_at` archivé au lieu de le laisser écraser.
+>
+> **Conflit d'unicité assumé et rapporté** : un réalignement entre l'action et son annulation peut
+> reprendre la paire `(pivot_unit_id, target_unit_id)`, unique depuis la migration 008. Ces liens
+> sont **laissés en place** et comptés dans `alignments_restore_skipped` — le travail plus récent
+> n'est jamais écrasé, et l'annulation reste atomique au lieu d'échouer à mi-chemin. Le bandeau le
+> dit (« 2 liens rendus, 1 non rendu (paire déjà reprise) ») : taire ce cas laisserait croire à une
+> restitution complète.
+>
+> **Non fait, et assumé** : la **confirmation** avant une fusion qui porte des liens
+> (`needsAlignmentConfirm` existe et n'est pas câblé sur `SegmentPane.ts:583`). L'annulation étant
+> désormais exacte, ce garde-fou ne couvre plus qu'un aller-retour évitable, pas une perte.
+>
+> Tests : quatre cas dans `tests/test_undo.py` — restitution à l'identique sur les 14 colonnes,
+> paire reprise, cascade `ON DELETE`, et le cycle complet de la coupe. RED sur le code d'avant.
 
 - `_handle_units_merge` supprime les liens des deux unités (`sidecar.py:4988-4992`) — documenté.
 - Le front appelle `mergeUnits` **sans aucune confirmation** (`SegmentPane.ts:583`), alors que
@@ -1286,6 +1332,11 @@ deux énumérations. **Aucune migration.**
    pouvait pas fonctionner (cf. le bloc sous ALI-22). Remplacée par la mesure de l'axe
    **cible** — 23 doublons réels que la métrique historique comptait 0. Contrat 1.6.64.
    **ALI-13 reste ouvert** : il porte sur l'axe pivot, et n'est pas refermé par ce lot.
-3. **A1** — `prep_action_link_snapshots`, en corrigeant au passage l'ordre de
-   `_handle_units_split`. Débloque ALI-03, ALI-22 (a), ALI-10, et le « supprimer les liens du
-   run *X* » d'ALI-17.
+3. **A1** — ⏳ **entamé le 2026-08-19** (migration 035, contrat 1.6.65). `prep_action_link_snapshots`
+   existe, la restitution est centrale dans `execute_undo`, et les **deux gestes unitaires**
+   (fusion, coupe) archivent — l'ordre inversé de `_handle_units_split` est traité par une lecture
+   avant le `DELETE`, sans déplacer son `record_prep_action`. **ALI-03 est refermé.**
+   *Restent* : l'archive côté **run** (ALI-17, ALI-10 — resegmentation et propagation), qui porte
+   la seule question ouverte de la famille (§11.6), et la garde `needsAlignmentConfirm` d'ALI-03.
+   ALI-22 (a) — un ↻ sur une cellule issue d'un ⭙ — devient possible maintenant que l'archive
+   existe, mais le geste front reste à écrire.

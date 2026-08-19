@@ -20,7 +20,8 @@ import {
 import { CURATE_PRESETS } from "../lib/curationPresets.ts";
 import { rulesSignature, fnv1a } from "../lib/curationFingerprint.ts";
 import {
-  formatUndoActionLabel, formatUndoTooltip, isUndoDisabled, type UndoEligibility,
+  formatUndoActionLabel, formatUndoTooltip, isUndoDisabled, formatUndoLinkSuffix,
+  type UndoEligibility,
 } from "../lib/prepUndo.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
@@ -755,6 +756,7 @@ export class CurationPane {
       if (s) {
         const n = res.units_restored;
         s.textContent = `↶ Annulé : ${n} unité${n > 1 ? "s" : ""} restaurée${n > 1 ? "s" : ""}`
+          + formatUndoLinkSuffix(res)
           + (res.fts_stale ? " · réindexez pour la recherche." : ".");
       }
       this._renderReviewBar();

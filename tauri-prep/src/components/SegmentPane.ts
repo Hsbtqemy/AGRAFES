@@ -44,7 +44,7 @@ import {
   type CustomSpecState,
 } from "../lib/segmentControls.ts";
 import { computeAnomalyView, type AnomalyView } from "../lib/segmentAnomalies.ts";
-import { formatUndoActionLabel, formatUndoTooltip, isUndoDisabled } from "../lib/prepUndo.ts";
+import { formatUndoActionLabel, formatUndoTooltip, isUndoDisabled, formatUndoLinkSuffix } from "../lib/prepUndo.ts";
 
 /** Roles that mark a section wall (a heading line, not a paragraph). Mirrors
  *  coarse_grain.STRUCTURAL_ROLES — the engine rejects a paragraph toggle on these. */
@@ -656,7 +656,7 @@ export class SegmentPane {
     try {
       const res = await prepUndo(conn, this._docId);
       const nn = res.units_restored;
-      this._notify(`↶ Annulation : ${res.reverted_action_type} — ${nn} unité${nn > 1 ? "s" : ""} restaurée${nn > 1 ? "s" : ""}.`);
+      this._notify(`↶ Annulation : ${res.reverted_action_type} — ${nn} unité${nn > 1 ? "s" : ""} restaurée${nn > 1 ? "s" : ""}${formatUndoLinkSuffix(res)}.`);
       await this._onResegmented?.();
       if (this._surface === "tours") {
         // The screen-level reload rebuilds the canvas, not this pane's ¶ list — repaint it

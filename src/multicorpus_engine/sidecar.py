@@ -4931,6 +4931,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             ACTION_MERGE_UNITS,
             insert_unit_snapshots,
             record_prep_action,
+            snapshot_links_for_units,
         )
 
         with self._lock():
@@ -5006,6 +5007,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 ],
             )
 
+            # ALI-03 — archive the links before destroying them (migration 035).
+            # The action already exists (recorded above), so the snapshot rides in the
+            # same transaction: snapshot + delete either both land or both roll back.
+            # Until this, « fusionner puis annuler » returned the two units and lost
+            # their alignment for good, without a word.
+            snapshot_links_for_units(conn, action_id, [uid1, uid2])
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
                 " pivot_unit_id IN (?,?) OR target_unit_id IN (?,?)",
@@ -5079,6 +5086,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         from multicorpus_engine.action_history import (
             ACTION_SPLIT_UNIT,
+            collect_links_for_units,
+            insert_link_snapshots,
             insert_unit_snapshots,
             record_prep_action,
         )
@@ -5111,6 +5120,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # descend from.
             inherited_source = text_source_before if text_source_before is not None else (text_raw_before or "")
 
+            # ALI-03 / §11.3 — this handler records its action AFTER the mutation, unlike
+            # the merge one. Rather than move a working record_prep_action call, read the
+            # links here and write the archive further down, once action_id exists: same
+            # transaction, same guarantee, no reordering of the mutation itself.
+            links_before = collect_links_for_units(conn, [uid])
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
                 " pivot_unit_id=? OR target_unit_id=?",
@@ -5168,6 +5182,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     },
                 ],
             )
+            # The links read before the DELETE, archived now that the action exists.
+            insert_link_snapshots(action_id, links_before, conn=conn)
 
             conn.commit()
 

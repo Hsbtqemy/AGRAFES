@@ -33,6 +33,7 @@ from multicorpus_engine.action_history import (
     ACTION_UNDO,
     ACTION_UPDATE_TEXT,
     record_prep_action,
+    restore_link_snapshots,
 )
 
 
@@ -478,6 +479,15 @@ def execute_undo(
             f"Cannot undo action_type={action_type!r}",
         )
 
+    # ALI-03 — put back the alignment links the action destroyed (migration 035).
+    # Central, not per-handler: any action that archives links gets its restitution
+    # here, and an action that archived none is a no-op. Order matters — it runs
+    # AFTER the type-specific undo, because _undo_merge_units re-flags the links
+    # touching its units as stale and _undo_split_unit/_undo_resegment delete the
+    # ones a later re-align left behind. Restoring afterwards means the archived
+    # source_changed_at survives instead of being overwritten by that re-flag.
+    links = restore_link_snapshots(conn, action_id)
+
     # Record the undo itself + flip the original's reverted flag.
     undo_action_id = record_prep_action(
         conn,
@@ -502,5 +512,7 @@ def execute_undo(
         "undo_action_id":       undo_action_id,
         "reverted_action_id":   action_id,
         "reverted_action_type": action_type,
+        "alignments_restored":       links["restored"],
+        "alignments_restore_skipped": links["skipped"],
         **outcome,
     }

@@ -3,6 +3,7 @@ import {
   ELIGIBILITY_REASONS,
   PREP_ACTION_TYPES,
   formatUndoActionLabel,
+  formatUndoLinkSuffix,
   formatUndoTooltip,
   formatUndoUnavailableReason,
   isUndoDisabled,
@@ -254,5 +255,25 @@ describe("transitionEvent", () => {
   it("unavailable → idle : null", () => {
     const prev: UndoButtonState = { kind: "unavailable", reason: "no_action" };
     expect(transitionEvent(prev, { kind: "idle" })).toBe(null);
+  });
+});
+
+// ALI-03 — le suffixe « liens rendus » d'une annulation (mig. 035).
+describe("formatUndoLinkSuffix", () => {
+  it("ne dit rien quand aucun lien n'était en jeu", () => {
+    expect(formatUndoLinkSuffix({})).toBe("");
+    expect(formatUndoLinkSuffix({ alignments_restored: 0, alignments_restore_skipped: 0 })).toBe("");
+  });
+
+  it("compte les liens rendus, au singulier comme au pluriel", () => {
+    expect(formatUndoLinkSuffix({ alignments_restored: 1 })).toBe(" · 1 lien rendu");
+    expect(formatUndoLinkSuffix({ alignments_restored: 3 })).toBe(" · 3 liens rendus");
+  });
+
+  it("dit séparément ce qui n'a PAS été rendu — sinon on croit à une restitution complète", () => {
+    expect(formatUndoLinkSuffix({ alignments_restored: 2, alignments_restore_skipped: 1 }))
+      .toBe(" · 2 liens rendus, 1 non rendu (paire déjà reprise)");
+    expect(formatUndoLinkSuffix({ alignments_restore_skipped: 2 }))
+      .toBe(" · 2 non rendus (paire déjà reprise)");
   });
 });

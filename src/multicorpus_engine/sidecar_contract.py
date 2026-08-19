@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.64"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.65"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -277,6 +277,21 @@ API_VERSION = CONTRACT_VERSION
 #         folded into the gate's blocking align_collisions sum — it reports, it does not
 #         change what an export refuses. Additive response fields → no new route →
 #         snapshot unchanged; openapi moves (version + schema).
+
+# 1.6.65: l'annulation rend les liens qu'elle avait detruits (ALI-03, migration 035).
+#         Mode A undo could restore a unit's text, role and meta_json, never a link:
+#         undo.py touched alignment_links only through UPDATE source_changed_at and
+#         DELETE — no INSERT anywhere — and prep_action_unit_snapshots carries only
+#         unit columns. So « fusionner deux unites puis annuler » gave the units back
+#         and lost their alignment for good, silently. New table
+#         prep_action_link_snapshots archives every column of a destroyed link,
+#         link_id and run_id included, so the restitution is IDENTICAL rather than an
+#         approximate re-creation. Wired on /units/merge for now; the restore runs
+#         centrally in execute_undo, so the remaining destructive paths only need
+#         their archive call. /prep/undo gains alignments_restored and
+#         alignments_restore_skipped (a re-align may have re-occupied the unique
+#         (pivot,target) pair — those links are left alone and counted, never
+#         clobbered). Additive response fields → no new route → snapshot unchanged.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -985,6 +1000,8 @@ def openapi_spec() -> dict[str, Any]:
                             "reverted_action_type": {"type": "string"},
                             "units_restored":       {"type": "integer"},
                             "alignments_reflagged": {"type": "integer"},
+                            "alignments_restored": {"type": "integer", "description": "alignment links put back from the action archive (migration 035)"},
+                            "alignments_restore_skipped": {"type": "integer", "description": "archived links whose (pivot,target) pair was re-occupied since — left alone, newer work is not clobbered"},
                             "fts_stale":            {"type": "boolean"},
                         }}}}},
                         "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},

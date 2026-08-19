@@ -990,3 +990,272 @@ def test_undo_bulk_set_role_format_a_unit_ids(db_conn: sqlite3.Connection) -> No
     execute_undo(db_conn, doc_id)
     assert _role_of(db_conn, doc_id, 1) is None
     assert _role_of(db_conn, doc_id, 3) is None
+
+
+# -- ALI-03 : les liens detruits par une fusion sont archives puis restitues ----
+
+def test_undo_merge_restores_the_links_it_destroyed(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """RED avant migration 035 : fusionner supprimait les liens des deux unites et
+    l'annulation ne les rendait JAMAIS -- undo.py n'avait aucun INSERT sur
+    alignment_links. Les unites revenaient, leur alignement etait perdu en silence."""
+    from multicorpus_engine.action_history import (
+        ACTION_MERGE_UNITS,
+        insert_unit_snapshots,
+        record_prep_action,
+        snapshot_links_for_units,
+    )
+    from multicorpus_engine.undo import execute_undo
+
+    _COLS = (
+        "SELECT link_id, run_id, pivot_unit_id, target_unit_id, external_id,"
+        " pivot_doc_id, target_doc_id, created_at, status, source_changed_at,"
+        " bead_id, bead_uid, target_char_start, target_char_end"
+        " FROM alignment_links ORDER BY link_id"
+    )
+
+    doc_id, _ = _seed_doc(db_conn, ["Phrase un.", "Phrase deux.", "Phrase trois."])
+    tgt_doc, [t1, t2] = _seed_doc(db_conn, ["Target one.", "Target two."])
+
+    n1, n2 = 1, 2
+    row1 = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, n1),
+    ).fetchone()
+    row2 = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, n2),
+    ).fetchone()
+    uid1, uid2 = int(row1["unit_id"]), int(row2["unit_id"])
+
+    # One link per unit, with distinguishing state we expect back verbatim.
+    _add_link(db_conn, uid1, t1, pivot_doc=doc_id, target_doc=tgt_doc, ext_id=11)
+    _add_link(db_conn, uid2, t2, pivot_doc=doc_id, target_doc=tgt_doc, ext_id=22)
+    db_conn.execute(
+        "UPDATE alignment_links SET status='accepted', bead_uid='g-7' WHERE pivot_unit_id=?",
+        (uid2,),
+    )
+    db_conn.commit()
+    before = [tuple(r) for r in db_conn.execute(_COLS)]
+    assert len(before) == 2
+
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_MERGE_UNITS,
+        description="Fusion u.1 + u.2",
+        context={
+            "merged_unit_ids": [uid1, uid2], "kept_unit_id": uid1,
+            "deleted_unit_id": uid2, "n1": n1, "n2": n2,
+            "kept_external_id_before": row1["external_id"],
+            "deleted_external_id_before": row2["external_id"],
+        },
+    )
+    insert_unit_snapshots(
+        db_conn, action_id,
+        [
+            {"unit_id": uid1, "text_raw_before": row1["text_raw"],
+             "text_norm_before": row1["text_norm"], "unit_role_before": row1["unit_role"],
+             "meta_json_before": row1["meta_json"]},
+            {"unit_id": uid2, "text_raw_before": row2["text_raw"],
+             "text_norm_before": row2["text_norm"], "unit_role_before": row2["unit_role"],
+             "meta_json_before": row2["meta_json"]},
+        ],
+    )
+    # Forward merge, exactly as the handler does it: archive, then destroy.
+    assert snapshot_links_for_units(db_conn, action_id, [uid1, uid2]) == 2
+    db_conn.execute(
+        "DELETE FROM alignment_links WHERE pivot_unit_id IN (?,?) OR target_unit_id IN (?,?)",
+        (uid1, uid2, uid1, uid2),
+    )
+    merged_raw = (row1["text_raw"] or "").rstrip() + " " + (row2["text_raw"] or "").lstrip()
+    merged_norm = (row1["text_norm"] or "").rstrip() + " " + (row2["text_norm"] or "").lstrip()
+    db_conn.execute(
+        "UPDATE units SET text_raw=?, text_norm=? WHERE doc_id=? AND n=?",
+        (merged_raw, merged_norm, doc_id, n1),
+    )
+    db_conn.execute("DELETE FROM units WHERE doc_id=? AND n=?", (doc_id, n2))
+    db_conn.execute("UPDATE units SET n = n - 1 WHERE doc_id=? AND n > ?", (doc_id, n2))
+    db_conn.commit()
+    assert db_conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0] == 0
+
+    payload = execute_undo(db_conn, doc_id)
+    db_conn.commit()
+
+    assert payload["alignments_restored"] == 2
+    assert payload["alignments_restore_skipped"] == 0
+    after = [tuple(r) for r in db_conn.execute(_COLS)]
+    # Identical restitution, not an approximate re-creation: link_id, run_id, status
+    # and bead_uid all come back as they were (the flaw ALI-20 reports about Rattacher).
+    assert after == before
+
+
+def test_undo_merge_skips_a_link_whose_pair_was_retaken(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """A re-align between the merge and its undo can re-occupy (pivot,target), which
+    migration 008 makes unique. The undo must stay atomic and REPORT the skip rather
+    than abort or silently swallow it."""
+    from multicorpus_engine.action_history import (
+        ACTION_MERGE_UNITS,
+        insert_unit_snapshots,
+        record_prep_action,
+        snapshot_links_for_units,
+    )
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["Phrase un.", "Phrase deux.", "Phrase trois."])
+    tgt_doc, [t1] = _seed_doc(db_conn, ["Target one."])
+    n1, n2 = 1, 2
+    row1 = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, n1),
+    ).fetchone()
+    row2 = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, n2),
+    ).fetchone()
+    uid1, uid2 = int(row1["unit_id"]), int(row2["unit_id"])
+    _add_link(db_conn, uid1, t1, pivot_doc=doc_id, target_doc=tgt_doc, ext_id=11)
+    db_conn.commit()
+
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_MERGE_UNITS,
+        description="Fusion u.1 + u.2",
+        context={
+            "merged_unit_ids": [uid1, uid2], "kept_unit_id": uid1,
+            "deleted_unit_id": uid2, "n1": n1, "n2": n2,
+            "kept_external_id_before": row1["external_id"],
+            "deleted_external_id_before": row2["external_id"],
+        },
+    )
+    insert_unit_snapshots(
+        db_conn, action_id,
+        [
+            {"unit_id": uid1, "text_raw_before": row1["text_raw"],
+             "text_norm_before": row1["text_norm"], "unit_role_before": row1["unit_role"],
+             "meta_json_before": row1["meta_json"]},
+            {"unit_id": uid2, "text_raw_before": row2["text_raw"],
+             "text_norm_before": row2["text_norm"], "unit_role_before": row2["unit_role"],
+             "meta_json_before": row2["meta_json"]},
+        ],
+    )
+    snapshot_links_for_units(db_conn, action_id, [uid1, uid2])
+    db_conn.execute(
+        "DELETE FROM alignment_links WHERE pivot_unit_id IN (?,?) OR target_unit_id IN (?,?)",
+        (uid1, uid2, uid1, uid2),
+    )
+    db_conn.execute("DELETE FROM units WHERE doc_id=? AND n=?", (doc_id, n2))
+    db_conn.execute("UPDATE units SET n = n - 1 WHERE doc_id=? AND n > ?", (doc_id, n2))
+    # Re-align AFTER the merge, on the very pair the archive holds.
+    _add_link(db_conn, uid1, t1, pivot_doc=doc_id, target_doc=tgt_doc, ext_id=99)
+    db_conn.commit()
+
+    payload = execute_undo(db_conn, doc_id)
+    db_conn.commit()
+
+    assert payload["alignments_restored"] == 0
+    assert payload["alignments_restore_skipped"] == 1
+    # The occupying link survives untouched -- the undo did not clobber newer work.
+    assert db_conn.execute(
+        "SELECT COUNT(*) FROM alignment_links WHERE external_id=99").fetchone()[0] == 1
+
+
+def test_link_snapshots_cascade_when_the_action_is_deleted(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Same lifecycle as the unit snapshots: no orphan rows behind a removed action."""
+    from multicorpus_engine.action_history import (
+        ACTION_MERGE_UNITS, record_prep_action, snapshot_links_for_units,
+    )
+
+    doc_id, _ = _seed_doc(db_conn, ["Une.", "Deux."])
+    tgt_doc, [t1] = _seed_doc(db_conn, ["One."])
+    uid1 = int(db_conn.execute(
+        "SELECT unit_id FROM units WHERE doc_id=? AND n=1", (doc_id,)).fetchone()["unit_id"])
+    _add_link(db_conn, uid1, t1, pivot_doc=doc_id, target_doc=tgt_doc)
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_MERGE_UNITS,
+        description="Fusion", context={},
+    )
+    assert snapshot_links_for_units(db_conn, action_id, [uid1]) == 1
+    db_conn.commit()
+
+    db_conn.execute("DELETE FROM prep_action_history WHERE action_id=?", (action_id,))
+    db_conn.commit()
+    assert db_conn.execute(
+        "SELECT COUNT(*) FROM prep_action_link_snapshots").fetchone()[0] == 0
+
+
+def test_undo_split_restores_the_links_it_destroyed(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """La coupe detruit aussi les liens de l'unite. Son handler enregistre l'action
+    APRES la mutation (§11.3), d'ou la lecture avant le DELETE et l'ecriture apres.
+    L'annulation doit rendre les liens d'origine ET nettoyer ceux qu'un realignement
+    aurait poses sur la moitie creee -- dans cet ordre."""
+    from multicorpus_engine.action_history import (
+        ACTION_SPLIT_UNIT,
+        collect_links_for_units,
+        insert_link_snapshots,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.undo import execute_undo
+
+    doc_id, _ = _seed_doc(db_conn, ["Phrase A B C.", "Phrase suivante."])
+    tgt_doc, [t1, t2] = _seed_doc(db_conn, ["Target one.", "Target two."])
+    unit_n = 1
+    row = db_conn.execute(
+        "SELECT unit_id, external_id, text_raw, text_norm, unit_role, meta_json"
+        " FROM units WHERE doc_id=? AND n=? AND unit_type='line'", (doc_id, unit_n),
+    ).fetchone()
+    uid = int(row["unit_id"])
+    _add_link(db_conn, uid, t1, pivot_doc=doc_id, target_doc=tgt_doc, ext_id=11)
+    db_conn.commit()
+
+    # Forward split, in the handler's own order: read links, delete, mutate, record.
+    links_before = collect_links_for_units(db_conn, [uid])
+    assert len(links_before) == 1
+    db_conn.execute(
+        "DELETE FROM alignment_links WHERE pivot_unit_id=? OR target_unit_id=?", (uid, uid),
+    )
+    db_conn.execute("UPDATE units SET n = n + 1 WHERE doc_id=? AND n > ?", (doc_id, unit_n))
+    db_conn.execute(
+        "UPDATE units SET text_raw=?, text_norm=?, external_id=NULL WHERE doc_id=? AND n=?",
+        ("Phrase A", "Phrase A", doc_id, unit_n),
+    )
+    cur = db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, external_id, text_raw, text_norm)"
+        " VALUES (?, 'line', ?, NULL, ?, ?)",
+        (doc_id, unit_n + 1, "B C.", "B C."),
+    )
+    new_uid = int(cur.lastrowid)
+    action_id = record_prep_action(
+        db_conn, doc_id=doc_id, action_type=ACTION_SPLIT_UNIT,
+        description="Coupure u.1",
+        context={
+            "split_unit_id": uid, "split_unit_n": unit_n,
+            "created_unit_id": new_uid, "created_unit_n": unit_n + 1,
+            "external_id_before": row["external_id"],
+        },
+    )
+    insert_unit_snapshots(
+        db_conn, action_id,
+        [{"unit_id": uid, "text_raw_before": row["text_raw"],
+          "text_norm_before": row["text_norm"], "unit_role_before": row["unit_role"],
+          "meta_json_before": row["meta_json"]}],
+    )
+    insert_link_snapshots(action_id, links_before, conn=db_conn)
+    # A re-align after the split put a link on the CREATED half.
+    _add_link(db_conn, new_uid, t2, pivot_doc=doc_id, target_doc=tgt_doc, ext_id=77)
+    db_conn.commit()
+
+    payload = execute_undo(db_conn, doc_id)
+    db_conn.commit()
+
+    assert payload["alignments_restored"] == 1
+    assert payload["alignments_restore_skipped"] == 0
+    rows = db_conn.execute(
+        "SELECT pivot_unit_id, external_id FROM alignment_links ORDER BY link_id").fetchall()
+    # The created half's link went with the unit it belonged to; the original is back.
+    assert [(r["pivot_unit_id"], r["external_id"]) for r in rows] == [(uid, 11)]

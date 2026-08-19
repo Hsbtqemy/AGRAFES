@@ -1506,6 +1506,12 @@ export interface PrepUndoResponse {
     | "resegment";
   units_restored: number;
   alignments_reflagged: number;
+  /** Liens remis en place depuis l'archive de l'action (mig. 035, ALI-03).
+   *  Optionnel : un sidecar antérieur à 1.6.65 ne les renvoie pas. */
+  alignments_restored?: number;
+  /** Liens archivés dont la paire (pivot,cible) a été reprise depuis — laissés
+   *  en place et comptés, jamais écrasés. */
+  alignments_restore_skipped?: number;
   fts_stale: boolean;
 }
 

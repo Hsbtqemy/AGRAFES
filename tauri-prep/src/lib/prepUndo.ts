@@ -74,6 +74,12 @@ export interface UndoResult {
   reverted_action_type: PrepActionType;
   units_restored: number;
   alignments_reflagged: number;
+  /** Liens remis en place depuis l'archive de l'action (mig. 035, ALI-03).
+   *  Optionnel : un sidecar antérieur à 1.6.65 ne les renvoie pas. */
+  alignments_restored?: number;
+  /** Liens archivés dont la paire (pivot,cible) a été reprise depuis — laissés
+   *  en place et comptés, jamais écrasés. */
+  alignments_restore_skipped?: number;
   fts_stale: boolean;
 }
 
@@ -287,4 +293,27 @@ export function transitionEvent(
     event: "prep_undo_unavailable_view",
     payload: { reason: next.reason },
   };
+}
+
+/**
+ * Suffixe « · N lien(s) rendu(s) » d'un résultat d'annulation (ALI-03, mig. 035).
+ *
+ * Chaîne vide quand rien n'a été restitué — l'écrasante majorité des annulations ne
+ * touchent aucun lien, et un « · 0 lien rendu » systématique serait du bruit. Les liens
+ * ignorés (paire reprise par un réalignement entre l'action et son annulation) sont dits
+ * séparément : c'est le seul cas où l'annulation n'a PAS tout rendu, et le taire
+ * laisserait croire à une restitution complète.
+ */
+export function formatUndoLinkSuffix(res: {
+  alignments_restored?: number;
+  alignments_restore_skipped?: number;
+}): string {
+  const done = res.alignments_restored ?? 0;
+  const skipped = res.alignments_restore_skipped ?? 0;
+  const parts: string[] = [];
+  if (done > 0) parts.push(`${done} lien${done > 1 ? "s" : ""} rendu${done > 1 ? "s" : ""}`);
+  if (skipped > 0) {
+    parts.push(`${skipped} non rendu${skipped > 1 ? "s" : ""} (paire déjà reprise)`);
+  }
+  return parts.length ? ` · ${parts.join(", ")}` : "";
 }

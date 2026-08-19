@@ -114,3 +114,101 @@ def insert_unit_snapshots(
         rows,
     )
     return len(rows)
+
+
+# ── Alignment link snapshots (migration 035) ─────────────────────────────────
+#
+# The columns of alignment_links, in the order they are archived and restored.
+# Kept as one list so the SELECT, the INSERT and the restore can never drift
+# apart — a column added to alignment_links must be added here, or it is lost
+# on every undo without anything failing.
+LINK_SNAPSHOT_COLUMNS: tuple[str, ...] = (
+    "link_id", "run_id", "pivot_unit_id", "target_unit_id", "external_id",
+    "pivot_doc_id", "target_doc_id", "created_at", "status", "source_changed_at",
+    "bead_id", "bead_uid", "target_char_start", "target_char_end",
+)
+
+
+def snapshot_links_for_units(
+    conn: sqlite3.Connection,
+    action_id: int,
+    unit_ids: Iterable[int],
+) -> int:
+    """Archive every alignment link touching ``unit_ids``, on either side. No commit.
+
+    Call this **before** deleting the links, inside the caller's transaction and
+    with ``action_id`` already recorded — that is the whole contract. Returns the
+    number of links archived.
+
+    Links are matched on pivot *or* target: a merge destroys both directions, and
+    an archive that kept only one would restore a half-alignment.
+    """
+    return insert_link_snapshots(action_id, collect_links_for_units(conn, unit_ids), conn=conn)
+
+
+def collect_links_for_units(
+    conn: sqlite3.Connection, unit_ids: Iterable[int]
+) -> list[tuple]:
+    """Read the links touching ``unit_ids`` (either side) as plain tuples. No write.
+
+    Split out so a caller whose ``record_prep_action`` comes *after* its DELETE can
+    still archive: read here, delete, then :func:`insert_link_snapshots` once the
+    action exists. ``_handle_units_split`` is exactly that shape.
+    """
+    ids = [int(u) for u in unit_ids]
+    if not ids:
+        return []
+    ph = ",".join("?" * len(ids))
+    cols = ", ".join(LINK_SNAPSHOT_COLUMNS)
+    return [
+        tuple(r) for r in conn.execute(
+            f"SELECT {cols} FROM alignment_links"
+            f" WHERE pivot_unit_id IN ({ph}) OR target_unit_id IN ({ph})",
+            ids * 2,
+        )
+    ]
+
+
+def insert_link_snapshots(
+    action_id: int, rows: list[tuple], *, conn: sqlite3.Connection
+) -> int:
+    """Write link snapshot rows (as returned by :func:`collect_links_for_units`). No commit."""
+    if not rows:
+        return 0
+    cols = ", ".join(LINK_SNAPSHOT_COLUMNS)
+    conn.executemany(
+        f"INSERT OR IGNORE INTO prep_action_link_snapshots (action_id, {cols})"
+        f" VALUES (?, {', '.join('?' * len(LINK_SNAPSHOT_COLUMNS))})",
+        [(int(action_id), *r) for r in rows],
+    )
+    return len(rows)
+
+
+def restore_link_snapshots(conn: sqlite3.Connection, action_id: int) -> dict[str, int]:
+    """Re-insert the links archived for ``action_id``. No commit.
+
+    Returns ``{"restored": n, "skipped": m}``. A link is skipped when its
+    (pivot_unit_id, target_unit_id) pair is occupied again — a re-align between the
+    action and its undo can do that — because migration 008 makes that pair unique.
+    ``INSERT OR IGNORE`` keeps the undo atomic instead of aborting it halfway; the
+    counts are reported to the caller rather than swallowed.
+
+    ``link_id`` is restored verbatim: AUTOINCREMENT never reuses a freed rowid, so
+    the archived id is still free and the restitution is identical, not approximate.
+    """
+    cols = ", ".join(LINK_SNAPSHOT_COLUMNS)
+    rows = conn.execute(
+        f"SELECT {cols} FROM prep_action_link_snapshots WHERE action_id = ?",
+        (int(action_id),),
+    ).fetchall()
+    if not rows:
+        return {"restored": 0, "skipped": 0}
+    before = conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0]
+    conn.executemany(
+        f"INSERT OR IGNORE INTO alignment_links ({cols})"
+        f" VALUES ({', '.join('?' * len(LINK_SNAPSHOT_COLUMNS))})",
+        [tuple(r) for r in rows],
+    )
+    after = conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0]
+    restored = after - before
+    return {"restored": restored, "skipped": len(rows) - restored}
