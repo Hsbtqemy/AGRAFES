@@ -178,10 +178,8 @@ async function build() {
     const last = dernierCommit(commits, ch.code);
     ch.dernier = last ? { hash: last.hash, date: last.date, sujet: last.sujet } : null;
     ch.silence = last ? joursActifs(jours, last.date) : null;
-    ch.commits = commits.filter(c => {
-      const rx = new RegExp(`(^|[^A-Za-z0-9-])${ch.code.replace(/[.]/g, "\\.")}([^A-Za-z0-9-]|$)`);
-      return rx.test(c.sujet);
-    }).length;
+    const rxc = new RegExp(`(^|[^A-Za-z0-9-])${ch.code.replace(/[.]/g, "\\.")}([^A-Za-z0-9-]|$)`);
+    ch.commits = commits.filter(c => rxc.test(c.sujet) && !fourretout(c.sujet)).length;
     ch.passes = passes.filter(p => p.chantier === ch.code).map(p => p.file);
     liens[ch.code] = `#/c/${encodeURIComponent(ch.code)}`;
   }

@@ -63,6 +63,7 @@ a{color:var(--outremer)}
 .plaque{background:var(--minium);color:#fff;padding:1rem .85rem;min-width:0;
   display:flex;flex-direction:column;justify-content:space-between;gap:.5rem}
 .sigle{font:600 1.75rem/1 var(--mo);letter-spacing:-.045em;word-break:break-all}
+.carte .sigle{font-size:var(--sig,1.75rem)}
 .mesure{font:400 1.375rem/1 var(--mo);font-variant-numeric:tabular-nums}
 .mesure i{font:400 var(--t1)/1 var(--mo);font-style:normal;opacity:.75;margin-left:.15em}
 .mot{font:500 var(--t1)/1.3 var(--mo);text-transform:uppercase;letter-spacing:.11em;opacity:.82}
@@ -189,7 +190,7 @@ a{color:var(--outremer)}
   .carte{grid-template-columns:1fr}
   .plaque,.apparat .plaque{flex-direction:row;align-items:baseline;gap:.75rem;
     padding:.7rem .95rem}
-  .sigle,.apparat .sigle{font-size:1.375rem}
+  .carte .sigle,.apparat .sigle{font-size:1.375rem}
   .mesure{font-size:1rem}
   .mot{margin-left:auto;text-align:right}
   .cmt{grid-template-columns:1fr;gap:.15rem}
@@ -257,7 +258,8 @@ const sansCode = t => t.replace(/^\s*\S+\s*[—–]\s*/, "");
 const vide = html => `<div class="vide">${html}</div>`;
 
 /* la plaque : sigle, silence, statut. Rien d'autre. */
-const plaque = c => `<div class="plaque">
+const taille = n => Math.min(1.75, Math.round(1010 / n) / 100);
+const plaque = c => `<div class="plaque" style="--sig:${taille(c.code.length)}rem">
   <span class="sigle">${esc(c.code)}</span>
   <span class="mesure">${c.silence ?? "—"}<i>j</i></span>
   <span class="mot">${esc(c.statut)}</span></div>`;
