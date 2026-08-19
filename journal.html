@@ -74,10 +74,14 @@ a{color:var(--outremer)}
 
 /* ---------- carte ---------- */
 .pile{display:flex;flex-direction:column;gap:.375rem}
-.lien{text-decoration:none;color:inherit;display:block;border-radius:2px}
-.carte{display:grid;grid-template-columns:var(--gout) 1fr;background:var(--plat);
-  border-radius:2px;overflow:hidden}
-.lien:hover .carte{background:var(--plat2)}
+.carte{position:relative;display:grid;grid-template-columns:var(--gout) 1fr;
+  background:var(--plat);border-radius:2px;overflow:hidden}
+.carte:hover{background:var(--plat2)}
+.carte:focus-within{outline:2.5px solid var(--outremer);outline-offset:2px}
+/* nappe cliquable : évite d'imbriquer une ancre de carte autour des pastilles */
+.cible{color:inherit;text-decoration:none}
+.cible::after{content:"";position:absolute;inset:0}
+.cible:focus-visible{outline:none}
 .corps-c{padding:1rem 1.25rem;min-width:0;display:flex;flex-direction:column;gap:.35rem}
 .titre-c{font:500 var(--t4)/1.3 var(--sr);margin:0;letter-spacing:-.01em}
 .lemme{font:400 var(--t3)/1.5 var(--sr);color:var(--encre2);margin:0;overflow-wrap:break-word}
@@ -143,7 +147,7 @@ a{color:var(--outremer)}
 
 /* ---------- pastilles ---------- */
 .pill{font:500 .875em/1 var(--mo);text-decoration:none;padding:.18em .4em;
-  border-radius:2px;white-space:nowrap}
+  border-radius:2px;white-space:nowrap;position:relative;z-index:1}
 .pill.i{color:var(--outremer);background:var(--outremer-pale)}
 .pill.e{color:var(--encre2);background:var(--plat2);box-shadow:inset 0 -1px 0 var(--encre3)}
 .pill:hover{filter:brightness(.94)}
@@ -279,17 +283,17 @@ function vueChantiers(){
 
   const carte = c => {
     const r = c.reste.filter(x => !x.fait).length;
-    return `<a class="lien s-${slug(c.statut)}" href="#/c/${encodeURIComponent(c.code)}">
-      <article class="carte">${plaque(c)}
+    return `<article class="carte s-${slug(c.statut)}">${plaque(c)}
         <div class="corps-c">
-          <h3 class="titre-c">${esc(sansCode(c.titre))}</h3>
+          <h3 class="titre-c"><a class="cible"
+            href="#/c/${encodeURIComponent(c.code)}">${esc(sansCode(c.titre))}</a></h3>
           ${c.arrete ? `<p class="lemme">${ligne(c.arrete)}</p>` : ""}
           <p class="pied">
             <span class="${r ? "r" : "r0"}">${r ? r + " reste" + (r > 1 ? "s" : "") : "aucun reliquat"}</span>
             ${c.dernier ? `<span>${c.dernier.hash} · ${c.dernier.date}</span>` : ""}
           </p>
         </div>
-      </article></a>`;
+      </article>`;
   };
   const bloc = (l, t) => !l.length ? "" :
     `<h2 class="sec"><span>${t}</span><span class="n">${l.length}</span></h2>
@@ -363,14 +367,14 @@ const item = (file, r) => {
 const etat = p => !p.derniere ? "jamais jouée"
   : p.faits === p.total ? "complète" : `dernière ${p.derniere}`;
 
-const rowPasse = p => `<a class="lien s-clos" href="#/qa/${encodeURIComponent(p.file)}">
-  <article class="carte">
+const rowPasse = p => `<article class="carte s-clos">
     <div class="plaque">
       <span class="mesure">${p.faits}<i>/ ${p.total}</i></span>
       <span class="mot">${esc(etat(p))}</span>
     </div>
     <div class="corps-c">
-      <h3 class="titre-c">${esc(p.nom)}</h3>
+      <h3 class="titre-c"><a class="cible"
+        href="#/qa/${encodeURIComponent(p.file)}">${esc(p.nom)}</a></h3>
       <p class="pied">
         ${p.chantier ? `<span>chantier ${pastilles(esc(p.chantier))}</span>`
                      : `<span>transversale</span>`}
@@ -378,7 +382,7 @@ const rowPasse = p => `<a class="lien s-clos" href="#/qa/${encodeURIComponent(p.
         <span>${p.zones.length} zones</span>
       </p>
     </div>
-  </article></a>`;
+  </article>`;
 
 function vueQA(){
   if (!D.passes.length) return vide(
