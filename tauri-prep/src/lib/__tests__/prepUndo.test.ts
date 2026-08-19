@@ -96,7 +96,9 @@ describe("formatUndoTooltip", () => {
 describe("type constants", () => {
   it("PREP_ACTION_TYPES couvre toutes les valeurs CHECK", () => {
     // Doit refléter le CHECK de prep_action_history (migrations 019 + 032 update_text
-    // + 033 set_role). update_text manquait ici — dérive corrigée en tranche 2.
+    // + 033 set_role + 034 set_paragraph). Cette garde a elle-même dérivé deux fois :
+    // update_text manquait (corrigé en tranche 2), puis set_paragraph (mig 034, ajouté
+    // ici avec le lot QA-06). Toute nouvelle valeur de la CHECK doit atterrir ici.
     expect(PREP_ACTION_TYPES).toEqual([
       "curation_apply",
       "merge_units",
@@ -104,6 +106,7 @@ describe("type constants", () => {
       "resegment",
       "update_text",
       "set_role",
+      "set_paragraph",
       "undo",
     ]);
   });

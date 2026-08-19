@@ -267,6 +267,30 @@ ces données ; 4 actions `set_paragraph` (session du 23/07).
 
 ### QA-06 — « Pré-remplir » (Tours) : mutation de masse sans aperçu **ni annulation**
 
+> **✅ CORRIGÉ le 2026-08-19** (contrat **1.6.63**, aucune migration) :
+> * `regroup_document_coarse` prend un `record_action` et photographie `meta_json` pour les
+>   seules unités dont le `parent_n` bouge, **avant** les écritures ;
+> * l'adaptateur enregistre l'action avec une description qui **nomme le geste et sa portée**
+>   — « Pré-remplir (tours) · N segments regroupés » — et renvoie `action_id` : l'historique
+>   n'a plus de trou (correctif **1**) ;
+> * le bouton « ↶ Annuler » est posé sur l'onglet **Tours**, là où le geste se fait
+>   (correctif **0**), et se remet à jour après un ¶ comme après un pré-remplissage ;
+> * les **deux** énumérations périmées sont soldées — `SIDECAR_API_CONTRACT.md` (il manquait
+>   `update_text`, `set_role`, `set_paragraph`) et `PREP_ACTION_TYPES`, dont la garde de test
+>   figeait elle-même la liste incomplète.
+>
+> Type d'action **réutilisé** (`set_paragraph`) plutôt que créé — cf. `AUDIT_ALIGNEMENT_2026-08-18.md`
+> §11.7 : les deux gestes ne déplacent que `parent_n`, repassent par le même
+> `_undo_set_paragraph`, et le libellé vient de `description`, pas du type.
+>
+> **Restent non faits, et assumés** : le correctif **2** (garde-fou `modalConfirm` avant
+> d'écraser des frontières manuelles) et le **3** (aperçu à blanc). L'annulation étant
+> désormais possible, ils ne couvrent plus qu'un confort — mais l'écrasement reste silencieux
+> **au moment** où il a lieu.
+>
+> Tests : trois cas dans `tests/test_coarse_regroup.py`, dont la restitution d'un regroupement
+> **manuel** écrasé par un pré-remplissage. Prouvés RED sur le code d'avant (4 échecs).
+
 - **Sévérité** : 🟠 (peut écraser sans retour un travail manuel de structuration ; pas de perte de
   texte). Relevé par l'utilisateur en préparant l'item 4.4.
 - **Constat** : sur la surface **Tours**, le bouton « Pré-remplir » applique le regroupement au
@@ -819,7 +843,7 @@ pas** à l'export.
 ## 3. Checklist de la passe
 
 Elle vit dans un fichier séparé, pour être cochée au fil de la passe sans faire défiler ce journal :
-**[QA_SHELL_2026-08-16_checklist.md](QA_SHELL_2026-08-16_checklist.md)** — **56 items,
+**[REVIEW_QA_SHELL_2026-08-16_checklist.md](REVIEW_QA_SHELL_2026-08-16_checklist.md)** — **56 items,
 8 blocs, passe close le 2026-08-19** : tous cochés, chacun portant sa preuve (mesure en base,
 sonde console, ou renvoi au finding). Un seul item est coché **ÉCHOUE** (5.13b → ALI-22) ;
 8.1 est coché **avec réserve** (deux entrées console, QA-13 et QA-14).

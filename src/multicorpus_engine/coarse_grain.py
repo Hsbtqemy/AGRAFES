@@ -272,6 +272,7 @@ def regroup_document_coarse(
     *,
     preset: str | None = None,
     pattern: str | None = None,
+    record_action: Any = None,
 ) -> dict[str, Any]:
     """Persist an ascendant coarse regrouping onto a document's line units (R5.4c).
 
@@ -280,17 +281,28 @@ def regroup_document_coarse(
     does not feed text_norm). Idempotent — a line already carrying the target ``parent_n``
     is skipped, so re-running with the same boundary writes nothing.
 
+    Mode A undo: if ``record_action`` is given it is called *before* the writes with
+    ``(doc_id, [{unit_id, meta_json_before}, ...])`` for the units about to change, and
+    may return an ``action_id`` (or ``None`` when there is nothing to record). Same
+    protocol as :func:`set_paragraph_boundary_document` — the two gestures move the same
+    key, so they share ``action_type='set_paragraph'`` and one undo path; the *scope* is
+    what differs, and it is carried by the action's description (cf. QA-06).
+
     Raises ``ValueError`` (→ 400) on a bad preset/pattern.
     """
     boundary = resolve_coarse_boundary(preset, pattern)
     rows = conn.execute(
-        "SELECT n, text_norm, meta_json FROM units"
+        "SELECT unit_id, n, text_norm, meta_json FROM units"
         " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
         (doc_id,),
     ).fetchall()
     units = [{"n": r["n"], "unit_type": "line", "text_norm": r["text_norm"]} for r in rows]
     assignments = regroup_by_boundary(units, boundary)
-    changed = 0
+
+    # Two phases, as in set_paragraph_boundary_document: collect what actually moves so
+    # the caller can snapshot the *before* state, then write. Splitting the original
+    # single loop is what makes the gesture undoable; the skip conditions are unchanged.
+    changes: list[tuple[sqlite3.Row, int, Any]] = []  # (row, new_parent_n, meta_before)
     for r in rows:
         parent_n = assignments.get(r["n"])
         if parent_n is None:
@@ -298,18 +310,32 @@ def regroup_document_coarse(
         meta = _parse_meta(r["meta_json"])
         if meta.get("parent_n") == parent_n:
             continue  # idempotent — no write when the anchor is unchanged
+        changes.append((r, parent_n, r["meta_json"]))
+
+    action_id: int | None = None
+    if changes and record_action is not None:
+        action_id = record_action(
+            doc_id,
+            [
+                {"unit_id": int(r["unit_id"]), "meta_json_before": meta_before}
+                for (r, _pn, meta_before) in changes
+            ],
+        )
+
+    for r, parent_n, _meta_before in changes:
+        meta = _parse_meta(r["meta_json"])
         meta["parent_n"] = parent_n
         conn.execute(
             "UPDATE units SET meta_json = ? WHERE doc_id = ? AND n = ?",
             (json.dumps(meta), doc_id, r["n"]),
         )
-        changed += 1
     conn.commit()  # every sibling write persists explicitly (the conn is not autocommit)
     return {
         "doc_id": doc_id,
         "blocks": len(set(assignments.values())),
         "units_grouped": len(assignments),
-        "units_changed": changed,
+        "units_changed": len(changes),
+        "action_id": action_id,
     }
 
 

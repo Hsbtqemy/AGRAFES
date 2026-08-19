@@ -5494,15 +5494,65 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         # units, alignment and FTS are untouched. Logic lives in coarse_grain (growth-gate);
         # this handler is a thin adapter.
         from multicorpus_engine.coarse_grain import regroup_document_coarse
+        from multicorpus_engine.action_history import (
+            ACTION_SET_PARAGRAPH,
+            insert_unit_snapshots,
+            record_prep_action,
+        )
+
         doc_id = body.get("doc_id")
         if not isinstance(doc_id, int):
             self._send_error("doc_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
             return
         try:
             with self._lock():
+                conn = self._conn()
+
+                # Mode A undo (QA-06): a "Pré-remplir" rewrites parent_n on the WHOLE
+                # document and used to leave no trace at all — neither undo nor audit.
+                # Same action_type as the per-segment gesture (both only move parent_n,
+                # both revert through _undo_set_paragraph); the description carries what
+                # actually differs, the scope.
+                def _recorder(d_id: int, snaps: list[dict]) -> int | None:
+                    if not snaps:
+                        return None
+                    n = len(snaps)
+                    label = body.get("pattern") or body.get("preset") or "tours"
+                    action_id = record_prep_action(
+                        conn,
+                        doc_id=d_id,
+                        action_type=ACTION_SET_PARAGRAPH,
+                        description=(
+                            f"Pré-remplir ({label}) · {n} segment"
+                            f"{'s' if n > 1 else ''} regroupé{'s' if n > 1 else ''}"
+                        ),
+                        context={
+                            "gesture": "regroup_coarse",
+                            "preset":  body.get("preset"),
+                            "pattern": body.get("pattern"),
+                        },
+                    )
+                    insert_unit_snapshots(
+                        conn,
+                        action_id,
+                        [
+                            {
+                                # text_norm_before is required by the snapshot schema but
+                                # this action never touches text; "" keeps the row
+                                # well-formed and undo only reads meta_json_before.
+                                "unit_id":          s["unit_id"],
+                                "text_norm_before": "",
+                                "meta_json_before": s["meta_json_before"],
+                            }
+                            for s in snaps
+                        ],
+                    )
+                    return action_id
+
                 data = regroup_document_coarse(
-                    self._conn(), doc_id,
+                    conn, doc_id,
                     preset=body.get("preset"), pattern=body.get("pattern"),
+                    record_action=_recorder,
                 )
         except ValueError as exc:
             self._send_error(str(exc), code=ERR_BAD_REQUEST, http_status=400)

@@ -1,6 +1,6 @@
 # Checklist QA shell v0.4.0 (`refonte`) — passe du 2026-08-16
 
-Findings et causes racines : [QA_SHELL_2026-08-16.md](QA_SHELL_2026-08-16.md).
+Findings et causes racines : [REVIEW_QA_SHELL_2026-08-16.md](REVIEW_QA_SHELL_2026-08-16.md).
 Shell dev + sidecar 1.6.62 sur `corpus_agrafes.WORKCOPY.db`.
 
 ### Documents cibles (contenu vérifié en base)

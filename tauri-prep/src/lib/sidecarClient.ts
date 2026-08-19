@@ -1536,6 +1536,8 @@ export interface RegroupCoarseResponse {
   blocks: number;
   units_grouped: number;
   units_changed: number;
+  /** Mode A undo entry (contract 1.6.63, QA-06); null when the regroup changed nothing. */
+  action_id: number | null;
 }
 
 export async function regroupCoarse(

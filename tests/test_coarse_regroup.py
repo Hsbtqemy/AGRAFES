@@ -122,7 +122,8 @@ def test_persists_parent_n_by_tours(db: sqlite3.Connection) -> None:
     doc = _doc(db)
     _insert_lines(db, doc, ["— Bonjour.", "Comment vas-tu ?", "— Bien.", "Et toi ?"])
     report = regroup_document_coarse(db, doc, preset="tours")
-    assert report == {"doc_id": doc, "blocks": 2, "units_grouped": 4, "units_changed": 4}
+    assert report == {"doc_id": doc, "blocks": 2, "units_grouped": 4, "units_changed": 4,
+                      "action_id": None}  # None: no record_action passed (QA-06)
     rows = db.execute(
         "SELECT n, json_extract(meta_json, '$.parent_n') AS pn FROM units"
         " WHERE doc_id = ? ORDER BY n", (doc,),
@@ -208,3 +209,106 @@ def test_writes_are_committed(tmp_path: Path) -> None:
 def test_overlong_pattern_rejected() -> None:
     with pytest.raises(ValueError, match="too long"):
         resolve_coarse_boundary(pattern="a" * 501)
+
+
+# --- Mode A undo (QA-06) --------------------------------------------------------
+#
+# A "Pré-remplir" rewrites parent_n on the WHOLE document. Before this, it recorded
+# nothing at all: not undoable, and — worse on an audit-trail tool — not attributable
+# either (the history jumped straight from the previous action to the next one).
+
+def _recorder_for(conn: sqlite3.Connection, seen: list[int]):
+    """Mirror of the sidecar adapter: snapshot meta_json, keep no text."""
+    from multicorpus_engine.action_history import (
+        ACTION_SET_PARAGRAPH,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+
+    def _recorder(d_id: int, snaps: list[dict]) -> int | None:
+        if not snaps:
+            return None
+        seen.append(len(snaps))
+        action_id = record_prep_action(
+            conn, doc_id=d_id, action_type=ACTION_SET_PARAGRAPH,
+            description=f"Pré-remplir (tours) · {len(snaps)} segments regroupés",
+            context={"gesture": "regroup_coarse", "preset": "tours"},
+        )
+        insert_unit_snapshots(
+            conn, action_id,
+            [{"unit_id": s["unit_id"], "text_norm_before": "",
+              "meta_json_before": s["meta_json_before"]} for s in snaps],
+        )
+        return action_id
+
+    return _recorder
+
+
+def test_regroup_records_an_undoable_action(db: sqlite3.Connection) -> None:
+    """RED before the fix: regroup_document_coarse had no record_action at all."""
+    from multicorpus_engine.undo import execute_undo
+
+    doc = _doc(db)
+    _insert_lines(db, doc, ["— Bonjour.", "Comment vas-tu ?", "— Bien.", "Et toi ?"])
+    seen: list[int] = []
+
+    report = regroup_document_coarse(
+        db, doc, preset="tours", record_action=_recorder_for(db, seen)
+    )
+    assert report["action_id"] is not None
+    assert seen == [4]  # snapshot taken for exactly the units that move
+
+    outcome = execute_undo(db, doc)
+    db.commit()
+    assert outcome["reverted_action_type"] == "set_paragraph"
+    assert outcome["fts_stale"] is False
+    # every parent_n back to its pre-regroup state (null)
+    rows = db.execute(
+        "SELECT json_extract(meta_json, '$.parent_n') AS pn FROM units"
+        " WHERE doc_id = ? ORDER BY n", (doc,),
+    ).fetchall()
+    assert [r["pn"] for r in rows] == [None, None, None, None]
+
+
+def test_regroup_undo_restores_a_manual_grouping(db: sqlite3.Connection) -> None:
+    """The real QA-06 damage: a mass regroup silently overwriting hand-made boundaries."""
+    from multicorpus_engine.undo import execute_undo
+
+    doc = _doc(db)
+    _insert_lines(db, doc, ["— A", "suite", "— B", "fin"])
+    # hand-made structure: everything under one paragraph, as a manual ¶ would leave it
+    for n in (1, 2, 3, 4):
+        db.execute(
+            "UPDATE units SET meta_json = ? WHERE doc_id = ? AND n = ?",
+            (json.dumps({"parent_n": 1}), doc, n),
+        )
+    db.commit()
+
+    regroup_document_coarse(db, doc, preset="tours", record_action=_recorder_for(db, []))
+    after = [r["pn"] for r in db.execute(
+        "SELECT json_extract(meta_json, '$.parent_n') AS pn FROM units"
+        " WHERE doc_id = ? ORDER BY n", (doc,))]
+    assert after == [1, 1, 3, 3]  # the manual grouping was overwritten
+
+    execute_undo(db, doc)
+    db.commit()
+    restored = [r["pn"] for r in db.execute(
+        "SELECT json_extract(meta_json, '$.parent_n') AS pn FROM units"
+        " WHERE doc_id = ? ORDER BY n", (doc,))]
+    assert restored == [1, 1, 1, 1]  # hand-made structure given back
+
+
+def test_regroup_without_changes_records_nothing(db: sqlite3.Connection) -> None:
+    """Idempotence must not litter the history with empty actions."""
+    doc = _doc(db)
+    _insert_lines(db, doc, ["— A", "suite"])
+    regroup_document_coarse(db, doc, preset="tours", record_action=_recorder_for(db, []))
+    before = db.execute("SELECT count(*) FROM prep_action_history").fetchone()[0]
+
+    again = regroup_document_coarse(
+        db, doc, preset="tours", record_action=_recorder_for(db, [])
+    )
+    assert again["units_changed"] == 0
+    assert again["action_id"] is None
+    after = db.execute("SELECT count(*) FROM prep_action_history").fetchone()[0]
+    assert after == before

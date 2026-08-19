@@ -286,7 +286,7 @@ export class SegmentPane {
     }
     if (this._surface === "tours") {
       this._lastPreview = null;
-      this._renderTours();
+      void this._renderToursView();
       return;
     }
     await this._runPreview();
@@ -331,7 +331,7 @@ export class SegmentPane {
     } else if (s === "tours") {
       this._previewToken++;
       this._lastPreview = null;
-      this._renderTours();
+      void this._renderToursView();
     } else {
       this._schedulePreview();
     }
@@ -424,6 +424,17 @@ export class SegmentPane {
     const label = elig ? formatUndoActionLabel(elig) : "↶ Annuler";
     const title = elig ? formatUndoTooltip(elig) : "";
     return `<button type="button" class="btn btn-ghost btn-sm prep-seg-canvas-undo" id="prep-seg-canvas-undo"${disabled ? " disabled" : ""} title="${esc(title)}">${esc(label)}</button>`;
+  }
+
+  /** Repaint the undo button in place, keeping its listener. Brut re-renders its whole bar on
+   *  every change; Tours only re-renders its ¶ list, so the button needs this cheap sync. */
+  private _syncUndoBtn(): void {
+    const btn = this._root.querySelector<HTMLButtonElement>("#prep-seg-canvas-undo");
+    if (!btn) return;
+    const elig = this._undoElig;
+    btn.disabled = isUndoDisabled(elig ?? undefined);
+    btn.textContent = elig ? formatUndoActionLabel(elig) : "↶ Annuler";
+    btn.title = elig ? formatUndoTooltip(elig) : "";
   }
 
   /** One Brut unit: number + edit actions (line units only) + text, decorated per anomaly.
@@ -647,6 +658,14 @@ export class SegmentPane {
       const nn = res.units_restored;
       this._notify(`↶ Annulation : ${res.reverted_action_type} — ${nn} unité${nn > 1 ? "s" : ""} restaurée${nn > 1 ? "s" : ""}.`);
       await this._onResegmented?.();
+      if (this._surface === "tours") {
+        // The screen-level reload rebuilds the canvas, not this pane's ¶ list — repaint it
+        // here so an undo triggered from Tours is visible where it was asked for.
+        await this._loadUnits();
+        await this._refreshUndoElig();
+        this._renderToursList();
+        this._syncUndoBtn();
+      }
     } catch (e) {
       this._notify(e instanceof Error ? e.message : String(e), true);
     } finally {
@@ -793,6 +812,14 @@ export class SegmentPane {
   // one-click « Pré-remplir » that bootstraps the grouping (/segment/coarse), then editable
   // by hand. R5.4c preview-then-apply flow retired (retrait Segmentation lineage).
 
+  /** Render the Tours surface, refreshing Mode A undo eligibility first (one cheap GET) —
+   *  same shape as _renderBrutView, so the undo button is accurate on arrival. */
+  private async _renderToursView(): Promise<void> {
+    await this._refreshUndoElig();
+    if (this._surface !== "tours") return; // a fast surface switch during the await supersedes us
+    this._renderTours();
+  }
+
   /** Build the Tours surface: the pré-remplir control above the editable ¶ list. */
   private _renderTours(): void {
     const el = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
@@ -813,6 +840,7 @@ export class SegmentPane {
           <input type="text" id="prep-seg-canvas-tours-pat" class="prep-seg-canvas-abbrev" value="${esc(this._toursPattern)}" placeholder="d&#233;faut : tiret de dialogue — ; ex. ^[A-Z]+ :" autocomplete="off" spellcheck="false" />
         </label>
         <button type="button" class="btn btn-ghost btn-sm" id="prep-seg-canvas-tours-prefill" title="Regrouper d'un coup selon ce motif (tours de parole) — modifiable ensuite à la main">Pr&#233;-remplir</button>
+        ${this._undoBtnHtml()}
       </div>
     </div>`;
   }
@@ -822,6 +850,12 @@ export class SegmentPane {
     inp?.addEventListener("input", () => { this._toursPattern = inp.value; });
     el.querySelector<HTMLButtonElement>("#prep-seg-canvas-tours-prefill")
       ?.addEventListener("click", () => void this._prefillTours());
+    // QA-06: both gestures of this surface are undoable (¶ toggle and « Pré-remplir »), so the
+    // button belongs here too — it used to live only on the Brut bar, forcing a tab change to
+    // undo what was just done here. Same document-scoped semantics as Brut (the engine's undo
+    // is strictly linear); the label names the action, so it never undoes something unnamed.
+    el.querySelector<HTMLButtonElement>("#prep-seg-canvas-undo")
+      ?.addEventListener("click", () => void this._undo());
     // Delegated ¶ toggle: the listener sits on the persistent list host, so a re-render of
     // its rows (after a toggle / pré-remplir) does not detach it.
     const list = el.querySelector<HTMLElement>("#prep-seg-canvas-tours-list");
@@ -900,6 +934,7 @@ export class SegmentPane {
       await this._loadUnits();       // re-fetch parent_n
       await this._refreshUndoElig(); // the toggle is undoable — reflect it
       this._renderToursList();
+      this._syncUndoBtn();           // QA-06: the ¶ list re-render leaves the ctrl bar alone
     } catch (e) {
       this._notify(e instanceof Error ? e.message : String(e), true);
     } finally {
@@ -929,6 +964,7 @@ export class SegmentPane {
       await this._loadUnits();
       await this._refreshUndoElig();
       this._renderToursList();
+      this._syncUndoBtn();
     } catch (e) {
       this._notify(e instanceof Error ? e.message : String(e), true);
     } finally {

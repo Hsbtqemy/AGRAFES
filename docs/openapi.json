@@ -2977,6 +2977,11 @@
           },
           {
             "properties": {
+              "action_id": {
+                "description": "Mode A undo entry id, or null when nothing changed",
+                "nullable": true,
+                "type": "integer"
+              },
               "blocks": {
                 "description": "distinct coarse blocks after regrouping",
                 "type": "integer"
@@ -4352,8 +4357,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.62",
-    "x-contract-version": "1.6.62"
+    "version": "1.6.63",
+    "x-contract-version": "1.6.63"
   },
   "openapi": "3.0.3",
   "paths": {

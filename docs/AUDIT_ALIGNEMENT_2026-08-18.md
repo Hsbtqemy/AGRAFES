@@ -8,7 +8,7 @@ et la table `alignment_links`.
 **Méthode.** Lecture de code + **vérification sur données réelles** (`corpus_agrafes.WORKCOPY.db`,
 54 documents, 46 674 lignes indexées) et **appels réels au sidecar** (contrat 1.6.62). Chaque constat
 porte sa preuve `fichier:ligne` ou sa mesure. Déclenché par une passe de QA visuelle
-(→ [`QA_SHELL_2026-08-16.md`](QA_SHELL_2026-08-16.md)) qui a fait remonter trois défauts d'alignement ;
+(→ [`REVIEW_QA_SHELL_2026-08-16.md`](REVIEW_QA_SHELL_2026-08-16.md)) qui a fait remonter trois défauts d'alignement ;
 l'audit les reprend sous les identifiants `ALI-*` et les complète. Le **§11** approfondit la
 « famille A » en tranchant ses décisions de conception sur pièce, et **corrige deux
 conclusions** des §8 et §10.
@@ -1234,7 +1234,7 @@ deux énumérations. **Aucune migration.**
 
 ### 11.8 Plan qui en découle
 
-1. **A2 / QA-06** (périmètre arrêté en **11.7**) — `record_action` sur `regroup_document_coarse`, `action_id`
+1. **A2 / QA-06** — ✅ **FAIT le 2026-08-19** (contrat 1.6.63, aucune migration). Périmètre arrêté en **11.7** — `record_action` sur `regroup_document_coarse`, `action_id`
    dans la réponse (3 artefacts de contrat), bouton d'undo posé sur l'onglet Tours, énumérations soldées.
    **Aucune migration.** Indépendant de tout le reste ; sert de répétition au
    triplet `record_action` → instantané → undo qu'A1 emploiera en grand.

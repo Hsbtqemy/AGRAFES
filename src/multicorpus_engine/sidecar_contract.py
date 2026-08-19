@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.62"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.63"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -252,6 +252,18 @@ API_VERSION = CONTRACT_VERSION
 #         idempotent, undoable (Mode A, action_type=set_paragraph). No migration (parent_n in
 #         meta_json). NEW route → openapi + snapshot + .md all move. Logic in
 #         coarse_grain.toggle_paragraph_boundary / set_paragraph_boundary_document.
+
+# 1.6.63: « Pré-remplir » annulable (QA-06). POST /segment/coarse rewrites parent_n on the WHOLE
+#         document and left NO trace at all — neither Mode A undo nor a row in
+#         prep_action_history, so a mass mutation was both irreversible and unattributable.
+#         The handler now snapshots meta_json for every unit whose parent_n moves and returns
+#         the resulting action_id. Reuses action_type='set_paragraph' rather than adding a
+#         type: both gestures move only parent_n and revert through the same
+#         _undo_set_paragraph, and the user-visible label comes from the action's description
+#         (free text), not from the type — so a distinct type would have bought a duplicate
+#         dispatch branch and nothing else. Additive response field → no new route → snapshot
+#         unchanged; openapi moves (version + schema); .md response line updated. No migration
+#         (parent_n in meta_json). Logic in coarse_grain.regroup_document_coarse.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -3626,6 +3638,7 @@ def openapi_spec() -> dict[str, Any]:
                                 "blocks": {"type": "integer", "description": "distinct coarse blocks after regrouping"},
                                 "units_grouped": {"type": "integer", "description": "line units assigned a parent_n"},
                                 "units_changed": {"type": "integer", "description": "line units whose parent_n actually changed"},
+                                "action_id": {"type": "integer", "nullable": True, "description": "Mode A undo entry id, or null when nothing changed"},
                             },
                         },
                     ]

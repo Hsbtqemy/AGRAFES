@@ -71,7 +71,7 @@ function fakeConn(cfg: {
         return { undo_action_id: 1, reverted_action_id: 1, reverted_action_type: "merge_units",
           units_restored: 2, alignments_reflagged: 0, fts_stale: true };
       }
-      if (path === "/segment/coarse") return { ok: true, doc_id: 1, blocks: 2, units_grouped: 3, units_changed: 3 };
+      if (path === "/segment/coarse") return { ok: true, doc_id: 1, blocks: 2, units_grouped: 3, units_changed: 3, action_id: 77 };
       if (path === "/segment/paragraph_boundary") {
         const bb = body as { doc_id: number; unit_id: number };
         return { ok: true, doc_id: bb.doc_id, unit_id: bb.unit_id, unit_n: 1, units_changed: 2, blocks: 2, action_id: 9 };
