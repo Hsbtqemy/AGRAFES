@@ -162,6 +162,76 @@ function fronts() {
   return l;
 }
 
+// ---------- masses de code ----------
+// Une aire = un préfixe de chemin ; le premier qui matche l'emporte, donc sidecar.py
+// et services/ sont détachés avant le reste du moteur. Les tailles sont le cumul de
+// `--numstat` : vérifié exact au fichier près sur 6 aires, à condition de désactiver
+// la détection de renommage (sinon le chemin sort en `{ancien => nouveau}`).
+const AIRES = [
+  ["moteur/sidecar.py", "src/multicorpus_engine/sidecar.py"],
+  ["moteur/services",   "src/multicorpus_engine/services/"],
+  ["moteur/reste",      "src/multicorpus_engine/"],
+  ["prep/lib",          "tauri-prep/src/lib/"],
+  ["prep/screens",      "tauri-prep/src/screens/"],
+  ["prep/components",   "tauri-prep/src/components/"],
+  ["prep/ui",           "tauri-prep/src/ui/"],
+  ["prep/reste",        "tauri-prep/src/"],
+  ["app",               "tauri-app/src/"],
+  ["shell",             "tauri-shell/src/"],
+  ["tests",             "tests/"]
+];
+
+// `fenetre` en mois : sur 6 le delta égale presque la masse et le classement retombe
+// sur la taille ; sur 3 les reculs ressortent (screens, ui) et le tri dit qui bouge.
+// La passe --numstat coûte ~2,5 s sur 1 000 commits : mémorisée sur le hash de HEAD,
+// sinon chaque coche de case repayerait le parcours complet de l'historique.
+let memo = { tete: null, val: null };
+function masses(seuil = 1000, fenetre = 3) {
+  const tete = git("rev-parse", "HEAD");
+  if (tete && memo.tete === tete) return memo.val;
+  const val = calculMasses(seuil, fenetre);
+  memo = { tete, val };
+  return val;
+}
+
+function calculMasses(seuil, fenetre) {
+  const aire = (p) => { for (const [n, pre] of AIRES) if (p === pre || p.startsWith(pre)) return n; return null; };
+  const raw = git("log", "--reverse", "--no-renames", "--numstat",
+                  "--format=@%h\x1f%ad\x1f%s", "--date=short");
+  if (!raw) return null;
+
+  const cum = {}, serie = {}, mois = [], jalons = [];
+  for (const [n] of AIRES) { cum[n] = 0; serie[n] = []; }
+  let m = null, c = null, net = 0;
+  const clore = () => { if (c && net <= -seuil) jalons.push({ ...c, delta: net }); };
+  const graver = () => { mois.push(m); for (const [n] of AIRES) serie[n].push(cum[n]); };
+
+  for (const l of raw.split("\n")) {
+    if (l.startsWith("@")) {
+      clore();
+      const [hash, date, sujet] = l.slice(1).split("\x1f");
+      const mm = date.slice(0, 7);
+      if (m && m !== mm) graver();
+      m = mm; c = { hash, date, sujet }; net = 0;
+      continue;
+    }
+    const f = l.split("\t");
+    if (f.length < 3 || !/^\d+$/.test(f[0])) continue;   // binaire (`-`) ou ligne vide
+    const n = Number(f[0]) - Number(f[1]);
+    net += n;
+    const a = aire(f[2]); if (a) cum[a] += n;
+  }
+  clore();
+  if (m) graver();
+
+  const aires = AIRES.map(([nom]) => {
+    const v = serie[nom], tot = v[v.length - 1] || 0;
+    return { nom, valeurs: v, total: tot, delta: tot - (v[Math.max(0, v.length - 1 - fenetre)] ?? 0) };
+  }).filter(a => a.total > 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  return { mois, fenetre, aires, jalons: jalons.sort((a, b) => a.delta - b.delta).slice(0, 8) };
+}
+
 // ---------- index de navigation ----------
 async function index() {
   const map = {};
@@ -211,7 +281,7 @@ async function build() {
     dernierJour: jours[jours.length - 1] || null,
     silenceCourant: jours.length
       ? Math.round((Date.now() - Date.parse(jours[jours.length - 1])) / 864e5) : null,
-    chantiers, passes, liens,
+    chantiers, passes, liens, masses: masses(),
     commits: commits.filter(c => c.date >= depuis)
   };
 }

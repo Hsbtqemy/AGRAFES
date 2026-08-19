@@ -167,6 +167,28 @@ a{color:var(--outremer)}
 .cmts{display:flex;flex-direction:column;gap:.1875rem}
 .cmt{display:grid;grid-template-columns:5.5rem 1fr;gap:.9rem;background:var(--plat);
   border-radius:2px;padding:.6rem .95rem;align-items:baseline}
+.masses{width:100%;border-collapse:collapse;font:400 var(--t2)/1.4 var(--mo)}
+.masses th{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.1em;
+  color:var(--encre3);text-align:right;padding:0 0 .55rem;font-weight:500}
+.masses th:first-child,.masses td.a{text-align:left}
+.masses td{background:var(--plat);padding:.5rem .8rem;vertical-align:middle}
+.masses tr td:first-child{border-radius:2px 0 0 2px}
+.masses tr td:last-child{border-radius:0 2px 2px 0}
+.masses tbody tr+tr td{border-top:1px solid var(--verge)}
+/* le nom prend le mou, courbe et chiffres restent collés à droite */
+.masses td.a{width:100%}
+.masses td.v{width:1%}
+.masses td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:var(--encre2)}
+.masses td.v.moins{color:var(--verdet);font-weight:500}
+.masses td.c{padding:0 .8rem}
+/* largeur en dur : dans une colonne qui se rétrécit sur son contenu, un width:100%
+   sur le SVG se résout circulairement et la courbe disparaît. */
+.spark{display:block;width:132px;height:26px;overflow:visible}
+.spark polyline{fill:none;stroke:var(--minium);stroke-width:1.5;
+  vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.cmt.jal .h{color:var(--verdet);text-align:right}
+.cmt.jal .s i{display:block;font:400 var(--t1)/1.6 var(--mo);font-style:normal;color:var(--encre3)}
 .cmt .h{font:400 var(--t2)/1.5 var(--mo);color:var(--encre3)}
 .cmt .s{font:400 .9375rem/1.5 var(--sr);overflow-wrap:break-word}
 
@@ -213,7 +235,7 @@ a{color:var(--outremer)}
     <p class="marque"><b id="repo">…</b><span class="branche" id="br">…</span></p>
     <p class="etat" id="sil"></p>
     <nav class="ong" id="tabs">
-      <a href="#/">chantiers</a><a href="#/qa">passes</a><a href="#/fil">fil</a>
+      <a href="#/">chantiers</a><a href="#/qa">passes</a><a href="#/masses">masses</a><a href="#/fil">fil</a>
     </nav>
   </div>
 </header>
@@ -453,6 +475,42 @@ function vueFil(){
           <span class="s">${ligne(c.sujet)}</span></div>`).join("")}</div>`).join("")}`;
 }
 
+/* ---------------- masses ---------------- */
+/* Une courbe par aire, normalisée sur elle-même : les masses vont de 1 170 à 28 655
+   lignes, une échelle commune écraserait tout sauf les deux plus grosses. */
+function courbe(v, w = 132, h = 26){
+  if (v.length < 2) return "";
+  const lo = Math.min(...v), hi = Math.max(...v), amp = hi - lo || 1;
+  const pts = v.map((n, i) =>
+    `${(i * w / (v.length - 1)).toFixed(1)},${(h - 1 - (n - lo) / amp * (h - 2)).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <polyline points="${pts}"/></svg>`;
+}
+
+function vueMasses(){
+  const m = D.masses;
+  if (!m || !m.aires.length) return vide(
+    `<p>Aucune masse mesurable — <code>git log --numstat</code> n'a rien rendu.</p>`);
+
+  const sgn = n => (n > 0 ? "+" : "") + n.toLocaleString("fr-FR");
+  return `<h2 class="sec"><span>Masses de code</span>
+      <span class="n">${m.mois[0]} → ${m.mois[m.mois.length - 1]}</span></h2>
+    <table class="masses">
+      <thead><tr><th>aire</th><th></th><th>lignes</th><th>${m.fenetre} mois</th></tr></thead>
+      <tbody>${m.aires.map(a => `<tr>
+        <td class="a">${esc(a.nom)}</td>
+        <td class="c">${courbe(a.valeurs)}</td>
+        <td class="v">${a.total.toLocaleString("fr-FR")}</td>
+        <td class="v ${a.delta < 0 ? "moins" : ""}">${sgn(a.delta)}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+    ${!m.jalons.length ? "" : `
+      <h2 class="sec"><span>Jalons</span><span class="n">retraits de plus de 1 000 lignes</span></h2>
+      <div class="cmts">${m.jalons.map(j => `<div class="cmt jal">
+        <span class="h">${j.delta.toLocaleString("fr-FR")}</span>
+        <span class="s">${ligne(j.sujet)}<i>${j.hash} · ${j.date}</i></span></div>`).join("")}</div>`}`;
+}
+
 /* ---------------- routage ---------------- */
 function rendre(){
   const h = decodeURIComponent(location.hash.slice(2) || "");
@@ -462,6 +520,7 @@ function rendre(){
   else if (h === "qa")          { html = vueQA();               onglet = "#/qa"; }
   else if (h.startsWith("qa/")) { html = vuePasse(h.slice(3));  onglet = "#/qa"; }
   else if (h === "fil")         { html = vueFil();              onglet = "#/fil"; }
+  else if (h === "masses")      { html = vueMasses();           onglet = "#/masses"; }
   else                          html = vueChantiers();
 
   vue.innerHTML = html;

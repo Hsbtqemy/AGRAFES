@@ -5,7 +5,7 @@ statut: interrompu
 
 # JOURNAL — journal de bord local
 
-**Arrêté sur** — front d'intégration par chantier : jusqu'où le dernier commit est remonté (`origin/main` / `dev` / branche courante), 19 août 2026.
+**Arrêté sur** — onglet *masses* : une courbe par aire de code, cumul `--numstat`, jalons = les retraits de plus de 1 000 lignes, 19 août 2026.
 
 ## Reste
 
@@ -19,6 +19,7 @@ statut: interrompu
 - [ ] `journal.mjs` : la section `## QA` d'une fiche n'est pas lue — le rattachement est dérivé du `chantier:` de la passe. Le contrat du gabarit décrit une section inerte
 - [ ] Aucune fiche pour les 14 findings `QA-01`…`QA-14` de la passe shell du 16 août — décider s'ils méritent des fiches ou un seul chantier de correction
 - [ ] Le front d'intégration contredit le vocabulaire de `statut:` : R6 affiche « livré » et « absent de origin/main, dev ». Décider si `livré` suppose un front, ou si les deux axes restent indépendants
+- [ ] L'onglet masses ne jalonne que les **retraits** : les plus gros ajouts sont tous des commits de bootstrap de mars (jusqu'à +146 951 lignes), inexploitables. À rouvrir quand février-mars sortira de toute fenêtre utile
 - [ ] Le front n'est calculé que pour les fiches — ni le fil ni les passes ne le portent. Coupe volontaire, à rouvrir seulement si le fil devient illisible une fois plusieurs branches vivantes
 
 ## Contexte
@@ -81,6 +82,24 @@ merge commits se sont arrêtés le 30 juin). Deux parades : `dev` étant ancêtr
 un `git merge` est un fast-forward qui préserve tout ; sinon `git tag archive/refonte` avant
 le squash — le dépôt le fait déjà, `archive/shell-split` retient à lui seul 12 commits
 qu'aucune branche ne contient, et `git log --all` les lit.
+
+**L'axe fossile est cassé, mesuré le 19 août — ne pas le rouvrir.** L'idée était de
+signaler le code que personne n'a touché depuis longtemps. Au niveau du module, l'échelle
+s'effondre : le maximum est de 45 jours actifs (`engine/db`, 4 fichiers), tout le reste
+tient entre 0 et 14. Au niveau du fichier, 85 des 503 fichiers datent d'avant mai — mais ce
+sont massivement des `tests/` qui passent toujours et des `migrations/` que la convention
+du dépôt **interdit** de modifier une fois appliquées. L'axe signalerait donc exactement
+les fichiers qui doivent rester immobiles.
+
+**Ce qui marche, à l'inverse : les masses.** La somme cumulée de `git log --numstat` donne
+la taille de chaque aire à chaque instant — vérifiée **exacte à la ligne près** sur six
+aires (`sidecar.py`, `services/`, `prep/lib|screens|components|ui`) contre un `wc -l`
+réel, à condition de passer `--no-renames` (sinon le chemin sort en `{ancien => nouveau}`
+et le préfixe ne matche plus). Un seul parcours de l'historique, mémorisé sur le hash de
+HEAD : 3,1 s au premier appel, 0,6 s ensuite. Et la décomposition est **obligatoire** —
+sur juin, `tauri-prep` agrégé affiche « +6 047 » alors que `screens` perd 2 887 lignes
+pendant que `lib` en gagne 5 662 et `components` 3 184. Une seule série ne serait pas
+seulement grossière, elle mentirait sur le sens du mouvement.
 
 Le vocabulaire de `statut:` manque une valeur : R2, R4, U-03, A-01 et cette fiche ont tous
 été fermés ou parqués **volontairement**, sans rien d'une interruption accidentelle, mais
