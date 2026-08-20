@@ -2036,3 +2036,26 @@ est ici sans commune mesure avec ce qu'elle évite.
 
 **`calibrate_to` vérifié** : la fabrique le reçoit à `None` depuis les nouveaux appelants ; le champ
 ne sert qu'à l'aperçu de calibration côté handler, `undo.py` ne le lit jamais. Sans effet.
+
+### 12.7 Deux dettes d'outillage levées avant la QA (2026-08-20)
+
+**L'inspecteur du webview est désormais compilé en release.** `tauri = { features = ["devtools"] }` :
+Tauri ne l'active seul qu'en *debug*, or c'est dans l'application **installée** qu'il manque. La
+passe du 2026-08-16 s'est arrêtée sur un panneau blanc dont l'erreur JS n'était consultable nulle
+part — le constat était que « le panneau blanc aurait été toute l'information disponible ». Une
+feature seule ne sert à rien si personne ne sait qu'elle est là : une commande `open_devtools` et un
+bouton **🔍 Inspecteur** dans le panneau Diagnostic, c'est-à-dire à l'endroit où l'on va quand
+quelque chose cloche. Le clic droit → *Inspecter* reste disponible par ailleurs.
+
+**Une fuite de processus, trouvée en reconstruisant le sidecar.** Le binaire empaqueté ne pouvait
+être remplacé : un sidecar démarré la veille tenait le fichier. Derrière lui, **26 processus
+`multicorpus.exe`** (389 Mo) accumulés sur la journée. Le journal de la session `tauri dev` donne la
+cause exacte : leurs horodatages correspondent un à un aux **rechargements de page** — le shell
+respawne un sidecar à chaque rechargement du webview et **ne réclame jamais le précédent**. Ce n'est
+pas une nuisance de poste de développement : en production, tout rechargement laisserait un
+processus vivant tenant une connexion à la base et un port. Orphelins nettoyés ; le défaut de cycle
+de vie est porté au *Reste* de T-05 (harnais / cycle de vie du sidecar).
+
+**Au passage** : `scripts/smoke_sidecar.py` échoue à 150 s sans `NO_PROXY` — non par lenteur du
+binaire mais parce que le proxy intercepte `127.0.0.1`, cause racine identifiée le 2026-07-09. Le
+script ne se protège pas lui-même ; avec `NO_PROXY` il passe les sept routes.

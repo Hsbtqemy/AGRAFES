@@ -1700,6 +1700,7 @@ function _openDiagnosticsModal(): void {
         Collecte des informations…
       </div>
       <div class="shell-diag-footer" id="shell-diag-footer" style="display:none">
+        <button class="shell-diag-btn" id="shell-diag-devtools" title="Ouvre la console du webview (erreurs JS, réseau, DOM)">🔍 Inspecteur</button>
         <button class="shell-diag-btn" id="shell-diag-copy">📋 Copier</button>
         <button class="shell-diag-btn shell-diag-btn-primary" id="shell-diag-export">💾 Exporter…</button>
         <button class="shell-diag-btn" id="shell-diag-close2">Fermer</button>
@@ -1742,6 +1743,20 @@ function _openDiagnosticsModal(): void {
       _shellLog("error", "diagnostics", "Diagnostics collection failed", String(err));
     }
   })();
+
+  // Inspecteur — la feature `devtools` est desormais compilee en release (Cargo.toml),
+  // mais elle ne sert a rien si personne ne sait qu'elle est la. Le panneau Diagnostic est
+  // l'endroit ou l'on va quand quelque chose cloche : le bouton y appartient. La QA du
+  // 2026-08-16 s'est arretee sur un panneau blanc dont l'erreur JS n'etait lisible nulle part.
+  modal.querySelector("#shell-diag-devtools")!.addEventListener("click", async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("open_devtools");
+    } catch (err) {
+      _showToast(`Inspecteur indisponible : ${String(err)}`, 4000);
+      _shellLog("warn", "diagnostics", "open_devtools failed", String(err));
+    }
+  });
 
   // Copy button
   modal.querySelector("#shell-diag-copy")!.addEventListener("click", async () => {

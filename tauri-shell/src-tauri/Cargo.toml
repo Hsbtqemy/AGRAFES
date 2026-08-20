@@ -9,7 +9,13 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `devtools` : l'inspecteur du webview, compile AUSSI en release.
+# Tauri l'active tout seul en debug, jamais en release — et c'est precisement
+# dans l'application installee qu'on en a besoin : la QA du 2026-08-16 a bute sur
+# un panneau blanc dont l'erreur JS n'etait consultable nulle part. Le cout est une
+# API de plus (WebView2 porte deja l'inspecteur cote OS) ; l'exposition est nulle
+# pour un outil local dont l'utilisateur est aussi celui qui deboguera.
+tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"

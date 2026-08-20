@@ -294,6 +294,18 @@ fn _kill_pid(pid: Option<u32>) {
 
 /// Called by JS on beforeunload — best-effort synchronous shutdown.
 /// Also invoked automatically on WindowEvent::CloseRequested.
+/// Ouvre l'inspecteur du webview (console, réseau, DOM).
+///
+/// Compilé en release grâce à la feature `devtools` (Cargo.toml) : Tauri ne l'active
+/// seul qu'en debug, or c'est dans l'application INSTALLÉE qu'on en a besoin — la QA du
+/// 2026-08-16 a buté sur un panneau blanc dont l'erreur JS n'était consultable nulle
+/// part. Le clic droit → Inspecter reste disponible ; ce bouton le rend trouvable, dans
+/// le panneau Diagnostic, c'est-à-dire à l'endroit où l'on va quand quelque chose cloche.
+#[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
 #[tauri::command]
 async fn shutdown_sidecar_cmd(state: tauri::State<'_, SidecarRegistry>) -> Result<(), String> {
     let entry = {
@@ -385,6 +397,7 @@ fn main() {
             keyring_get,
             keyring_set,
             keyring_delete,
+            open_devtools,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AGRAFES Shell application");
