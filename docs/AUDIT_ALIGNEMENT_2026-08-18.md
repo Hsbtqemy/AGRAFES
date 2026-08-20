@@ -1713,3 +1713,41 @@ Deux raisons de préférer l'après :
 Contrat **1.6.68** (champs additifs sur deux routes existantes → snapshot inchangé, openapi et .md
 mis à jour). La docstring de `_merge` promettait déjà « recoverable via the undo button » : elle est
 datée, cette promesse n'étant vraie pour l'alignement que depuis la migration 035.
+
+### 11.17 ALI-22 (a) — instruit, et volontairement non écrit (2026-08-20)
+
+Le geste, relu au code (`AlignMatrixView._performCellMerge`, l. 1343-1400) : un ⭙ fait **deux**
+écritures — `createAlignLink` (lien `manual`, héritant l'`external_id` du voisin) puis
+`batch [{action: "delete", link_id: <lien du voisin>}]`, en compensation si la seconde échoue. Le
+bead suit, hors bande.
+
+Le §11.5 avait raison sur les deux moitiés : le lien **créé** est identifiable (`run_id='manual'`
+et `bead_uid LIKE 'cell#%'`), donc un ↻ saurait le supprimer ; mais le lien **détruit** est parti
+avec son `link_id`, son `run_id` d'aligneur et son `status`. Le recréer, c'est l'approximation
+reprochée au ＝ Rattacher en ALI-20. **Un ↻ exact suppose donc d'archiver la suppression**, et
+c'est là que le coût se décide — pas dans le geste front.
+
+**Trois voies, mesurées.**
+
+*(A) Une archive de geste.* Une table de purge indexée par geste, sur le modèle d'`align_run_purge`.
+Coût : migration + endpoint + geste front. Mais elle ne servirait pas qu'au ⭙ : le batch
+d'alignement compte **sept** verbes (`set_status`, `delete`, `set_target_span`, `clear_target_span`,
+`set_bead`, `clear_bead`, `set_pivot`) dont `delete` est destructif et dont aucun n'est annulable
+aujourd'hui. C'est exactement le manque qu'ALI-20 décrit (« pas de bandeau d'annulation dans
+l'Alignement, **y compris pour les deux gestes qui sont journalisés** ») et qu'ALI-07 effleure.
+
+*(B) Le ⭙ devient un micro-run,* réutilisant `/align/run/undo` (contrat 1.6.66) : pas de table, pas
+d'endpoint. Écarté après vérification — `undo_alignment_run` exige une ligne dans `runs` **et** un
+`kind` attendu (`sidecar.py`, la garde `unknown_run`). Chaque ⭙ créerait donc un « run », un par
+clic, et le mot « run » cesserait de désigner un alignement. Bon marché aujourd'hui, trouble
+ensuite. Le seul point qui aurait été facile : `run_id='manual'` n'est écrit qu'à **un** endroit
+(`sidecar.py:8443`) et lu qu'à **un** (`matrix_export_service.py:198`).
+
+*(C) Le correctif (b) du constat* — que le ⭙ dise dans son résumé comment revenir en arrière, en
+nommant les deux gestes et leur ordre. Front pur, aucune infrastructure. Honnête mais manuel, et la
+réparation reste approximative (le lien rendu perd son `run_id` d'origine).
+
+**Décision proposée : (C) maintenant, (A) comme chantier à part.** Bâtir une troisième archive pour
+un seul geste serait du gâchis ; la bâtir comme « l'annulation de l'espace Alignement » paie ALI-22
+(a), ALI-20 et une partie d'ALI-07 d'un coup. Ce n'est pas une queue de lot, c'est un chantier — et
+il mérite d'être cadré comme tel, pas glissé ici.
