@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.69"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.70"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -350,6 +350,45 @@ API_VERSION = CONTRACT_VERSION
 #         cheaper than a pre-flight count query, and it is only actionable information now that
 #         undo really restores the links (ALI-03, 1.6.65). Additive response fields → no new route
 #         → snapshot unchanged; openapi moves (version + schemas); .md response lines added.
+
+# 1.6.70: les gestes de lot de l'Alignement deviennent annulables (decision D-3, ALI-22 (a),
+#         ALI-20, une partie d'ALI-07). NEW route POST /align/links/batch_undo -> openapi +
+#         snapshot + .md bougent tous les trois. Migration 037 (align_op + align_op_link_snapshots).
+#         Ni prep_action_history ni align_run_purge ne pouvaient porter cette archive : un geste de
+#         lot touche N liens quelconques SANS toucher une seule unite, donc il n'existe aucune
+#         action de preparation a quoi le rattacher, et il n'a pas de run_id. Troisieme proprietaire,
+#         meme discipline (link_id archive -> restitution identique et non approchee).
+#         Deux ecarts avec les deux archives existantes. (1) De fond : six verbes sur sept ne
+#         detruisent rien, ils MUTENT une ligne qui survit ; la restitution est donc
+#         UPDATE-si-present / INSERT-si-absent et non l'INSERT OR IGNORE des deux autres chemins,
+#         qui laisserait la mutation en place tout en rapportant « restaure ». (2) De forme : la
+#         pile est BORNEE (ALIGN_OP_KEEP = 50). Les deux autres n'ecrivent que sur une destruction,
+#         qui est rare ; celle-ci ecrit a chaque geste, « accepter » compris, donc elle croitrait
+#         avec l'usage normal et non avec les accidents.
+#         batch_update accepte un `label` optionnel (aucun artefact : parametre optionnel sur une
+#         route existante) et rend `op_id`, null quand il n'y a rien a annuler. /align/collisions/
+#         resolve rend `op_id` lui aussi : c'est le HUITIEME verbe de la meme famille, que l'audit
+#         n'avait pas compte parmi « les sept », et il etait muet exactement pareil.
+#         UNE OPERATION PEUT S'ETENDRE SUR PLUSIEURS REQUETES. Deux gestes de la matrice sont
+#         multi-requetes (coupe a cheval, rattachement au voisin) : ils appellent
+#         POST /align/link/create PUIS batch_update. Une archive par requete offrirait un
+#         « Annuler » qui ressusciterait le lien supprime en laissant le lien cree -- l'etat en
+#         doublon d'ALI-22, sous une commande qui a l'air complete. /align/link/create et
+#         /align/link/delete acceptent donc `op_id` (+ `label`) et le rendent : le premier appel
+#         ouvre l'operation, les suivants la rejoignent. Params optionnels sur routes existantes
+#         + champs de reponse additifs -> aucun artefact de contrat en plus.
+#         Trois regles qui ne se devinent pas : (1) l'INSERT OR IGNORE sur (op_id, link_id) fait
+#         gagner le PREMIER instantane d'un lien, celui d'avant le geste ; (2) l'annulation
+#         SUPPRIME les creations AVANT de restituer, sinon un lien a rendre bute sur la paire
+#         (pivot, target) qu'une creation de la meme operation occupe encore (migration 008) ;
+#         (3) refermer une operation qu'on a seulement REJOINTE emporterait la creation qui la
+#         precede -- discard_batch_op prend donc l'op_id recu et s'abstient dans ce cas.
+#         QUATRE routes a un lien portent la meme mecanique : create, delete, update_status et
+#         retarget. Le bouton « rattacher » a deux branches (create si la cellule est vide,
+#         retarget sinon) : n'en archiver qu'une rendrait le meme geste annulable une fois sur
+#         deux. Idem pour le statut, reglable par lot depuis la matrice et a l'unite depuis le
+#         panneau. Hors pile : /align/cell_status, qui ecrit dans alignment_cell_status et non
+#         dans alignment_links -- autre objet, autre archive si le besoin se presente.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -1475,6 +1514,32 @@ def openapi_spec() -> dict[str, Any]:
                         "400": {"description": "Bad request / nothing to revert", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "404": {"description": "Unknown run", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                         "409": {"description": "Superseded by a later run", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
+            "/align/links/batch_undo": {
+                "post": {
+                    "summary": "Undo one archived batch gesture on alignment links (D-3)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/AlignBatchUndoRequest"},
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Undo report",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/AlignBatchUndoResponse"},
+                                }
+                            },
+                        },
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "404": {"description": "Unknown op_id: already undone, or aged out of the bounded stack", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                        "409": {"description": "A later gesture touches the same links", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
                     },
                 }
             },
@@ -4303,6 +4368,28 @@ def openapi_spec() -> dict[str, Any]:
                                 "links_restored": {"type": "integer", "description": "purged links put back from the archive, identical (link_id and src_run_id included)"},
                                 "links_not_restored": {"type": "integer", "description": "archived links skipped: pair re-occupied, or one of their units no longer exists"},
                                 "reason": {"type": "string", "nullable": True},
+                            },
+                        },
+                    ]
+                },
+                "AlignBatchUndoRequest": {
+                    "type": "object",
+                    "required": ["op_id"],
+                    "properties": {"op_id": {"type": "integer", "description": "the batch operation to undo, as returned by batch_update / collisions.resolve"}},
+                },
+                "AlignBatchUndoResponse": {
+                    "allOf": [
+                        {"$ref": "#/components/schemas/BaseResponse"},
+                        {
+                            "type": "object",
+                            "required": ["op_id", "description", "updated", "reinserted", "deleted", "skipped"],
+                            "properties": {
+                                "op_id": {"type": "integer"},
+                                "description": {"type": "string", "description": "the archived gesture's label, as the banner displayed it"},
+                                "updated": {"type": "integer", "description": "links that survived the gesture and got their columns back"},
+                                "reinserted": {"type": "integer", "description": "links the gesture had deleted, put back with their original link_id"},
+                                "deleted": {"type": "integer", "description": "links the gesture had CREATED: undoing it removes them (multi-request gestures)"},
+                                "skipped": {"type": "integer", "description": "links that could not come back: a unit is gone, or the pair is re-occupied"},
                             },
                         },
                     ]

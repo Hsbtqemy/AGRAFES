@@ -315,12 +315,13 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /align/run/undo` (token required) — **ALI-17** revert one alignment run. Body: `{ run_id }`. Drops the links the run created (`alignment_links.run_id`, indexed by migration 036) and restores the ones it purged from `align_run_purge`, **identical** (original `link_id` and `src_run_id` archived). Links the run created but a human reviewed since (`status` set) are **kept**, not deleted, and reported: a blanket refusal was disproportionate (measured 2 runs out of 9, over 2 and 1 links out of 1226). A kept link keeps occupying its `(pivot_unit_id, target_unit_id)` pair, so the matching restitution skips itself and is counted. Response: `{ run_id, links_deleted, links_kept, links_restored, links_not_restored, reason }`. `404` unknown run; `400` not an align run / nothing to revert; **`409` superseded** — a later run already replaced that pair's links, restoring would superpose a generation (the very accumulation ALI-17 describes): revert that one first. Only `replace_existing=true` runs archive anything; a « compléter » run costs zero storage. Migration 036.
 - `POST /align/quality`
 - `GET /align/source_changed_summary` — résumé global des liens dont la source pivot a changé depuis l'alignement (`source_changed_at` non nul). Réponse : `{ total, docs: [{target_doc_id, target_title, count}] }`. Read-only, no token. Alimente la bannière d'accueil d'AlignPanel.
-- `POST /align/link/create`
-- `POST /align/link/update_status`
-- `POST /align/link/delete`
-- `POST /align/link/retarget`
+- `POST /align/link/create` — accepte `op_id` / `label` et les rend (D-3, 1.6.70)
+- `POST /align/link/update_status` — archivé et annulable ; accepte `op_id` / `label` et les rend (D-3, 1.6.70)
+- `POST /align/link/delete` — archive le lien avant de le détruire ; accepte `op_id` / `label` et les rend (D-3, 1.6.70)
+- `POST /align/link/retarget` — archivé et annulable ; accepte `op_id` / `label` et les rend (D-3, 1.6.70)
 - `POST /align/link/acknowledge_source_change`
 - `POST /align/links/batch_update`
+- `POST /align/links/batch_undo` — annule un geste de lot archivé (D-3, 1.6.70 ; token requis, détail ci-dessous)
 - `POST /align/cell_status` — statut par cellule « non traduit » sur la paire (unité moyeu × doc cible) (1.6.56, D-W8 ; token requis, détail ci-dessous)
 - `POST /align/retarget_candidates`
 - `POST /align/collisions`
@@ -722,19 +723,80 @@ Request:
 - `action`: `"set_status"`, `"delete"`, `"set_target_span"`, `"clear_target_span"`, `"set_bead"`, `"clear_bead"` ou `"set_pivot"`
 - `link_id`: integer (required for all actions)
 - `status`: `"accepted"`, `"rejected"`, or `null` (unreviewed) — required for `set_status`
-- `char_start` / `char_end`: required for `set_target_span` (coupe ancrée-source, offsets en points de code dans le `text_raw` de la cible ; `clear_target_span` remet le lien sur l'unité entière)
+- `char_start` / `char_end`: required for `set_target_span` (coupe ancrée-source, offsets en points de code dans le `text_norm` de la cible depuis **1.6.69** (ALI-01 tranche 2) : c'est le plan que la matrice projette et que l'aligneur calcule. Ils indexaient `text_raw`, choisi pour son immutabilité ; l'invariant est désormais tenu par l'autre bout, une correction au stylo effaçant les coupes des liens qui visent l'unité (décision D-1) ; `clear_target_span` remet le lien sur l'unité entière)
 - `set_bead` / `clear_bead` (**1.6.57**, D-W16) : regroupe (ou dégroupe) le lien dans le bead de **sa cellule**. Le `bead_uid` est **dérivé au serveur** de la paire (`pivot_unit_id`, `target_doc_id`) du lien — aucun identifiant n'est fourni par le client. Une cellule qui porte plusieurs liens est **un** bead (1 segment moyeu ↔ N phrases cibles), et non une collision : c'est ce qui empêche les gestes (coupe à cheval, ⭙ Fusionner) de faire apparaître de fausses collisions dans Qualité / Révision fine. `clear_bead` remet `bead_uid` à `NULL` (bead singleton).
 - `new_pivot_unit_id`: required for `set_pivot` (**1.6.60**, RA-D1 — ré-ancrer le lien sur un **autre segment moyeu/pivot**, symétrique du retarget côté cible). Seul `pivot_unit_id` bouge : `status`, la cible et la coupe (`target_char_start/end`) sont **préservés**, et le `bead_uid` dérivé (désormais périmé) est remis à `NULL`. Le nouveau pivot doit **exister**, être une unité `line` et appartenir au **doc moyeu** du lien ; un lien identique (même pivot + même cible) déjà présent est refusé (`CONFLICT`).
 - `atomic`: optional boolean (default `false`) — all-or-nothing semantics (see above)
+- `label`: optional string — libellé du geste, affiché tel quel par le bandeau d'annulation. Un serveur qui ne le reçoit pas dérive un libellé du type d'action et du nombre de liens (1.6.70)
 
 Response:
 ```json
-{ "ok": true, "status": "ok", "applied": 3, "deleted": 1, "errors": [], "rolled_back": false }
+{ "ok": true, "status": "ok", "applied": 3, "deleted": 1, "errors": [], "rolled_back": false, "op_id": 42 }
 ```
 - `applied` — number of NON-delete operations that succeeded (`set_status`, `set_target_span`, `clear_target_span` depuis 1.6.54, `set_bead`/`clear_bead` depuis 1.6.57)
 - `deleted` — number of `delete` operations that succeeded
 - `errors` — array of `{ index, link_id, error }` for individual failures (not found, invalid action, etc.)
 - `rolled_back` — `true` when `atomic` was set and an error rolled the whole batch back
+- `op_id` (**1.6.70**, D-3) — poignée d'annulation à passer à `/align/links/batch_undo`, ou `null` quand il n'y a rien à annuler : lot intégralement en erreur, `rolled_back`, ou aucun `link_id` existant. L'archive est prise **avant** l'application, puisque six verbes sur sept mutent une ligne qui survit et qu'après coup il n'y a plus rien à lire
+
+### POST /align/links/batch_undo (1.6.70 — token required)
+
+Défait un geste de lot archivé — décision **D-3**, migration **037**. Les sept verbes de
+`batch_update` et les quatre de `collisions/resolve` touchent des liens **sans toucher une seule
+unité** : l'historique de préparation, linéaire *par document*, n'a rien à quoi les rattacher, et
+`align_run_purge` est clé par run. D'où une troisième archive, `align_op` + `align_op_link_snapshots`.
+
+Request : `{ "op_id": 42 }` — l'`op_id` rendu par le geste.
+
+Response :
+```json
+{ "ok": true, "status": "ok", "op_id": 42, "description": "coupe — 2 liens",
+  "updated": 2, "reinserted": 0, "deleted": 0, "skipped": 0 }
+```
+- `updated` — liens qui avaient **survécu** au geste et retrouvent leurs colonnes. C'est le cas
+  courant : six verbes sur sept mutent (`status`, span, `bead_uid`, `pivot_unit_id`) sans détruire.
+  La restitution est donc UPDATE-si-présent / INSERT-si-absent, et **non** l'`INSERT OR IGNORE` des
+  deux autres archives, qui laisserait la mutation en place tout en rapportant « restauré ».
+- `reinserted` — liens que `delete` avait détruits, remis avec leur `link_id` d'origine
+  (AUTOINCREMENT ne recycle pas un rowid libéré : la restitution est identique, pas approchée).
+- `deleted` — liens que l'opération avait **créés** : les défaire, c'est les supprimer. L'annulation
+  les retire **avant** de restituer les autres — sans cet ordre, un lien à rendre buterait sur la
+  paire `(pivot, target)` qu'une création de la même opération occupe encore (unicité, migration 008)
+  et serait compté « skipped » alors que la place se libère une ligne plus bas.
+- `skipped` — ce qui n'a pas pu revenir, compté et jamais avalé : une unité disparue depuis, ou la
+  paire `(pivot, target)` réoccupée par un lien plus jeune qu'on préfère laisser vivre.
+
+Refus :
+- **`404`** — `op_id` inconnu : déjà annulé, ou sorti de la **pile bornée**. Seules les 50 dernières
+  opérations sont conservées (`ALIGN_OP_KEEP`). Cette archive écrit à chaque geste, « accepter »
+  compris, donc elle croîtrait avec l'usage normal et non avec les accidents — ce qu'aucune des
+  deux autres ne fait, puisqu'elles n'écrivent que sur une destruction.
+- **`409`** — un geste **postérieur** porte sur l'un de ces liens. L'annuler l'écraserait sans le
+  dire : même discipline qu'ALI-03, on ne défait pas par surprise une décision humaine ultérieure.
+
+L'opération est **consommée** par son annulation : la garder laisserait un second undo ressusciter
+la même génération par-dessus celle qu'on vient de restituer.
+
+**Une opération peut s'étendre sur plusieurs requêtes.** La coupe à cheval et le rattachement au
+voisin appellent `POST /align/link/create` **puis** `batch_update`. Une archive par requête offrirait
+un « Annuler » qui ressusciterait le lien supprimé en laissant le lien créé — le doublon d'ALI-22,
+sous une commande qui a l'air complète. Les deux routes `/align/link/create` et `/align/link/delete`
+acceptent donc `op_id` (et `label`) et le **rendent** : le premier appel du geste ouvre l'opération,
+les suivants la rejoignent en la passant. Un `op_id` inconnu n'est pas une erreur — on en ouvre une
+neuve, car un geste ne doit jamais échouer à cause de sa propre comptabilité d'annulation. Et si deux
+requêtes du même geste touchent le même lien, c'est le **premier** instantané qui vaut : celui d'avant
+le geste, pas l'état intermédiaire.
+
+**Quatre routes à un lien** portent la même mécanique, pour la même raison : `create`, `delete`,
+`update_status` et `retarget`. Le bouton « rattacher » de la matrice a deux branches — `create` quand
+la cellule est vide, `retarget` quand elle porte déjà un lien — et n'archiver que l'une rendrait le
+même geste annulable une fois sur deux. Idem pour le statut, réglable depuis la matrice (par lot) et
+depuis le panneau (à l'unité). Reste **hors** de cette pile : `POST /align/cell_status`, qui écrit
+dans `alignment_cell_statuses` et non dans `alignment_links` — un autre objet, une autre archive à
+concevoir si le besoin se présente. Conséquence concrète, énoncée plutôt que tue : `create` efface
+la marque « ∅ non traduit » que le nouveau lien contredit (`purge_contradicted_cell_statuses`), et
+l'annulation **ne la rend pas** — la cellule revient au « à faire », pas au « ∅ ». Mesuré avant de
+laisser ouvert : 0 marque de cellule sur le corpus de travail.
 
 ### POST /align/cell_status (1.6.56 — token required)
 
@@ -841,10 +903,14 @@ Request:
 
 Response:
 ```json
-{ "ok": true, "applied": 2, "deleted": 1, "errors": [] }
+{ "ok": true, "applied": 2, "deleted": 1, "errors": [], "op_id": 43 }
 ```
 - Partial failures tolerated: failed items go to `errors: [{ index, link_id, error }]`
 - Non-existent link_ids are reported as errors, not 404
+- `op_id` (**1.6.70**, D-3) — même archive et même annulation que `batch_update` : à passer à
+  `/align/links/batch_undo`, `null` quand rien n'a changé. Cet endpoint est le huitième verbe de la
+  même famille (il supprime des liens et modifie des statuts sans toucher une unité) et il était
+  muet lui aussi ; l'audit ne l'avait pas compté parmi « les sept verbes ».
 
 ## GET /unit/context (Sprint I)
 

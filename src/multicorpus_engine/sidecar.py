@@ -665,6 +665,7 @@ _WRITE_PATHS = frozenset({
     "/align/link/update_status", "/align/link/delete", "/align/link/retarget",
     "/align/link/acknowledge_source_change",
     "/align/links/batch_update",
+    "/align/links/batch_undo",
     "/align/cell_status",
     "/align/collisions/resolve",
     "/align/run/undo",
@@ -1157,6 +1158,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_align_link_acknowledge_source_change(body)
             elif path == "/align/links/batch_update":
                 self._handle_align_links_batch_update(body)
+            elif path == "/align/links/batch_undo":
+                self._handle_align_links_batch_undo(body)
             elif path == "/align/cell_status":
                 self._handle_align_cell_status(body)
             elif path == "/align/retarget_candidates":
@@ -8376,6 +8379,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if external_id is None:
             external_id = pivot_unit["external_id"] if pivot_unit["external_id"] is not None else 0
         created_at = dt.datetime.now(dt.timezone.utc).isoformat()
+        from multicorpus_engine.services import align_ops_service
         from multicorpus_engine.services.align_cell_status_service import (
             purge_contradicted_cell_statuses,
         )
@@ -8393,8 +8397,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 # supersedes an earlier « non traduit » mark, which would otherwise
                 # stay hidden under the link and resurrect when it dies (R4).
                 purge_contradicted_cell_statuses(conn)
-                conn.commit()
                 link_id = cur.lastrowid
+                # D-3 (1.6.70) : un geste multi-requêtes (coupe à cheval,
+                # rattachement au voisin) ouvre son opération ici et la passe à
+                # batch_update, sinon « Annuler » ne défairait que la moitié du
+                # geste et laisserait le doublon d'ALI-22.
+                op_id = align_ops_service.record_created_link(
+                    conn, int(link_id), op_id=body.get("op_id"),
+                    label=body.get("label") if isinstance(body.get("label"), str) else None,
+                )
+                conn.commit()
         except Exception as exc:
             if "UNIQUE constraint" in str(exc):
                 self._send_error(
@@ -8412,6 +8424,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "target_doc_id": target_doc_id,
             "status": status,
             "created": 1,
+            "op_id": op_id,
         }))
 
     def _handle_align_link_update_status(self, body: dict) -> None:
@@ -8423,25 +8436,51 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if status not in (None, "accepted", "rejected"):
             self._send_error("status must be 'accepted', 'rejected', or null", code=ERR_VALIDATION, http_status=400)
             return
+        from multicorpus_engine.services import align_ops_service
         with self._lock():
-            cur = self._conn().execute(
+            conn = self._conn()
+            # D-3 (1.6.70) : même archive que le verbe set_status du lot. Sans elle, le
+            # MÊME geste serait annulable depuis la matrice et pas depuis le panneau.
+            op_id = align_ops_service.archive_batch_op(
+                conn, [link_id], op_id=body.get("op_id"),
+                label=body.get("label") if isinstance(body.get("label"), str) else None,
+                action_types=["set_status"], kind="link_status",
+            )
+            cur = conn.execute(
                 "UPDATE alignment_links SET status = ? WHERE link_id = ?", (status, link_id)
             )
-            self._conn().commit()
+            if cur.rowcount == 0:
+                align_ops_service.discard_batch_op(conn, op_id, joined=body.get("op_id"))
+                op_id = None
+            conn.commit()
         if cur.rowcount == 0:
             self._send_error(f"link_id={link_id} not found", code=ERR_NOT_FOUND, http_status=404)
             return
-        self._send_json(success_payload({"link_id": link_id, "status": status, "updated": 1}))
+        self._send_json(success_payload(
+            {"link_id": link_id, "status": status, "updated": 1, "op_id": op_id}))
 
     def _handle_align_link_delete(self, body: dict) -> None:
         link_id = body.get("link_id")
         if link_id is None:
             self._send_error("link_id is required", code=ERR_BAD_REQUEST, http_status=400)
             return
+        from multicorpus_engine.services import align_ops_service
         with self._lock():
-            cur = self._conn().execute("DELETE FROM alignment_links WHERE link_id = ?", (link_id,))
-            self._conn().commit()
-        self._send_json(success_payload({"link_id": link_id, "deleted": cur.rowcount}))
+            conn = self._conn()
+            # D-3 (1.6.70) : archiver avant de détruire, en rejoignant l'opération du
+            # geste si l'appelant en tient une ouverte.
+            op_id = align_ops_service.archive_batch_op(
+                conn, [link_id], op_id=body.get("op_id"),
+                label=body.get("label") if isinstance(body.get("label"), str) else None,
+                action_types=["delete"], kind="link_delete",
+            )
+            cur = conn.execute("DELETE FROM alignment_links WHERE link_id = ?", (link_id,))
+            if cur.rowcount == 0:
+                align_ops_service.discard_batch_op(conn, op_id, joined=body.get("op_id"))
+                op_id = body.get("op_id") if isinstance(body.get("op_id"), int) else None
+            conn.commit()
+        self._send_json(success_payload(
+            {"link_id": link_id, "deleted": cur.rowcount, "op_id": op_id}))
 
     def _handle_align_link_retarget(self, body: dict) -> None:
         link_id = body.get("link_id")
@@ -8456,14 +8495,31 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if unit is None:
             self._send_error(f"new_target_unit_id={new_target_unit_id} does not exist", code=ERR_NOT_FOUND, http_status=404)
             return
+        from multicorpus_engine.services import align_ops_service
         try:
             with self._lock():
-                cur = self._conn().execute(
+                conn = self._conn()
+                # D-3 (1.6.70) : le bouton « rattacher » a deux branches — create quand
+                # la cellule est vide, retarget quand elle porte déjà un lien. Archiver
+                # l'une sans l'autre rendrait le même geste annulable une fois sur deux.
+                op_id = align_ops_service.archive_batch_op(
+                    conn, [link_id], op_id=body.get("op_id"),
+                    label=body.get("label") if isinstance(body.get("label"), str) else None,
+                    action_types=["retarget"], kind="link_retarget",
+                )
+                cur = conn.execute(
                     "UPDATE alignment_links SET target_unit_id = ? WHERE link_id = ?",
                     (new_target_unit_id, link_id),
                 )
-                self._conn().commit()
+                if cur.rowcount == 0:
+                    align_ops_service.discard_batch_op(conn, op_id, joined=body.get("op_id"))
+                    op_id = None
+                conn.commit()
         except Exception as exc:
+            # L'archive D-3 est écrite AVANT l'UPDATE : si celui-ci échoue, elle reste
+            # dans une transaction non commitée que la requête suivante flusherait,
+            # laissant une opération fantôme dans la pile. On la défait ici.
+            self._conn().rollback()
             if "UNIQUE constraint" in str(exc):
                 self._send_error(
                     f"pivot unit is already linked to target_unit_id={new_target_unit_id}",
@@ -8475,7 +8531,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if cur.rowcount == 0:
             self._send_error(f"link_id={link_id} not found", code=ERR_NOT_FOUND, http_status=404)
             return
-        self._send_json(success_payload({"link_id": link_id, "new_target_unit_id": new_target_unit_id, "updated": 1}))
+        self._send_json(success_payload({
+            "link_id": link_id, "new_target_unit_id": new_target_unit_id,
+            "updated": 1, "op_id": op_id}))
 
     # ------------------------------------------------------------------
     # Sprint 7 — Curation propagée
@@ -8676,7 +8734,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         list. Compound gestures (e.g. the D-W12 straddling cut: 2 complementary
         set_target_span) MUST pass atomic — a half-applied cut is worse than none.
         """
-        from multicorpus_engine.services import align_links_service
+        from multicorpus_engine.services import align_links_service, align_ops_service
         from multicorpus_engine.services.errors import (
             ConflictError,
             NotFoundError,
@@ -8712,6 +8770,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         with self._lock():
             conn = self._conn()
+            # D-3 (1.6.70) : archiver AVANT d'appliquer. Les sept verbes mutent ou
+            # détruisent une ligne existante — après coup il n'y a plus rien à lire.
+            op_id = align_ops_service.archive_batch_op(
+                conn,
+                [a.get("link_id") for a in actions
+                 if isinstance(a, dict) and isinstance(a.get("link_id"), int)],
+                op_id=body.get("op_id"),
+                label=body.get("label") if isinstance(body.get("label"), str) else None,
+                action_types=[a.get("action") for a in actions if isinstance(a, dict)],
+            )
             for i, act in enumerate(actions):
                 action_type = act.get("action")
                 link_id = act.get("link_id")
@@ -8792,12 +8860,25 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             rolled_back = False
             if atomic and errors:
                 # All-or-nothing: undo every action of this batch (the connection is
-                # in implicit-transaction mode, nothing was committed yet).
+                # in implicit-transaction mode, nothing was committed yet). The archive
+                # opened above lives in that same transaction, so it goes with it.
                 conn.rollback()
                 applied = 0
                 deleted = 0
                 rolled_back = True
+                # ATTENTION : ne pas rendre null si l'on avait REJOINT une opération.
+                # Le rollback n'annule que les écritures de CETTE requête ; l'opération
+                # ouverte par un `create` précédent est commitée, le lien créé existe
+                # toujours, et il reste annulable. Rendre null ferait perdre la poignée
+                # au front et laisserait le lien créé sans retour.
+                op_id = body.get("op_id") if isinstance(body.get("op_id"), int) else None
             else:
+                if applied == 0 and deleted == 0:
+                    # Rien n'a changé : une opération sans effet offrirait un « Annuler »
+                    # qui ne défait rien, et occuperait une place de la pile bornée.
+                    align_ops_service.discard_batch_op(
+                        conn, op_id, joined=body.get("op_id"))
+                    op_id = body.get("op_id") if isinstance(body.get("op_id"), int) else None
                 conn.commit()
 
         self._send_json(success_payload({
@@ -8805,7 +8886,37 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "deleted": deleted,
             "errors": errors,
             "rolled_back": rolled_back,
+            # D-3 : poignée d'annulation, ou null quand il n'y a rien à annuler.
+            "op_id": op_id,
         }))
+
+    def _handle_align_links_batch_undo(self, body: dict) -> None:
+        """POST /align/links/batch_undo — défait un geste de lot archivé (D-3, 1.6.70).
+
+        Adaptateur mince : toute la logique est dans ``align_ops_service``. Les deux
+        refus (opération inconnue, geste postérieur sur les mêmes liens) sont levés
+        avant la moindre écriture, donc il n'y a pas de transaction sale à défaire.
+        """
+        from multicorpus_engine.services import align_ops_service
+        from multicorpus_engine.services.errors import ConflictError, NotFoundError
+
+        op_id = body.get("op_id")
+        if not isinstance(op_id, int):
+            self._send_error("op_id must be an integer",
+                             code=ERR_BAD_REQUEST, http_status=400)
+            return
+        try:
+            with self._lock():
+                conn = self._conn()
+                data = align_ops_service.undo_batch_op(conn, op_id)
+                conn.commit()
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        except ConflictError as exc:
+            self._send_error(exc.message, code=ERR_CONFLICT, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
 
     def _handle_align_cell_status(self, body: dict) -> None:
         # Thin adapter over the per-cell status service (R3.3, D-W8 résolu):
@@ -9012,6 +9123,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
+        from multicorpus_engine.services import align_ops_service
+
         valid_action_types = {"keep", "delete", "reject", "unreviewed"}
         # Map resolve actions to status values
         _action_to_status = {"keep": "accepted", "reject": "rejected", "unreviewed": None}
@@ -9022,6 +9135,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         with self._lock():
             conn = self._conn()
+            # D-3 (1.6.70) : même archive que batch_update. Cet endpoint est le
+            # huitième verbe de la même famille — il supprime des liens et modifie
+            # des statuts sans toucher une unité — et il était muet lui aussi.
+            op_id = align_ops_service.archive_batch_op(
+                conn,
+                [a.get("link_id") for a in actions
+                 if isinstance(a, dict) and isinstance(a.get("link_id"), int)],
+                action_types=[a.get("action") for a in actions if isinstance(a, dict)],
+                kind="collisions_resolve",
+            )
             for i, act in enumerate(actions):
                 action_type = act.get("action")
                 link_id = act.get("link_id")
@@ -9050,12 +9173,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     else:
                         applied += 1
 
+            if applied == 0 and deleted == 0:
+                align_ops_service.discard_batch_op(conn, op_id)
+                op_id = None
             conn.commit()
 
         self._send_json(success_payload({
             "applied": applied,
             "deleted": deleted,
             "errors": errors,
+            "op_id": op_id,
         }))
 
     def _handle_shutdown(self) -> None:

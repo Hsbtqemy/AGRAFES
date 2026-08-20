@@ -161,6 +161,61 @@
         ],
         "type": "object"
       },
+      "AlignBatchUndoRequest": {
+        "properties": {
+          "op_id": {
+            "description": "the batch operation to undo, as returned by batch_update / collisions.resolve",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "op_id"
+        ],
+        "type": "object"
+      },
+      "AlignBatchUndoResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseResponse"
+          },
+          {
+            "properties": {
+              "deleted": {
+                "description": "links the gesture had CREATED: undoing it removes them (multi-request gestures)",
+                "type": "integer"
+              },
+              "description": {
+                "description": "the archived gesture's label, as the banner displayed it",
+                "type": "string"
+              },
+              "op_id": {
+                "type": "integer"
+              },
+              "reinserted": {
+                "description": "links the gesture had deleted, put back with their original link_id",
+                "type": "integer"
+              },
+              "skipped": {
+                "description": "links that could not come back: a unit is gone, or the pair is re-occupied",
+                "type": "integer"
+              },
+              "updated": {
+                "description": "links that survived the gesture and got their columns back",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "op_id",
+              "description",
+              "updated",
+              "reinserted",
+              "deleted",
+              "skipped"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "AlignCellStatusRequest": {
         "properties": {
           "pivot_unit_id": {
@@ -4424,8 +4479,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.69",
-    "x-contract-version": "1.6.69"
+    "version": "1.6.70",
+    "x-contract-version": "1.6.70"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -4780,6 +4835,63 @@
           }
         ],
         "summary": "Update status of an alignment link"
+      }
+    },
+    "/align/links/batch_undo": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignBatchUndoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlignBatchUndoResponse"
+                }
+              }
+            },
+            "description": "Undo report"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown op_id: already undone, or aged out of the bounded stack"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A later gesture touches the same links"
+          }
+        },
+        "summary": "Undo one archived batch gesture on alignment links (D-3)"
       }
     },
     "/align/links/batch_update": {

@@ -47,7 +47,7 @@ conclusions** des §8 et §10.
 | ALI-07 | 🟠 | P2 | Aucune propagation d'une correction manuelle : la réparation est O(n) gestes, sans capitalisation. |
 | ALI-08 | 🟡 | P2 | `alignment_links.external_id` (NOT NULL, indexé, documenté « the shared external_id anchor ») contient en réalité une valeur **dépendant de la stratégie**. |
 | ALI-09 | 🟡 | P2 | FK sans `ON DELETE` : sûr aujourd'hui parce que **chaque** chemin supprime explicitement, mais l'invariant n'est ni documenté ni testé. |
-| ALI-10 | 🟠 | P1 | Resegmentation et propagation détruisent les liens **sans laisser de trace**. Instruit : **cinq** sites, un seul journalisé (§11.14). **Tranche 1 livrée** — le chemin interactif archive et rend ses liens (§11.15). Les chemins de masse (famille, job, markers, propagate) restent irréversibles ; ils l'annoncent désormais. Relevé de 🟡 : `POST /families/{id}/segment` `force=true` efface l'alignement d'une famille entière sans retour.
+| ALI-10 | 🟠 | P1 | Resegmentation et propagation détruisent les liens **sans laisser de trace**. Instruit : **cinq** sites, un seul journalisé (§11.14). **Tranche 1 livrée** — le chemin interactif archive et rend ses liens (§11.15). **Tranche 2 livrée** (décision D-2, §12.5) — les six appels de masse (famille, job ×2, markers ×3) passent un recorder et sont annulables document par document. **Reste ouvert pour un seul site** : `apply_propagated`, qui ne passe par aucune des deux fonctions de resegmentation et reconstruit le document avec son propre DELETE. Relevé de 🟡 : `POST /families/{id}/segment` `force=true` efface l'alignement d'une famille entière sans retour.
 | ALI-11 | 🟡 | P2 | Trous de test : `text_start_n` absent des tests d'alignement ; la projection matrice n'est jamais confrontée à `text_norm`. |
 | ALI-12 | 🟠 | P1 | Le diagnostic préalable **existe et est bon** (constat initial corrigé), mais son critère d'ancrage n'a **aucun seuil de couverture** : 1 ligne porteuse sur 1 231 suffit à éteindre l'avertissement. |
 | ALI-13 | 🟠 | P1 | Le bead posé par le ⭙ **masque une collision légitime** — risque jugé résiduel en §5, **matérialisé** en §8 (voir ALI-22). |
@@ -2064,3 +2064,119 @@ de vie est porté au *Reste* de T-05 (harnais / cycle de vie du sidecar).
 **Au passage** : `scripts/smoke_sidecar.py` échoue à 150 s sans `NO_PROXY` — non par lenteur du
 binaire mais parce que le proxy intercepte `127.0.0.1`, cause racine identifiée le 2026-07-09. Le
 script ne se protège pas lui-même ; avec `NO_PROXY` il passe les sept routes.
+
+### 12.8 D-3 livrée côté moteur — et un huitième verbe que l'audit n'avait pas compté (2026-08-20)
+
+Contrat **1.6.70**, migration **037**, nouvelle route `POST /align/links/batch_undo`.
+
+**Le troisième propriétaire.** Ni `prep_action_history` ni `align_run_purge` ne pouvaient porter
+cette archive, et pour deux raisons différentes : le premier est linéaire *par document* et son
+`doc_id` est `NOT NULL`, la seconde est clé par `run_id`. Un geste de lot n'a ni l'un ni l'autre —
+il porte sur N liens quelconques et **ne touche aucune unité**, donc il n'existe aucune action de
+préparation à quoi le rattacher. C'est exactement l'impasse nommée en ALI-17. D'où `align_op` +
+`align_op_link_snapshots`, mêmes colonnes et même discipline que les deux autres (`link_id`
+archivé ⇒ restitution identique, pas approchée).
+
+**Un écart de fond avec les deux archives existantes, et il commande la forme du retour.** 035 et
+036 n'archivent que des liens *détruits* : leur restitution est un `INSERT OR IGNORE`, et « le lien
+existe déjà » y veut dire « quelqu'un a repris la place », donc on passe. Ici, **six verbes sur
+sept ne détruisent rien** — ils mutent une ligne qui survit (`status`, span, `bead_uid`,
+`pivot_unit_id`). Le même `INSERT OR IGNORE` laisserait la mutation intacte **tout en rapportant
+« restauré »**. La restitution est donc UPDATE-si-présent / INSERT-si-absent. Le test qui l'énonce
+(`test_undo_reverses_a_mutation_it_does_not_merely_leave_it`) a été vérifié ROUGE sur
+l'implémentation naïve : 4 tests sur 15 tombent, dont la garde de fraîcheur.
+
+**Un écart de forme : la pile est bornée** (`ALIGN_OP_KEEP = 50`). Les deux autres archives
+n'écrivent que sur une destruction, qui est rare ; celle-ci écrit à *chaque* geste, « accepter »
+compris, qui est le plus fréquent de l'écran. Sans borne elle croîtrait avec l'usage normal et non
+avec les accidents. Cela répond aussi, par l'exemple, à la question de rétention laissée ouverte
+sur `align_run_purge` — sans la trancher pour elle, dont le régime d'écriture est différent.
+
+**Le huitième verbe.** L'audit parlait des « sept verbes du batch ». Il en manquait un :
+`POST /align/collisions/resolve` (`keep` / `delete` / `reject` / `unreviewed`) est **la même
+famille** — il supprime des liens et modifie des statuts sans toucher une unité — et il était muet
+exactement pareil. Trouvé en câblant `batch_update`, parce que les deux handlers partagent la même
+boucle sur `actions`. Il est archivé lui aussi, sous `kind='collisions_resolve'` ; il rend un
+`op_id` et se défait par la même route. Une archive qui aurait couvert « les sept verbes » aurait
+laissé, à côté, un chemin destructeur non journalisé — c'est-à-dire la moitié du problème.
+
+**Corrigé au passage.** `SIDECAR_API_CONTRACT.md` affirmait encore que les offsets de coupe
+indexent le `text_raw` de la cible ; c'est faux depuis **1.6.69** (§12.2, décision D-1), où ils sont
+passés au plan `text_norm`. La ligne datait de la tranche 2 et n'avait pas suivi.
+
+**Une limite connue, nommée plutôt que tue.** La garde de fraîcheur ne voit que les opérations de
+*cette* pile : elle refuse l'annulation si un geste de lot postérieur touche les mêmes liens, mais
+elle ignore ce qu'ont pu faire entre-temps `/prep/undo` ou un run d'alignement, qui écrivent dans
+les deux autres archives. Le cas réellement dangereux est en grande partie fermé par la clé
+étrangère — un lien dont l'unité a disparu ne peut pas revenir, il est compté en `skipped`. Reste
+la superposition de valeurs : deux archives peuvent restituer le même `link_id` à deux instants
+différents, la dernière écrasant l'autre. Ce défaut n'est pas propre à D-3, il est **systémique aux
+trois archives**, dont aucune ne consulte les deux autres. Le fermer demanderait un ordre global
+entre elles — c'est-à-dire l'archive unique que le §12 avait imaginée, et que §12.4 a montrée
+inutile pour D-2. À rouvrir seulement si le cas se présente en usage.
+
+**Ce qui bloque la moitié front, et qu'il faut trancher AVANT de poser le bandeau.** L'archive est
+par *requête*. Or plusieurs gestes de l'écran sont **multi-requêtes** : la coupe à cheval
+(`plan.split`) et le rattachement au voisin appellent `POST /align/link/create` **puis**
+`batch_update` (`AlignMatrixView.ts:1122/1131→1158`, `1360→1368`, `AlignPanel.ts:1682→1724`), avec
+un `deleteAlignLink` de compensation en cas d'échec. Un « Annuler » qui ne défait que la moitié
+batch **ressusciterait le lien supprimé en laissant le lien créé** — c'est-à-dire précisément l'état
+en doublon qu'ALI-22 décrit. Un bandeau qui fait ça est pire que pas de bandeau : il a l'air
+complet. Deux issues, à choisir avant d'écrire une ligne de front :
+
+* *(a) élargir l'opération* — `create` / `delete` peuvent rejoindre une opération ouverte, ce qui
+  suppose de porter l'`op_id` sur ces deux routes et de savoir archiver une **création** (défaire =
+  supprimer), donc une colonne « n'existait pas » dans les instantanés ;
+* *(b) restreindre l'offre* — n'afficher « Annuler » que sur les gestes qui tiennent en une requête,
+  et le dire sur les autres plutôt que de le laisser croire.
+
+**Tranché le 2026-08-20 : (a).** (b) laissait ALI-22 (a) ouvert sur son cas central — le geste ⭙/＝
+est *précisément* celui que le constat décrit. Livré dans le même lot, avant tout commit, donc la
+colonne se pose dans la migration 037 elle-même plutôt que dans un 038 qui aurait ajouté une colonne
+à une table créée au commit précédent :
+
+* `align_op_link_snapshots.existed` — `1` le lien existait avant (défaire = lui rendre ses colonnes),
+  `0` l'opération l'a créé (défaire = le supprimer). Les colonnes portent alors les valeurs du lien
+  neuf : inutile, mais ça évite de relâcher les `NOT NULL` pour un cas qui ne s'en sert pas ;
+* `/align/link/create` et `/align/link/delete` acceptent et rendent `op_id` + `label`. Le premier
+  appel du geste ouvre l'opération, les suivants la rejoignent.
+
+**Trois règles qui ne se devinent pas, et que les tests tiennent.**
+
+1. *Le premier instantané gagne.* `INSERT OR IGNORE` sur la clé `(op_id, link_id)` : si deux requêtes
+   du même geste touchent le même lien, l'état qui vaut est celui d'avant la première, pas
+   l'intermédiaire vu par la seconde.
+2. *Les créations partent avant que les restitutions n'arrivent.* La paire `(pivot, target)` est
+   unique depuis la migration 008. Restituer d'abord ferait buter un lien à rendre sur une paire
+   qu'une création de la **même opération** occupe encore, et le compterait « skipped » alors que la
+   place se libère une ligne plus bas. Vérifié ROUGE en inversant les deux passes — le test tombe.
+   C'est la même leçon que l'ordre d'annulation d'une famille (§12.5), retrouvée ailleurs.
+3. *On ne referme pas une opération qu'on a seulement rejointe.* `delete` qui ne supprime rien
+   voulait la refermer ; il aurait emporté la création qui la précède et rendu le geste indéfaisable
+   — c'est-à-dire pire que le « Annuler » vide qu'on cherchait à éviter. `discard_batch_op` prend donc
+   l'`op_id` reçu et s'abstient dans ce cas. Trouvé en relecture, pas par un test.
+
+**Un effet de bord que l'annulation ne rend pas, et la mesure qui le laisse ouvert.**
+`/align/link/create` appelle `purge_contradicted_cell_statuses` : aligner une cellule *est*
+l'affirmation « cette cellule est traduite », donc la création efface une marque « ∅ non traduit »
+antérieure. Défaire la création retire le lien mais **ne rend pas la marque** — la cellule revient
+au « à faire » plutôt qu'au « ∅ ». C'est une demi-annulation, du genre exact que ce lot reproche à
+l'état antérieur. Elle n'est pas fermée parce qu'elle est **hors d'atteinte de cette archive** :
+`alignment_cell_statuses` est une autre table, il faudrait un second jeu d'instantanés. Et mesuré
+avant de décider : **0 marque de cellule** dans `corpus_agrafes.WORKCOPY.db`. Le cas ne peut pas se
+produire aujourd'hui. À rouvrir le jour où le ∅ est réellement employé, pas avant.
+
+Deux autres corrections de la passe adverse. `retarget` était archivé sous le libellé `set_pivot`,
+c'est-à-dire « réancrage » — or `retarget` déplace la **cible** et `set_pivot` le **moyeu** : deux
+gestes symétriques qu'un libellé commun rendait indistinguables dans le bandeau. Et un lot
+`atomic` qui **rejoignait** une opération rendait `op_id: null` après son rollback, alors que le
+rollback n'annule que les écritures de *cette* requête : l'opération ouverte par le `create`
+précédent est commitée, le lien créé existe toujours, et il reste annulable. Le front y aurait perdu
+la poignée, donc le moyen de retirer un lien qu'il venait de créer.
+
+`op_id` reste une poignée, pas une promesse d'exhaustivité : `/align/cell_status` écrit dans une
+autre table et sort de l'opération.
+
+**Ce que ce lot ne fait pas.** Le bandeau d'annulation de l'écran (ALI-20) n'est pas posé : le
+moteur rend la poignée `op_id`, personne ne l'affiche encore. ALI-22 (a) et ALI-20 restent donc
+ouverts tant que le front n'a pas sa moitié.
