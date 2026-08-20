@@ -1819,6 +1819,11 @@ protège de la surprise, pas de l'erreur. **Retenu : archiver, et rendre le gest
 
 ### Conséquence de D-2 + D-3 : une seule infrastructure, pas deux
 
+> **Corrigé le 2026-08-20 (§12.4)** — cette section vaut pour **D-3 seul**. Instruit au code,
+> D-2 n'a besoin d'aucune archive neuve : une segmentation de famille est une suite
+> d'opérations *par document*, que l'historique linéaire par document accueille tel quel.
+> Ce qui suit reste exact pour les gestes de batch.
+
 Les deux décisions demandent **le même objet** : archiver les liens qu'une opération détruit
 lorsqu'elle embrasse **N documents**, et savoir la défaire — ce que l'historique de préparation, qui
 est *linéaire par document*, ne peut pas porter (c'est l'impasse déjà rencontrée en ALI-17).
@@ -1937,3 +1942,67 @@ brut — « ¤ » compris — pour la voir atterrir dans une grille qui affiche 
 * Le sélecteur de coupe (`alignCutPicker`) rendait « the verbatim target text » d'après son
   commentaire et son paramètre `targetRaw` : les deux nommaient un plan qu'il ne reçoit plus.
   Renommés — un nom faux survit longtemps à la ligne qu'il décrit.
+
+### 12.4 Instruction du chantier d'archive — et une correction du §12
+
+**Une archive de liens seule ne peut pas annuler une segmentation de masse.** Une
+resegmentation détruit **les unités** et en recrée d'autres ; les liens archivés pointeraient
+alors vers des `unit_id` morts, et la garde FK posée en ALI-03 les écarterait un par un — l'undo
+rendrait `restored: 0, skipped: N` sans rien dire de faux, et sans rien rendre. Annuler une
+segmentation suppose donc d'archiver **les unités**, ce qui n'est pas une archive de liens élargie
+mais un instantané de document. Mesuré sur Modiano : 4 documents, **7 507 unités (~717 Ko de
+texte)** et 5 770 liens.
+
+**Mais cette machine existe déjà, et elle est éprouvée.** Le chemin interactif
+(`POST /segment`) enregistre une action `resegment` avec ses `units_before`, ses
+`created_unit_ids` — et, depuis ce matin, l'archive des liens. `_undo_resegment` réinsère les
+unités **avec leur `unit_id` d'origine**, ce qui est précisément la condition qui rend la
+restitution des liens exacte. Les chemins de masse ne passent simplement **pas de `record_action`**.
+
+**Conséquence sur le coût, et correction de ce que le §12 affirmait ce matin.** Le §12 concluait
+que D-2 et D-3 demandaient « le même objet » et qu'il fallait une archive unique. **C'est faux pour
+D-2.** Une segmentation de famille est une suite d'opérations *par document*, et l'historique
+linéaire par document les accueille sans rien inventer : N documents, N actions, N annulations —
+exactement la forme qu'a déjà l'annulation d'un run d'alignement sur N paires (§11.10). Ce qui
+reste vrai, c'est **D-3** : un geste de batch détruit un lien sans toucher aux unités, il n'y a
+aucune action à quoi le rattacher, et là il faut bien une infrastructure neuve.
+
+**Découpe qui en résulte.**
+
+1. *Segmentation de masse (D-2)* — extraire le recorder de `_handle_segment` (il est aujourd'hui
+   une closure locale sur `conn` et `calibrate_to`) et le passer aux quatre appelants muets :
+   `POST /families/{id}/segment`, le job async, la voie *markers* et `apply_propagated`.
+   `resegment_document_markers` n'a pas encore de paramètre `record_action` : sa structure est
+   celle de `resegment_document` (construire `new_units`, supprimer les liens, supprimer les
+   unités, insérer), la transposition est directe.
+2. *Gestes d'alignement (D-3)* — l'archive neuve, pour les sept verbes du batch. Inchangé.
+
+Autrement dit le chantier se scinde en deux, dont la première moitié ne coûte pas de migration.
+
+### 12.5 D-2 livrée — et l'ordre d'annulation, que le test a trouvé (2026-08-20)
+
+Les **six** appelants qui resegmentaient sans trace passent désormais un recorder :
+`POST /families/{id}/segment`, le job asynchrone (deux branches), la voie *markers* (trois
+appels). Le recorder, jusque-là closure locale de `_handle_segment`, est devenu la fabrique
+`make_resegment_recorder(conn, calibrate_to)`. `resegment_document_markers` a gagné son paramètre
+`record_action` et remonte enfin son `action_id` — le champ existait dans `SegmentationReport` et
+valait invariablement `null` sur ce chemin.
+
+**Aucune migration, aucun champ de contrat.** `action_id` est déjà dans la réponse par document
+depuis `to_dict()` ; il cesse simplement d'être toujours nul.
+
+**Ce que le test a trouvé, et qu'aucune relecture n'aurait vu : l'ordre d'annulation compte.**
+Une segmentation de famille traite le parent d'abord ; les liens sont donc archivés sous l'action du
+**pivot**, alors que leurs cibles appartiennent aux enfants. Or un lien ne renaît que si ses **deux**
+unités existent — la garde FK posée en ALI-03. Annuler le pivot en premier écarte les liens un par
+un, et l'action est ensuite marquée revertie : ils sont perdus.
+
+L'annulation doit donc se faire **en ordre inverse** — les enfants, puis le parent. Deux tests le
+fixent : celui du bon ordre (5 liens rendus) et celui du mauvais, qui vérifie que l'échec est
+**compté** (`alignments_restored: 0`, `alignments_restore_skipped: 5`) et non silencieux. C'est le
+compte rendu d'ALI-03 qui rend ce cas visible ; sans lui, l'utilisateur aurait vu ses unités revenir
+et son alignement disparaître, comme avant.
+
+**Reste ouvert, et à ne pas laisser filer** : rien n'*impose* le bon ordre. Une annulation de famille
+côté interface devra le faire d'elle-même, et `/prep/undo` gagnerait à dire *pourquoi* il a écarté
+des liens plutôt qu'à seulement les compter.

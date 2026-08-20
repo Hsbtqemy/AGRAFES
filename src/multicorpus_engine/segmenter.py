@@ -395,6 +395,7 @@ def resegment_document_markers(
     conn: sqlite3.Connection,
     doc_id: int,
     run_logger: Optional[logging.Logger] = None,
+    record_action: Optional[ResegmentActionRecorder] = None,
 ) -> SegmentationReport:
     """Re-segment a document using embedded [N] markers.
 
@@ -470,6 +471,15 @@ def resegment_document_markers(
             global_n += 1
 
     warnings: list[str] = []
+    # ALI-10 / D-2 — meme motif que resegment_document : lire les liens ici, les
+    # supprimer, poser l'archive une fois l'action creee (plus bas). Sans recorder il
+    # n'y a rien a quoi la rattacher, et la destruction reste irreversible.
+    action_id: Optional[int] = None
+    archived_links: list[tuple] = []
+    if record_action is not None:
+        from multicorpus_engine.action_history import collect_links_for_document
+
+        archived_links = collect_links_for_document(conn, doc_id)
 
     # Delete stale alignment links
     deleted_links = conn.execute(
@@ -516,6 +526,41 @@ def resegment_document_markers(
             doc_id, roles_reapplied,
         )
 
+    # Mode A — meme forme que resegment_document : l'action et ses instantanes
+    # partagent la transaction de la mutation, ils tombent ou tiennent ensemble.
+    if record_action is not None and new_units:
+        new_rows = conn.execute(
+            "SELECT unit_id, n FROM units WHERE doc_id = ? AND unit_type = 'line'"
+            + (" AND n >= ?" if text_start_n is not None else "")
+            + " ORDER BY n",
+            (doc_id, text_start_n) if text_start_n is not None else (doc_id,),
+        ).fetchall()
+        action_id = record_action({
+            "doc_id":            doc_id,
+            "pack":              "markers",
+            "lang":              "und",
+            "text_start_n":      text_start_n,
+            "units_before":      [
+                {
+                    "unit_id":     int(r["unit_id"]),
+                    "n":           int(r["n"]),
+                    "external_id": r["external_id"],
+                    "text_raw":    r["text_raw"],
+                    "text_norm":   r["text_norm"],
+                    "unit_role":   role_map.get(r["n"]),
+                    "meta_json":   r["meta_json"],
+                    "text_source": r["text_source"],
+                }
+                for r in rows
+            ],
+            "created_unit_ids":  [int(r["unit_id"]) for r in new_rows],
+            "new_units_n":       [int(r["n"]) for r in new_rows],
+        })
+        if action_id is not None and archived_links:
+            from multicorpus_engine.action_history import insert_link_snapshots
+
+            insert_link_snapshots(int(action_id), archived_links, conn=conn)
+
     conn.commit()
 
     log.info(
@@ -529,6 +574,7 @@ def resegment_document_markers(
         segment_pack="markers",
         warnings=warnings,
         roles_reapplied=roles_reapplied,
+        action_id=action_id,
     )
 
 

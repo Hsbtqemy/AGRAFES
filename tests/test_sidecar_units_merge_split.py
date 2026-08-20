@@ -261,3 +261,81 @@ class TestLinksArchivedReported:
         )
         assert code == 200, body
         assert body["links_archived"] == 0, body
+
+
+def test_family_segment_is_undoable_per_document(ms_sidecar) -> None:
+    """ALI-10 / D-2 — une segmentation de famille laisse une trace, et se defait.
+
+    Jusqu'ici POST /families/{id}/segment avec force=true bouclait sur tous les
+    documents SANS recorder : une requete effacait les unites et l'alignement de la
+    famille entiere sans une ligne dans prep_action_history. Sur le corpus de
+    reference, 5 770 liens.
+
+    L'archive des liens seule n'aurait rien rendu : la resegmentation detruit aussi
+    les unites, et un lien restaure vers un unit_id mort est ecarte par la garde FK
+    (ALI-03). Ce qui rend la restitution exacte, c'est que _undo_resegment reinsere
+    les unites AVEC LEUR unit_id d'origine — donc l'archive se recolle.
+    """
+    base, token, _ = ms_sidecar
+    _COLS = ("SELECT link_id, run_id, pivot_unit_id, target_unit_id, external_id,"
+             " pivot_doc_id, target_doc_id FROM alignment_links ORDER BY link_id")
+
+    code, before = _post(f"{base}/align/audit",
+                         {"pivot_doc_id": 1, "target_doc_id": 2, "limit": 100}, token)
+    assert code == 200, before
+    n_before = len(before["links"])
+    assert n_before == 5, before
+
+    # La fixture aligne 1 ↔ 2 sans declarer la parente : /families/{id}/segment la lit
+    # dans doc_relations, on la pose donc explicitement (et localement, pour ne pas
+    # changer la fixture partagee sous les autres tests).
+    code, rel = _post(f"{base}/doc_relations/set",
+                      {"doc_id": 2, "relation_type": "translation_of", "target_doc_id": 1},
+                      token)
+    assert code == 200, rel
+
+    # On force la resegmentation de toute la famille.
+    code, res = _post(f"{base}/families/1/segment", {"force": True}, token)
+    assert code == 200, res
+    assert any(e["status"] == "segmented" for e in res["results"]), res
+
+    code, after = _post(f"{base}/align/audit",
+                        {"pivot_doc_id": 1, "target_doc_id": 2, "limit": 100}, token)
+    assert code == 200, after
+    assert len(after["links"]) == 0, "la segmentation doit bien detruire les liens"
+
+    # …et chaque document a desormais son action annulable.
+    for doc_id in (1, 2):
+        code, elig = _post(f"{base}/prep/undo/eligibility", {"doc_id": doc_id}, token)
+        assert code == 200, elig
+        assert elig["eligible"] is True, (doc_id, elig)
+        assert elig["action_type"] == "resegment", (doc_id, elig)
+
+    # Annuler EN ORDRE INVERSE de la segmentation (la famille traite le parent d'abord,
+    # donc on defait les enfants d'abord). Ce n'est pas une preference de style : les
+    # liens sont archives sous l'action du PIVOT, et un lien ne peut renaitre que si ses
+    # DEUX unites existent -- la garde FK d'ALI-03. Restaurer le pivot avant sa cible
+    # ecarterait les cinq liens, et l'action serait ensuite marquee revertie : perdus.
+    for doc_id in (2, 1):
+        code, undone = _post(f"{base}/prep/undo", {"doc_id": doc_id}, token)
+        assert code == 200, (doc_id, undone)
+
+    code, restored = _post(f"{base}/align/audit",
+                           {"pivot_doc_id": 1, "target_doc_id": 2, "limit": 100}, token)
+    assert code == 200, restored
+    assert len(restored["links"]) == n_before, restored
+
+
+def test_family_segment_undo_in_the_wrong_order_is_counted_not_silent(ms_sidecar) -> None:
+    """Le mauvais ordre coute les liens -- mais il est COMPTE, ce qui permet a
+    l'interface de le dire au lieu de le laisser passer (ALI-03, contrat 1.6.65)."""
+    base, token, _ = ms_sidecar
+    _post(f"{base}/doc_relations/set",
+          {"doc_id": 2, "relation_type": "translation_of", "target_doc_id": 1}, token)
+    _post(f"{base}/families/1/segment", {"force": True}, token)
+
+    # Le pivot d'abord : ses cibles n'existent pas encore sous leur unit_id d'origine.
+    code, undone = _post(f"{base}/prep/undo", {"doc_id": 1}, token)
+    assert code == 200, undone
+    assert undone["alignments_restored"] == 0, undone
+    assert undone["alignments_restore_skipped"] == 5, undone

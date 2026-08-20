@@ -5892,11 +5892,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             resegment_document, resegment_document_markers,
             resolve_preset, spec_from_dict,
         )
-        from multicorpus_engine.action_history import (
-            ACTION_RESEGMENT,
-            insert_unit_snapshots,
-            record_prep_action,
-        )
 
         doc_id = body.get("doc_id")
         if doc_id is None:
@@ -5951,70 +5946,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # the recorder's len(new_units) > 0 check is necessary but not
             # sufficient (it would still record the first segmentation as
             # "undo-able to nothing"). We gate on len(units_before) > 0.
-            def _resegment_recorder(payload: dict) -> int | None:
-                units_before = payload["units_before"]
-                if not units_before:
-                    return None
-                d_id      = payload["doc_id"]
-                created   = payload["created_unit_ids"]
-                new_n     = payload["new_units_n"]
-                pack_used = payload["pack"]
-                action_id = record_prep_action(
-                    conn,
-                    doc_id=d_id,
-                    action_type=ACTION_RESEGMENT,
-                    description=(
-                        f"Resegmentation · {len(units_before)} → "
-                        f"{len(created)} unités"
-                    ),
-                    context={
-                        "pack":                     pack_used,
-                        "lang":                     payload["lang"],
-                        "text_start_n":             payload["text_start_n"],
-                        "calibrate_to":             calibrate_to,
-                        "units_deleted_after_ids":  [u["unit_id"] for u in units_before],
-                        "units_created_after_json": [
-                            {"unit_id": uid, "n": n}
-                            for uid, n in zip(created, new_n)
-                        ],
-                        "units_before":             [
-                            {
-                                "unit_id":     u["unit_id"],
-                                "n":           u["n"],
-                                "external_id": u["external_id"],
-                                "text_raw":    u["text_raw"],
-                                "text_norm":   u["text_norm"],
-                                "unit_role":   u["unit_role"],
-                                "meta_json":   u["meta_json"],
-                            }
-                            for u in units_before
-                        ],
-                    },
-                )
-                # Snapshots for the deleted units. The undo path will use
-                # context_json.units_before to reconstruct the rows since the
-                # snapshot table only carries text_raw/text_norm/role/meta —
-                # n and external_id live in context_json.
-                insert_unit_snapshots(
-                    conn,
-                    action_id,
-                    [
-                        {
-                            "unit_id":          u["unit_id"],
-                            "text_raw_before":  u["text_raw"],
-                            "text_norm_before": u["text_norm"] or "",
-                            "unit_role_before": u["unit_role"],
-                            "meta_json_before": u["meta_json"],
-                        }
-                        for u in units_before
-                    ],
-                )
-                return action_id
+            _resegment_recorder = make_resegment_recorder(conn, calibrate_to)
 
             if seg_spec is not None and seg_spec.kind == "markers":
                 # Markers resegmentation carries its own external_id/no-undo path
                 # (same as the async segment job's markers branch).
-                report = resegment_document_markers(conn, doc_id=doc_id)
+                report = resegment_document_markers(
+                    conn, doc_id=doc_id, record_action=make_resegment_recorder(conn))
             else:
                 report = resegment_document(
                     conn,
@@ -6161,7 +6099,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     continue
 
                 try:
-                    report = resegment_document(conn, doc_id=doc_id, lang=lang, pack=pack)
+                    # ALI-10 / D-2 — jusqu'ici ce chemin resegmentait SANS recorder :
+                    # une requete force=true effacait les unites et l'alignement de toute
+                    # la famille sans laisser une ligne dans prep_action_history. Une action
+                    # PAR DOCUMENT, c'est exactement ce que l'historique lineaire sait porter.
+                    report = resegment_document(
+                        conn, doc_id=doc_id, lang=lang, pack=pack,
+                        record_action=make_resegment_recorder(conn),
+                    )
                     entry = {
                         "doc_id": doc_id,
                         "status": "segmented",
@@ -9173,6 +9118,90 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 
+def make_resegment_recorder(conn: "sqlite3.Connection", calibrate_to: object = None):
+    """Build the Mode-A recorder that makes a resegmentation undoable.
+
+    Extracted from ``_handle_segment`` (ALI-10 / décision D-2) so the paths that
+    resegment WITHOUT recording can stop doing so: family segment, async job, markers.
+    Those destroyed a document's units *and* its alignment links with no trace at all —
+    on the reference corpus, one ``force=true`` on a family wiped 5 770 links.
+
+    Archiving the LINKS alone would not have been enough: a resegmentation drops the
+    units too, and a link restored onto a dead ``unit_id`` is filtered out by the FK
+    guard (ALI-03). What makes the revert exact is that ``_undo_resegment`` reinserts the
+    units WITH THEIR ORIGINAL unit_id — so the archive recolle. One action per document:
+    the preparation history is linear per document, and a family segmentation is simply
+    N of those, exactly as a family alignment run is N per-pair runs.
+    """
+    from multicorpus_engine.action_history import (
+        ACTION_RESEGMENT,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+
+    def _recorder(payload: dict) -> int | None:
+        units_before = payload["units_before"]
+        if not units_before:
+            return None
+        d_id      = payload["doc_id"]
+        created   = payload["created_unit_ids"]
+        new_n     = payload["new_units_n"]
+        pack_used = payload["pack"]
+        action_id = record_prep_action(
+            conn,
+            doc_id=d_id,
+            action_type=ACTION_RESEGMENT,
+            description=(
+                f"Resegmentation · {len(units_before)} → "
+                f"{len(created)} unités"
+            ),
+            context={
+                "pack":                     pack_used,
+                "lang":                     payload["lang"],
+                "text_start_n":             payload["text_start_n"],
+                "calibrate_to":             calibrate_to,
+                "units_deleted_after_ids":  [u["unit_id"] for u in units_before],
+                "units_created_after_json": [
+                    {"unit_id": uid, "n": n}
+                    for uid, n in zip(created, new_n)
+                ],
+                "units_before":             [
+                    {
+                        "unit_id":     u["unit_id"],
+                        "n":           u["n"],
+                        "external_id": u["external_id"],
+                        "text_raw":    u["text_raw"],
+                        "text_norm":   u["text_norm"],
+                        "unit_role":   u["unit_role"],
+                        "meta_json":   u["meta_json"],
+                    }
+                    for u in units_before
+                ],
+            },
+        )
+        # Snapshots for the deleted units. The undo path will use
+        # context_json.units_before to reconstruct the rows since the
+        # snapshot table only carries text_raw/text_norm/role/meta —
+        # n and external_id live in context_json.
+        insert_unit_snapshots(
+            conn,
+            action_id,
+            [
+                {
+                    "unit_id":          u["unit_id"],
+                    "text_raw_before":  u["text_raw"],
+                    "text_norm_before": u["text_norm"] or "",
+                    "unit_role_before": u["unit_role"],
+                    "meta_json_before": u["meta_json"],
+                }
+                for u in units_before
+            ],
+        )
+        return action_id
+
+    return _recorder
+
+
 class CorpusServer:
     """Sidecar HTTP server wrapping multicorpus_engine.
 
@@ -9572,11 +9601,16 @@ class CorpusServer:
             with lock:
                 if seg_spec is not None:
                     if seg_spec.kind == "markers":
-                        report = resegment_document_markers(conn, doc_id=doc_id)
+                        report = resegment_document_markers(
+                    conn, doc_id=doc_id, record_action=make_resegment_recorder(conn))
                     else:
-                        report = resegment_document(conn, doc_id=doc_id, spec=seg_spec)
+                        report = resegment_document(
+                            conn, doc_id=doc_id, spec=seg_spec,
+                            record_action=make_resegment_recorder(conn),
+                        )
                 elif seg_mode == "markers":
-                    report = resegment_document_markers(conn, doc_id=doc_id)
+                    report = resegment_document_markers(
+                    conn, doc_id=doc_id, record_action=make_resegment_recorder(conn))
                 else:
                     lang = str(params.get("lang", "und"))
                     pack = params.get("pack", "auto")
@@ -9589,7 +9623,14 @@ class CorpusServer:
                             calibrate_to = int(calibrate_to_raw)
                         except (TypeError, ValueError):
                             pass
-                    report = resegment_document(conn, doc_id=doc_id, lang=lang, pack=pack)
+                    # ALI-10 / D-2 — jusqu'ici ce chemin resegmentait SANS recorder :
+                    # une requete force=true effacait les unites et l'alignement de toute
+                    # la famille sans laisser une ligne dans prep_action_history. Une action
+                    # PAR DOCUMENT, c'est exactement ce que l'historique lineaire sait porter.
+                    report = resegment_document(
+                        conn, doc_id=doc_id, lang=lang, pack=pack,
+                        record_action=make_resegment_recorder(conn),
+                    )
                     if calibrate_to is not None and report.units_output > 0:
                         ref_count = conn.execute(
                             "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'",
