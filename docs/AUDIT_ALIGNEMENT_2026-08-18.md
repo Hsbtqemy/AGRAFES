@@ -1787,3 +1787,47 @@ repris, ce qui suffit à ne pas tromper.
 
 **L'insertion HTML de la note est sûre** : `_openPickerShell` passe par `safeHtml` + `raw()`, et la
 note est entièrement statique — aucune donnée d'utilisateur ni de moteur n'y transite.
+
+## 12. Décisions arrêtées (2026-08-20)
+
+Les trois arbitrages que l'instruction avait isolés sont tranchés. Consignés ici parce qu'ils
+engagent du code qui n'est pas encore écrit.
+
+### D-1 — ALI-01 tranche 2 : corriger une phrase coupée annule sa coupe
+
+La matrice projettera `text_norm`, donc les ancres de coupe passent d'un espace immuable
+(`text_raw`) à un espace mutable. **Règle retenue** : une correction au stylo sur une unité portant
+une coupe **efface les spans de toute la cellule** — l'équivalent d'un ↺ — et le dit.
+
+Pourquoi celle-là plutôt que les trois autres :
+
+* *effacer une seule moitié créerait un recouvrement* — les deux liens d'une coupe se partagent
+  l'unité avec des fenêtres complémentaires ; il n'y a donc pas de demi-mesure cohérente ;
+* *refuser* (400 + ✎ masqué) bloquerait une correction légitime à cause d'une coupe sans rapport,
+  sans chemin de déblocage évident ;
+* *rebaser les offsets par diff* est l'heuristique qui paraît la bonne idée : une correction peut
+  réécrire la zone même de la coupe. Deux correctifs « évidents » de ce type sont déjà morts à la
+  vérification dans ce projet ;
+* la règle se pose **à froid** : 6 liens coupés dans toute la base, aucun en conflit.
+
+### D-2 — ALI-10 chemins de masse : une archive, pas seulement un avertissement
+
+Le compte annoncé avant le geste était l'option la moins chère, et n'a pas été retenue : elle
+protège de la surprise, pas de l'erreur. **Retenu : archiver, et rendre le geste annulable.**
+
+### D-3 — Le chantier d'annulation de l'espace Alignement vient après ALI-01 tranche 2
+
+### Conséquence de D-2 + D-3 : une seule infrastructure, pas deux
+
+Les deux décisions demandent **le même objet** : archiver les liens qu'une opération détruit
+lorsqu'elle embrasse **N documents**, et savoir la défaire — ce que l'historique de préparation, qui
+est *linéaire par document*, ne peut pas porter (c'est l'impasse déjà rencontrée en ALI-17).
+
+Les traiter séparément produirait une troisième puis une quatrième table de purge, chacune avec sa
+clé : `align_run_purge` par `run_id` (existante), une par opération de segmentation, une par geste
+de batch. **Le chantier doit donc porter une archive unique** — clé d'opération générique + nature
+de l'opération — dont `align_run_purge` serait le premier cas à absorber ou à côtoyer, et dont
+ALI-10 masse et ALI-22 (a) seraient des clients.
+
+Séquence retenue : **lot 2 = ALI-01 tranche 2** (décidé, court, même surface), puis **le chantier
+d'archive/annulation**, qui paie ALI-10 masse, ALI-22 (a), ALI-20 et une partie d'ALI-07.
