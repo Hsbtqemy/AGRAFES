@@ -1898,6 +1898,26 @@ export interface FamilyAlignPairResult {
   warnings: string[];
 }
 
+export interface AlignRunUndoResponse {
+  ok: boolean;
+  run_id: string;
+  /** liens que le run avait créés, retirés */
+  links_deleted: number;
+  /** liens créés par le run mais revus depuis (status posé) — gardés, pas supprimés */
+  links_kept: number;
+  /** liens purgés remis en place à l'identique (link_id et src_run_id d'origine) */
+  links_restored: number;
+  /** archives sautées : paire reprise, ou une de leurs unités n'existe plus */
+  links_not_restored: number;
+  reason: string | null;
+}
+
+/** ALI-17 — annuler un run d'alignement (contrat 1.6.66). 409 si un run plus récent
+ *  a déjà remplacé les liens de la paire : il faut annuler celui-là d'abord. */
+export async function undoAlignRun(conn: Conn, runId: string): Promise<AlignRunUndoResponse> {
+  return conn.post("/align/run/undo", { run_id: runId }) as Promise<AlignRunUndoResponse>;
+}
+
 export interface FamilyAlignSummary {
   total_pairs: number;
   aligned: number;

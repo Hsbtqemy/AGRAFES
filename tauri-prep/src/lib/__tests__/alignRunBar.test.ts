@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   ALIGN_DEFAULTS, STRATEGY_LABELS, buildAlignAdvancedHtml, buildAlignRerunConfirmHtml,
-  alignRunSummary,
+  alignRunSummary, undoableRunIds, formatRunUndoOutcome, buildRunUndoOfferHtml,
+  saveRunOffer, loadRunOffer, clearRunOffer, RUN_UNDO_KEY,
 } from "../alignRunBar.ts";
 import type { FamilyAlignResponse } from "../sidecarClient.ts";
 
@@ -115,5 +116,151 @@ describe("buildAlignRerunConfirmHtml — le choix qui était silencieux", () => 
     expect(html).toContain("garde les liens existants");
     // The count includes rejected links — they still hold their row in the unique index.
     expect(html).toContain("rejetés compris");
+  });
+});
+
+
+// ─── ↺ Annuler ce run (ALI-17) ───────────────────────────────────────────────
+
+function pair(over: Partial<FamilyAlignResponse["results"][number]> = {}) {
+  return {
+    pivot_doc_id: 1, target_doc_id: 2, target_lang: "en", relation_type: "translation",
+    run_id: "run-1", status: "aligned" as const, links_created: 5,
+    deleted_before: 0, preserved_before: 0, warnings: [],
+    ...over,
+  };
+}
+
+describe("undoableRunIds — un run de famille, c'est un run PAR PAIRE", () => {
+  it("rend un id par paire réellement alignée", () => {
+    const r = res();
+    r.results = [pair({ run_id: "a" }), pair({ run_id: "b" }), pair({ run_id: "c" })];
+    expect(undoableRunIds(r)).toEqual(["a", "b", "c"]);
+  });
+
+  it("ignore les paires qui n'ont pas tourné — rien à y annuler", () => {
+    const r = res();
+    r.results = [
+      pair({ run_id: "a" }),
+      pair({ run_id: null, status: "skipped" }),
+      pair({ run_id: "c", status: "error" }),
+    ];
+    expect(undoableRunIds(r)).toEqual(["a"]);
+  });
+
+  it("ne propose rien quand aucune paire n'a tourné", () => {
+    expect(undoableRunIds(res())).toEqual([]);
+  });
+});
+
+describe("formatRunUndoOutcome — les trois quantités ne disent pas la même chose", () => {
+  it("résume un run annulé sans réserve", () => {
+    const s = formatRunUndoOutcome([
+      { ok: true, links_deleted: 12, links_kept: 0, links_restored: 8, links_not_restored: 0 },
+    ]);
+    expect(s).toBe("↺ Run annulé : 12 liens retirés, 8 rendus");
+  });
+
+  it("distingue le lien VALIDÉ conservé de la restitution qui n'a pas eu lieu", () => {
+    const s = formatRunUndoOutcome([
+      { ok: true, links_deleted: 3, links_kept: 1, links_restored: 2, links_not_restored: 1 },
+    ]);
+    expect(s).toContain("1 validé conservé");
+    expect(s).toContain("1 non rendu");
+  });
+
+  it("dit l'échec partiel au lieu de le taire — on ne s'arrête pas à la première paire", () => {
+    const s = formatRunUndoOutcome([
+      { ok: true, links_deleted: 4, links_restored: 4 },
+      { ok: false, error: "A later run (run-b) has already replaced the links" },
+      { ok: true, links_deleted: 2, links_restored: 2 },
+    ]);
+    expect(s).toContain("2 paires annulées, 1 refusée");
+    expect(s).toContain("run-b");
+  });
+
+  it("un refus total se lit comme un refus, pas comme un succès à zéro", () => {
+    const s = formatRunUndoOutcome([{ ok: false, error: "Unknown run" }]);
+    expect(s.startsWith("✗")).toBe(true);
+    expect(s).toContain("Unknown run");
+  });
+});
+
+describe("buildRunUndoOfferHtml", () => {
+  it("annonce combien de paires le bouton va annuler", () => {
+    const h = buildRunUndoOfferHtml("✓ 12 liens créés", 3);
+    expect(h).toContain("matrix-run-undo");
+    expect(h).toContain("annule les <strong>3</strong> paires");
+  });
+
+  it("reste au singulier pour une paire", () => {
+    expect(buildRunUndoOfferHtml("✓", 1)).toContain("annule ce run");
+  });
+
+  it("échappe le résumé — il vient du moteur, pas de nous", () => {
+    const h = buildRunUndoOfferHtml('<img src=x onerror="alert(1)">', 1);
+    expect(h).not.toContain("<img");
+    expect(h).toContain("&lt;img");
+  });
+});
+
+describe("survie de l'offre a un rechargement (ALI-17)", () => {
+  function store() {
+    const m = new Map<string, string>();
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    };
+  }
+  const DB = "C:/Users/x/Documents/corpus.WORKCOPY.db";
+  const offer = {
+    dbPath: DB, familyId: 373,
+    runIds: ["a", "b", "c"], summary: "✓ 5616 liens", at: "2026-08-19T18:00:00Z",
+  };
+
+  it("rend l'offre au meme corpus et a la meme famille", () => {
+    const s = store();
+    saveRunOffer(s, offer);
+    expect(loadRunOffer(s, DB, 373)).toEqual(offer);
+  });
+
+  it("ne la rend PAS a une autre famille", () => {
+    const s = store();
+    saveRunOffer(s, offer);
+    expect(loadRunOffer(s, DB, 999)).toBeNull();
+  });
+
+  it("ne la rend PAS a un autre corpus — un run n'appartient pas a une autre base", () => {
+    const s = store();
+    saveRunOffer(s, offer);
+    expect(loadRunOffer(s, "C:/autre/corpus.db", 373)).toBeNull();
+  });
+
+  it("la clé est le CHEMIN de la base, pas l'URL du sidecar — le port change a chaque relance", () => {
+    const s = store();
+    saveRunOffer(s, offer);
+    // Le sidecar a redemarre sur un autre port : l'offre doit survivre, c'est le meme corpus.
+    expect(loadRunOffer(s, DB, 373)).not.toBeNull();
+    expect(JSON.stringify(offer)).not.toContain("127.0.0.1");
+  });
+
+  it("ne propose rien quand la base n'est pas identifiee", () => {
+    const s = store();
+    saveRunOffer(s, offer);
+    expect(loadRunOffer(s, null, 373)).toBeNull();
+  });
+
+  it("s'efface quand on la consomme", () => {
+    const s = store();
+    saveRunOffer(s, offer);
+    clearRunOffer(s);
+    expect(loadRunOffer(s, DB, 373)).toBeNull();
+  });
+
+  it("survit a un contenu illisible sans jeter", () => {
+    const s = store();
+    s.setItem(RUN_UNDO_KEY, "{pas du json");
+    expect(loadRunOffer(s, DB, 373)).toBeNull();
   });
 });

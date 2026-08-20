@@ -55,8 +55,13 @@ export interface Diag {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 export const APP_VERSION_DIAG = "0.1.28";  // fallback if Tauri API unavailable
-export const ENGINE_VERSION_DIAG = "0.7.9";  // fallback if sidecar unreachable
-export const CONTRACT_VERSION_DIAG = "1.6.26";  // fallback if sidecar unreachable
+// Repli quand le sidecar est réellement injoignable. Ces constantes valaient « 0.7.9 »
+// et « 1.6.26 » — un numéro de moteur qui N'A JAMAIS EXISTÉ (le moteur n'a jamais dépassé
+// 0.4.0) et une version de contrat périmée de quarante crans. Elles étaient imprimées
+// telles quelles, sans marqueur : le panneau censé rapporter des faits en fabriquait.
+// Un diagnostic qui ne sait pas doit le dire, jamais inventer une valeur plausible.
+export const ENGINE_VERSION_DIAG = "inconnue (sidecar injoignable)";
+export const CONTRACT_VERSION_DIAG = "inconnue (sidecar injoignable)";
 export const TEI_PROFILES_DIAG = ["generic", "parcolab_like", "parcolab_strict"];
 
 // localStorage keys (replicated from shell.ts to avoid circular imports)
@@ -95,15 +100,24 @@ async function _probeSidecar(): Promise<SidecarHealth> {
     return { running: false };
   }
 
+  // QA-13 — la sonde DOIT passer par la commande Rust, comme tout le reste du shell.
+  // Un fetch() direct depuis le webview est bloqué par CORS (le sidecar n'émet aucun
+  // en-tête Access-Control, et c'est cohérent : personne n'est censé l'appeler ainsi),
+  // si bien que ce panneau annonçait « Running : no » pendant que l'application
+  // dialoguait avec lui — puis repliait sur des versions EN DUR, imprimées comme si
+  // elles avaient été mesurées.
   try {
-    const resp = await fetch(
-      `http://127.0.0.1:${port}/health`,
-      { signal: AbortSignal.timeout(2500) }
+    const { invoke } = await import("@tauri-apps/api/core")
+      .catch(() => ({ invoke: null as unknown as typeof import("@tauri-apps/api/core").invoke }));
+    if (!invoke) return { running: false, error: "Tauri runtime unavailable" };
+    const res = await invoke<{ status: number; ok: boolean; body: string }>(
+      "sidecar_fetch_loopback",
+      { url: `http://127.0.0.1:${port}/health`, method: "GET" },
     );
-    if (!resp.ok) {
-      return { running: true, host: "127.0.0.1", port, error: `HTTP ${resp.status}` };
+    if (!res.ok) {
+      return { running: true, host: "127.0.0.1", port, error: `HTTP ${res.status}` };
     }
-    const data = await resp.json() as Record<string, unknown>;
+    const data = JSON.parse(res.body) as Record<string, unknown>;
     return {
       running: true,
       host: "127.0.0.1",

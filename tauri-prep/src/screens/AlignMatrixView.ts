@@ -24,12 +24,21 @@ import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
   setAlignCellStatus, bulkSetUnitStatus, alignFamily, resolveCollisions,
   retargetCandidates, retargetAlignLink, updateUnitTextNorm, setParagraphBoundary,
+  undoAlignRun,
 } from "../lib/sidecarClient.ts";
 import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
+import { getCurrentDbPath } from "../lib/db.ts";
 import type { AlignStrategy } from "../lib/alignRunBar.ts";
 import {
   ALIGN_DEFAULTS, STRATEGY_LABELS, buildAlignAdvancedHtml, buildAlignRerunConfirmHtml,
   alignRunSummary,
+  undoableRunIds,
+  formatRunUndoOutcome,
+  buildRunUndoOfferHtml,
+  saveRunOffer,
+  loadRunOffer,
+  clearRunOffer,
+  type RunUndoOutcome,
 } from "../lib/alignRunBar.ts";
 import type { AlignMatrix } from "../lib/sidecarClient.ts";
 import type { MatrixView, MatrixRowView } from "../lib/alignMatrix.ts";
@@ -347,6 +356,11 @@ export class AlignMatrixView {
       // revue m4/n2 — a fresh matrix is fresh content: any prior anchoring acknowledgement is
       // void, so the gate re-arms (a re-import that re-broke the anchoring must warn again).
       this._anchorAckFamilyId = null;
+      // ALI-17 — repeindre l'offre « ↺ Annuler ce run » si le run qui vient d'avoir lieu
+      // sur CETTE famille et CE corpus est encore annulable. Sans ça, un rechargement de
+      // page emportait l'offre — et le run qu'on veut le plus défaire (celui qui a doublé
+      // un alignement) est justement celui qui déclenche un rechargement pour aller voir.
+      this._restoreRunUndoOffer(conn);
       if (view.rows.length === 0) {
         setHtml(area, raw('<p class="prep-matrix-hint">Aucun segment dans le moyeu de cette famille.</p>'));
       } else {
@@ -457,6 +471,70 @@ export class AlignMatrixView {
     if (strip) setHtml(strip, raw(""));
   }
 
+
+  /**
+   * Peindre l'offre « ↺ Annuler ce run » dans la bande, et la câbler.
+   *
+   * `conn` et `familyId` sont **capturés à l'instant de l'offre**, comme le fait déjà
+   * `_showRerunConfirm` : le bouton ne doit jamais réécrire une famille dont l'utilisateur
+   * s'est éloigné entre-temps, ni un autre corpus (F1). La bande, elle, est vidée par
+   * `_closeAlignStrip` à tout changement d'entité, donc l'offre ne survit pas au contexte
+   * qui l'a produite.
+   */
+  /** Repeindre l'offre ↺ stockée si elle concerne ce corpus et cette famille. */
+  private _restoreRunUndoOffer(conn: Conn): void {
+    const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
+    const familyId = this._selectedFamilyId;
+    if (!strip || familyId === null) return;
+    const offer = loadRunOffer(sessionStorage, getCurrentDbPath(), familyId);
+    if (!offer) return;
+    this._showRunUndoOffer(strip, offer.summary, offer.runIds, conn, familyId);
+  }
+
+  private _showRunUndoOffer(
+    strip: HTMLElement, line: string, runIds: string[], conn: Conn, familyId: number,
+  ): void {
+    setHtml(strip, raw(buildRunUndoOfferHtml(line, runIds.length)));
+    const btn = strip.querySelector<HTMLButtonElement>("#matrix-run-undo");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      void (async () => {
+        if (this._aligning) return;
+        btn.disabled = true;
+        btn.textContent = "Annulation…";
+        // Toutes les paires sont tentées : s'arrêter à la première refusée laisserait la
+        // famille à moitié annulée, ce qui est pire que l'un ou l'autre des deux états
+        // francs. Le moteur refuse en 409 la paire déjà remplacée par un run plus récent.
+        const outcomes: RunUndoOutcome[] = [];
+        for (const runId of runIds) {
+          try {
+            const r = await undoAlignRun(conn, runId);
+            // `r.ok` est le drapeau d'enveloppe du sidecar ; le nôtre dit si l'APPEL
+            // a abouti. Les étaler dans cet ordre écraserait le second par le premier.
+            const { ok: _envelope, ...counts } = r;
+            outcomes.push({ ...counts, ok: true });
+          } catch (err) {
+            outcomes.push({
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        const summary = formatRunUndoOutcome(outcomes);
+        // Consommée : une offre qui survivrait à son annulation proposerait de défaire
+        // un run qui n'existe plus, et le moteur répondrait « nothing_to_revert ».
+        if (outcomes.some((o) => o.ok)) clearRunOffer(sessionStorage);
+        strip.textContent = summary;
+        this._cb.toast?.(summary, outcomes.every((o) => !o.ok));
+        // Les liens ont bougé : la grille doit repartir de la base, pas d'un état déduit.
+        if (outcomes.some((o) => o.ok)) {
+          this._selectedFamilyId = familyId;
+          await this._loadMatrix();
+        }
+      })();
+    });
+  }
+
   private _showRerunConfirm(linkCount: number): void {
     const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
     if (!strip) return;
@@ -540,7 +618,26 @@ export class AlignMatrixView {
     try {
       const res = await alignFamily(conn, familyId, opts);
       const line = alignRunSummary(res, opts, existingLinks);
-      if (strip) strip.textContent = line;
+      // ALI-17 — offrir le retour arrière tant que le run est sous les yeux de celui qui
+      // l'a fait. L'offre est transitoire par construction : elle vit dans la bande, que
+      // _closeAlignStrip vide à tout changement de famille ou de corpus (même garde F1/F5
+      // que le bandeau de confirmation).
+      const undoable = undoableRunIds(res);
+      if (strip && undoable.length > 0) {
+        const dbPath = getCurrentDbPath();
+        if (dbPath) {
+          saveRunOffer(sessionStorage, {
+            dbPath, familyId, runIds: undoable, summary: line,
+            at: new Date().toISOString(),
+          });
+        }
+        this._showRunUndoOffer(strip, line, undoable, conn, familyId);
+      } else if (strip) {
+        // Un run qui n'a rien fait n'annule rien : ne pas laisser traîner l'offre du run
+        // précédent, qui porterait sur un état que celui-ci a pu changer.
+        clearRunOffer(sessionStorage);
+        strip.textContent = line;
+      }
       this._cb.toast?.(line, res.summary.errors > 0 || !line.startsWith("✓"));
       // The whole point of aligning from here: see the result in the grid at once — for
       // THE family that was aligned.

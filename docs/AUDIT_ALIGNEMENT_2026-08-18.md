@@ -54,7 +54,7 @@ conclusions** des §8 et §10.
 | ALI-14 | 🟢 | P3 | L'avertissement d'ancrage dit quoi faire, jamais **pourquoi** : segmenter et ancrer sont confondus. |
 | ALI-15 | 🟠 | P1 | Impossible de réaligner **une seule langue** depuis l'UI ; le moteur sait le faire, le wrapper front existe et n'est appelé nulle part. |
 | ALI-16 | 🟡 | P2 | Aucun effectif par colonne : la comparabilité des grains, qui décide de la qualité, n'est pas lisible. |
-| ALI-17 | ⏳ | ~~P1~~ | Réaligner après une **coupe d'unité** superpose une couche au lieu de la remplacer — l'unicité porte sur la paire d'unités. |
+| ALI-17 | ✅ | ~~P1~~ | Réaligner après une **coupe d'unité** superpose une couche au lieu de la remplacer — l'unicité porte sur la paire d'unités. |
 | ALI-18 | 🟠 | P1 | Chaque geste re-projette la famille entière, toutes langues comprises : ~2 s pour une cellule sur 7 652. |
 | ALI-19 | ✅ | ~~P0~~ | Aucune statistique SQLite (`ANALYZE` jamais lancé) → mauvais index sur un `NOT EXISTS` corrélé. **17,6×** pour 46 ms. |
 | ALI-20 | 🟡 | P2 | Pas de bandeau d'annulation dans l'Alignement, **y compris pour les deux gestes qui sont journalisés** (✎, ¶). |
@@ -1414,6 +1414,62 @@ document — mais le lot le rend visible, et c'est un nouveau membre de la famil
 
 **Non corrigé délibérément** : scoper le regroupement changerait le grain de documents existants.
 C'est un arbitrage produit, pas une correction évidente. Porté au `Reste` de `pilotage/R6.md`.
+
+
+### 11.10 QA en exécution du geste ↺, et ce qu'elle a révélé (2026-08-19/20)
+
+Le geste front d'ALI-17 a été écrit, puis **essayé dans le shell sur la base de travail**, avec le
+sidecar empaqueté reconstruit (contrat 1.6.66 vérifié dans le binaire). Trois défauts du geste sont
+tombés en exécution, aucun n'aurait été vu par vitest.
+
+**1. Le bouton se proposait puis se dédisait.** `undoableRunIds` ne filtrait que sur
+`status === "aligned"` — que le moteur pose **inconditionnellement** dès que la paire a tourné sans
+lever (`sidecar.py:6768`), même avec `links_created = 0`. C'est le cas normal d'un « Compléter » sur
+une famille déjà saturée : trois runs Modiano à 0 lien, l'offre affichée, et le moteur qui répond
+`nothing_to_revert`. Corrigé : n'offrir que si `links_created > 0 || deleted_before > 0`, deux
+champs déjà présents dans la charge utile.
+
+**2. L'offre ne survivait pas à un rechargement de page** — et le run qu'on veut le plus défaire est
+justement celui qui pousse à aller voir ailleurs. Corrigé par une persistance en `sessionStorage`
+(survivre à un rechargement, pas à un redémarrage).
+
+**3. La clé de cette persistance était fausse** : `conn.baseUrl`, qui contient le **port** — et le
+sidecar en change à chaque relance, donc à chaque rechargement. Une offre enregistrée sous
+`http://127.0.0.1:52523` était introuvable après relance sur `51533` : la persistance ne survivait
+à rien, et surtout pas au seul événement contre lequel elle existait. Corrigé : la clé est
+`getCurrentDbPath()`, l'identité du **corpus**. Troisième occurrence dans la même journée d'un
+identifiant retenu parce qu'il était sous la main, sans vérifier ce qu'il garantit (cf. §11.4
+`text_norm_before`, §11.2 le `run_id` nullable).
+
+**Ce que la QA a confirmé, sur données réelles.** Cycle complet mesuré sur une copie de la base
+(5 593 liens, binaire empaqueté) : purge archivée intégralement, puis annulation rendant une
+empreinte SHA-256 **identique** (`f232edd5e459f54b…` avant et après), en 208 ms. Garde `superseded`
+éprouvée : le run ancien refusé en 409 en **nommant** le run à annuler d'abord, puis redevenu
+annulable une fois celui-ci défait — les générations se dépilent dans l'ordre.
+
+**Et un incident qui vaut mieux que le test prévu.** Un « Compléter » lancé avec une **autre
+stratégie** a créé 5 616 liens **par-dessus** les 5 593 existants — la famille Modiano doublée en
+trois secondes, sans avertissement proportionné. C'est ALI-17 reproduit sur données réelles sans
+l'avoir cherché, et le ↺ l'a défait exactement (5 616 supprimés, rien à restituer puisque rien
+n'avait été purgé). L'avertissement du « Compléter » a été réécrit en conséquence : il disait « une
+autre stratégie peut en ajouter par-dessus », ce qui est vrai et n'aide pas à décider ; il donne
+maintenant l'ordre de grandeur.
+
+### 11.11 Deux constats ouverts, issus de cette QA
+
+**L'archive d'un run *superseded* n'est jamais réclamée.** Après deux recalculs successifs de
+Modiano, `align_run_purge` porte **11 363 lignes** (5 593 + 5 770) dont la première moitié appartient
+à des runs qui ne peuvent plus être annulés tant que les seconds tiennent. La suppression d'office
+serait **fausse** : la QA a démontré qu'annuler le run récent rend l'ancien de nouveau annulable —
+le dépilage a besoin de cette archive. Le correctif est une politique de rétention (garder les *N*
+dernières générations par paire, ou purger au-delà de *X* jours), évoquée au §10 et non implémentée.
+Ordre de grandeur : ~5 600 lignes (~600 Ko) par recalcul de famille, non borné.
+
+**La stratégie `position` produit plus de liens que d'unités cibles.** Sur 373→419 : 1 924 liens
+pour 1 857 unités, soit **66 cibles partagées** là où la génération précédente en comptait 2.
+Arithmétiquement inévitable dès que le compte de liens dépasse le compte d'unités. Ce n'est pas un
+défaut du mécanisme d'annulation mais un signal sur la **stratégie** — et il n'est visible que
+depuis ALI-22 : la métrique historique compte 0 dans les deux cas.
 
 ### 11.8 Plan qui en découle
 
