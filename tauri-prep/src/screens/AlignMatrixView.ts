@@ -24,8 +24,14 @@ import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
   setAlignCellStatus, bulkSetUnitStatus, alignFamily, resolveCollisions,
   retargetCandidates, retargetAlignLink, updateUnitTextNorm, setParagraphBoundary,
+  undoAlignBatch,
   undoAlignRun,
 } from "../lib/sidecarClient.ts";
+import { AlignUndoBanner } from "../components/AlignUndoBanner.ts";
+import {
+  armFromBatch, describeUndoFailure, describeUndoOutcome, shouldDisarmAfterFailure,
+} from "../lib/alignUndoGesture.ts";
+import type { UndoableGesture } from "../lib/alignUndoGesture.ts";
 import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
 import { getCurrentDbPath } from "../lib/db.ts";
 import type { AlignStrategy } from "../lib/alignRunBar.ts";
@@ -80,6 +86,8 @@ function shortenCp(s: string, max: number): string {
 
 export class AlignMatrixView {
   private _root: HTMLElement | null = null;
+  /** ALI-20 — le dernier geste défaisable, offert au-dessus de la grille. */
+  private readonly _undoBanner = new AlignUndoBanner((g) => void this._onUndoClick(g));
   private _families: FamilyRecord[] = [];
   private _selectedFamilyId: number | null = null;
   private _loading = false;
@@ -140,6 +148,10 @@ export class AlignMatrixView {
       + `</div>`,
     ));
 
+    // Le bandeau vit au-dessus de la grille, sous la bande de confirmation : les deux
+    // ne se disputent pas la place et ne se remplacent jamais l'un l'autre.
+    root.querySelector("#matrix-align-strip")?.after(this._undoBanner.element);
+
     const sel = root.querySelector<HTMLSelectElement>("#matrix-family")!;
     const loadBtn = root.querySelector<HTMLButtonElement>("#matrix-load")!;
     const alignBtn = root.querySelector<HTMLButtonElement>("#matrix-align")!;
@@ -153,6 +165,9 @@ export class AlignMatrixView {
       // revue m1 — a rerun-confirm or an anchoring gate armed for the PREVIOUS family must
       // not survive the switch (it would describe the wrong entity above the new grid).
       this._closeAlignStrip();
+      // Même raison pour le bandeau d'annulation : il nomme un geste fait AILLEURS, et
+      // son bouton agirait sur des liens que la nouvelle grille ne montre pas.
+      this._undoBanner.disarm();
     });
     loadBtn.addEventListener("click", () => void this._loadMatrix());
     alignBtn.addEventListener("click", () => void this._onAlignClick());
@@ -286,6 +301,11 @@ export class AlignMatrixView {
     // The re-run confirm strip must not survive a corpus switch: its « Recalcul global »
     // would rewrite a family of the OLD database (revue tranche 5, critique).
     this._closeAlignStrip();
+    // Même raison, plus tranchante encore : un `op_id` n'a de sens que pour UNE base.
+    // Le même entier désigne une autre opération dans un autre corpus, et « Annuler »
+    // y toucherait des liens sans rapport. Le commentaire plus bas énonce le principe
+    // (« a conn change invalidates ALL ids ») ; la poignée d'annulation en fait partie.
+    this._undoBanner.disarm();
     this._matrix = null;
     this._view = null;
     this._loadedConn = null;
@@ -954,7 +974,10 @@ export class AlignMatrixView {
     if (actions.length === 0) return;
     okBtn.disabled = true; // one flight max — a double-click must not double-post (F5)
     try {
-      const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
+      const res = await batchUpdateAlignLinks(conn, actions, {
+        atomic: true, label: "✂ Couper à cheval",
+      });
+      this._armUndo(res, "✂ Couper à cheval");
       if (res.errors.length) {
         if (res.applied > 0) {
           // Old sidecar without atomic support: the applied half is durably committed.
@@ -1116,23 +1139,32 @@ export class AlignMatrixView {
     // Inherit the sibling's pair number so audit views sort the new link with its family.
     const inherit = (l: MatrixCellLink) =>
       typeof l.external_id === "number" ? { external_id: l.external_id } : {};
+    // D-3 : la PREMIÈRE requête du geste ouvre l'opération, toutes les suivantes la
+    // rejoignent. Ne défaire que la moitié « batch » ressusciterait le lien supprimé en
+    // laissant les liens créés — le doublon d'ALI-22, sous un bouton qui a l'air complet.
+    // Déclaré HORS du try : la compensation, dans le catch, en a besoin elle aussi.
+    let opId: number | null = null;
+    const LABEL = "✂ Couper la cellule";
     try {
       let splitCreatedId: number | null = null;
       if (plan.split) {
         const c = await createAlignLink(conn, {
           pivot_unit_id: neighborHubUnitId, target_unit_id: plan.split.link.target_unit_id,
-          ...inherit(plan.split.link),
+          ...inherit(plan.split.link), op_id: opId, label: LABEL,
         });
         splitCreatedId = c.link_id;
         createdIds.push(c.link_id);
+        opId = c.op_id ?? opId;
       }
       const moveCreatedIds: number[] = [];
       for (const m of plan.moves) {
         const c = await createAlignLink(conn, {
           pivot_unit_id: neighborHubUnitId, target_unit_id: m.target_unit_id, ...inherit(m),
+          op_id: opId, label: LABEL,
         });
         moveCreatedIds.push(c.link_id);
         createdIds.push(c.link_id);
+        opId = c.op_id ?? opId;
       }
 
       const actions: AlignBatchAction[] = [];
@@ -1155,7 +1187,8 @@ export class AlignMatrixView {
       });
       if (actions.length === 0) throw new Error("aucune action à appliquer");
 
-      const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
+      const res = await batchUpdateAlignLinks(conn, actions, { atomic: true, opId, label: LABEL });
+      opId = res.op_id ?? opId;
       if (res.errors.length) {
         if (res.applied > 0 || res.deleted > 0) {
           // Old sidecar without atomic: partially committed — resync (revue G3 : un
@@ -1170,7 +1203,12 @@ export class AlignMatrixView {
         // survit → resync pour montrer l'état réel (revue G3 : c'était avalé sans resync).
         let compensated = true;
         for (const id of createdIds) {
-          try { await deleteAlignLink(conn, { link_id: id }); } catch { compensated = false; }
+          // La compensation rejoint l'opération du geste : sans `op_id`, chaque
+          // suppression ouvrirait la sienne et chasserait un geste réel de la pile
+          // bornée à 50. Le geste a échoué, donc rien n'est offert à l'annulation —
+          // mais sa comptabilité ne doit pas polluer celle des autres.
+          try { await deleteAlignLink(conn, { link_id: id, op_id: opId }); }
+          catch { compensated = false; }
         }
         if (!compensated) {
           close();
@@ -1186,9 +1224,10 @@ export class AlignMatrixView {
       // (1 hub ↔ N targets, D-W16). Best-effort in its own non-atomic batch — hygiene, not
       // the gesture: inside the atomic batch a sidecar < 1.6.57 (no set_bead) would roll the
       // whole cut back (revue T5).
-      await this._groupCellBead(conn, [
+      const bead = await this._groupCellBead(conn, [
         ...neighborLinks, ...createdIds.map((id) => ({ link_id: id, manual: true as const })),
-      ]);
+      ], opId);
+      this._armUndo({ op_id: bead.opId }, LABEL);
       close();
       // A whole-unit MOVE onto an ALREADY-translated neighbour continues the drift: the
       // neighbour is now multi-phrase, likely still shifted (the Beigbeder cascade). Say so —
@@ -1209,7 +1248,12 @@ export class AlignMatrixView {
       if (createdIds.length) {
         let compensated = true;
         for (const id of createdIds) {
-          try { await deleteAlignLink(conn, { link_id: id }); } catch { compensated = false; }
+          // La compensation rejoint l'opération du geste : sans `op_id`, chaque
+          // suppression ouvrirait la sienne et chasserait un geste réel de la pile
+          // bornée à 50. Le geste a échoué, donc rien n'est offert à l'annulation —
+          // mais sa comptabilité ne doit pas polluer celle des autres.
+          try { await deleteAlignLink(conn, { link_id: id, op_id: opId }); }
+          catch { compensated = false; }
         }
         if (compensated) {
           okBtn.disabled = false;
@@ -1325,16 +1369,72 @@ export class AlignMatrixView {
    * `buildCellBeadActions` refuses to group a cell that already carried ≥ 2 aligner links
    * (a genuine collision to arbitrate — T1); the caller says so to the user.
    */
+  /**
+   * Arme le bandeau sur le geste qui vient d'avoir lieu (ALI-20, D-3).
+   *
+   * Appelé APRÈS chaque geste, avec le libellé que l'écran donne déjà à ce geste — on
+   * ne recalcule pas un nom côté client, sinon le bandeau et le toast diraient deux
+   * choses différentes de la même action.
+   */
+  private _armUndo(res: { op_id?: number | null; rolled_back?: boolean }, label: string): void {
+    this._undoBanner.arm(armFromBatch(res, label, this._selectedFamilyId));
+  }
+
+  /**
+   * Défait le geste que le bandeau offre, puis resynchronise la grille.
+   *
+   * Le rechargement n'est pas cosmétique : l'annulation change des liens que la matrice
+   * a déjà peints, et la laisser telle quelle montrerait un état que la base ne porte
+   * plus. On recharge même sur restitution partielle — surtout sur restitution
+   * partielle, puisque c'est le cas où l'écran et la base divergent le plus.
+   */
+  private async _onUndoClick(gesture: UndoableGesture): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) { this._undoBanner.release(); return; }
+    // Défense en profondeur. Le bandeau est déjà désarmé au changement de famille et de
+    // connexion ; cette garde rend l'invariant VÉRIFIÉ plutôt que supposé. Sans elle,
+    // `familyId` n'était qu'un champ décoratif — écrit, jamais lu.
+    if (gesture.familyId !== this._selectedFamilyId) {
+      this._undoBanner.disarm();
+      this._cb.toast?.("✗ Ce geste portait sur une autre famille — annulation abandonnée", true);
+      return;
+    }
+    try {
+      const res = await undoAlignBatch(conn, gesture.opId);
+      this._undoBanner.disarm();
+      this._cb.toast?.(describeUndoOutcome(res), res.skipped > 0);
+      await this._reloadPreservingScroll();
+    } catch (err) {
+      const statut = (err as { httpStatus?: number }).httpStatus;
+      const msg = err instanceof Error ? err.message : String(err);
+      this._cb.toast?.(describeUndoFailure(msg, statut), true);
+      if (shouldDisarmAfterFailure(statut)) {
+        this._undoBanner.disarm();
+        // Un 409 dit qu'un geste POSTÉRIEUR porte sur ces liens : la grille peut donc
+        // être en retard sur la base. Un 404 ne le dit pas, mais le coût d'un
+        // rechargement est bien moindre que celui d'un écran qui ment.
+        await this._reloadPreservingScroll();
+      } else {
+        this._undoBanner.release();
+      }
+    }
+  }
+
   private async _groupCellBead(
     conn: Conn, cellLinks: ReadonlyArray<Pick<MatrixCellLink, "link_id" | "manual">>,
-  ): Promise<{ grouped: boolean }> {
+    opId: number | null = null,
+  ): Promise<{ grouped: boolean; opId: number | null }> {
     const actions = buildCellBeadActions(cellLinks);
-    if (actions.length === 0) return { grouped: false };
+    if (actions.length === 0) return { grouped: false, opId };
     try {
-      await batchUpdateAlignLinks(conn, actions);
-      return { grouped: true };
+      // D-3 : ce regroupement est la TROISIÈME requête d'un geste qui en compte déjà
+      // deux (create puis batch). Il rejoint donc leur opération : sans `opId`, il
+      // ouvrirait la sienne, et « Annuler » ne défairait que le bead en laissant la
+      // coupe faite.
+      const res = await batchUpdateAlignLinks(conn, actions, { opId });
+      return { grouped: true, opId: res.op_id ?? opId };
     } catch {
-      return { grouped: false };
+      return { grouped: false, opId };
     }
   }
 
@@ -1356,16 +1456,28 @@ export class AlignMatrixView {
     if (!conn) return;
     okBtn.disabled = true;
     let createdId: number | null = null;
+    // Hors du try, comme `createdId` et pour la même raison : la compensation vit dans
+    // le catch et doit rejoindre l'opération du geste plutôt que d'en ouvrir une.
+    let mergeOpId: number | null = null;
+    const MERGE_LABEL = "⭙ Absorber la phrase voisine";
     try {
       const created = await createAlignLink(conn, {
         pivot_unit_id: hubUnitId,
         target_unit_id: neighborLink.target_unit_id,
         ...(typeof neighborLink.external_id === "number"
           ? { external_id: neighborLink.external_id } : {}),
+        label: MERGE_LABEL,
       });
       createdId = created.link_id;
+      // D-3 : la suppression rejoint l'opération que la création vient d'ouvrir. C'est
+      // LE geste qu'ALI-22 décrit — le défaire à moitié laisserait la cible sur deux
+      // segments, masquée par le bead.
+      mergeOpId = created.op_id ?? null;
       const actions = [{ action: "delete" as const, link_id: neighborLink.link_id }];
-      const res = await batchUpdateAlignLinks(conn, actions, { atomic: true });
+      const res = await batchUpdateAlignLinks(conn, actions, {
+        atomic: true, opId: mergeOpId, label: MERGE_LABEL,
+      });
+      mergeOpId = res.op_id ?? mergeOpId;
       if (res.errors.length) {
         if (res.applied > 0 || res.deleted > 0) {
           close();
@@ -1374,14 +1486,15 @@ export class AlignMatrixView {
           await this._reloadPreservingScroll();
           return;
         }
-        await deleteAlignLink(conn, { link_id: createdId });
+        await deleteAlignLink(conn, { link_id: createdId, op_id: mergeOpId });
         createdId = null;
         this._cb.toast?.(`✗ Fusion refusée : ${res.errors[0].error} (rien n'a été appliqué)`, true);
         okBtn.disabled = false;
         return;
       }
-      const { grouped } = await this._groupCellBead(
-        conn, [...cellLinks, { link_id: createdId, manual: true }]);
+      const { grouped, opId: beadOpId } = await this._groupCellBead(
+        conn, [...cellLinks, { link_id: createdId, manual: true }], mergeOpId);
+      this._armUndo({ op_id: beadOpId }, MERGE_LABEL);
       close();
       // Say what actually happened: only the EDGE link moves, so the neighbour keeps its
       // other links (T6); and a cell that already carried several aligner links is a real
@@ -1403,7 +1516,7 @@ export class AlignMatrixView {
         : raw;
       if (createdId != null) {
         try {
-          await deleteAlignLink(conn, { link_id: createdId });
+          await deleteAlignLink(conn, { link_id: createdId, op_id: mergeOpId });
           okBtn.disabled = false;
           this._cb.toast?.(`✗ Fusion : ${msg}`, true);
         } catch {
@@ -1498,7 +1611,10 @@ export class AlignMatrixView {
     if (actions.length === 0) return;
     this._cutBusy = true; // no modal here — the flag guards the whole round-trip (F5)
     try {
-      const resp = await batchUpdateAlignLinks(conn, actions, { atomic: true });
+      const resp = await batchUpdateAlignLinks(conn, actions, {
+        atomic: true, label: "↺ Rendre la phrase entière",
+      });
+      this._armUndo(resp, "↺ Rendre la phrase entière");
       if (resp.errors.length) {
         if (resp.applied > 0 || resp.deleted > 0) {
           // Old sidecar without atomic: partially committed — resync.
@@ -1777,11 +1893,20 @@ export class AlignMatrixView {
     }
     this._cutBusy = true; // guards the round-trip (F5)
     try {
+      // Un seul bouton, deux branches — `retarget` quand la cellule porte déjà un lien,
+      // `create` quand elle est vide. Les deux s'archivent (1.6.70), sinon le même geste
+      // serait annulable une fois sur deux selon l'état de la cellule.
       if (existingLinkId != null) {
-        await retargetAlignLink(conn, { link_id: existingLinkId, new_target_unit_id: targetUnitId });
+        const LABEL = "↔ Re-cibler la traduction";
+        const res = await retargetAlignLink(
+          conn, { link_id: existingLinkId, new_target_unit_id: targetUnitId, label: LABEL });
+        this._armUndo(res, LABEL);
         this._cb.toast?.("✓ Traduction re-ciblée");
       } else {
-        await createAlignLink(conn, { pivot_unit_id: pivotUnitId, target_unit_id: targetUnitId });
+        const LABEL = "＝ Rattacher la traduction";
+        const res = await createAlignLink(
+          conn, { pivot_unit_id: pivotUnitId, target_unit_id: targetUnitId, label: LABEL });
+        this._armUndo(res, LABEL);
         this._cb.toast?.("✓ Traduction rattachée");
       }
       await this._reloadPreservingScroll();
@@ -1845,8 +1970,9 @@ export class AlignMatrixView {
       const res = await batchUpdateAlignLinks(
         conn,
         [{ action: "set_pivot", link_id: fromLinkId, new_pivot_unit_id: newPivotUnitId }],
-        { atomic: true },
+        { atomic: true, label: "⚓ Ré-ancrer sur un autre segment" },
       );
+      this._armUndo(res, "⚓ Ré-ancrer sur un autre segment");
       if (res.errors.length > 0) {
         this._cb.toast?.(`✗ Ré-ancrer : ${res.errors[0].error}`, true);
       } else {

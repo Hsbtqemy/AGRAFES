@@ -100,6 +100,9 @@ const FAMILY = {
   stats: { total_docs: 2 },
 };
 
+/** L'opération qu'un sidecar ouvre au premier appel d'un geste. */
+const OP_ID = 501;
+
 interface ConnOpts { batchResponse?: unknown; matrix?: AlignMatrix }
 
 function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts = {}): Conn {
@@ -114,13 +117,29 @@ function makeConn(calls: Array<{ path: string; body: unknown }>, opts: ConnOpts 
       calls.push({ path, body });
       if (path === "/align/matrix") return opts.matrix ?? MATRIX_FUSED;
       if (path === "/align/links/batch_update") {
-        return opts.batchResponse ?? { ok: true, applied: 2, deleted: 0, errors: [], rolled_back: false };
+        // D-3 : un sidecar >= 1.6.70 rend l'op_id qu'on lui a passé, ou en ouvre un.
+        // La doublure DOIT le faire aussi : sans ça l'enfilage de l'opération à travers
+        // les requêtes d'un même geste ne serait testé nulle part, et un `Annuler` qui
+        // ne défait que la moitié du geste passerait au vert.
+        const recu = (body as { op_id?: number }).op_id;
+        return opts.batchResponse ?? {
+          ok: true, applied: 2, deleted: 0, errors: [], rolled_back: false,
+          op_id: recu ?? OP_ID,
+        };
       }
       if (path === "/align/link/create") {
-        const b = body as { pivot_unit_id: number; target_unit_id: number };
+        const b = body as { pivot_unit_id: number; target_unit_id: number; op_id?: number };
         return {
           link_id: 77, pivot_unit_id: b.pivot_unit_id, target_unit_id: b.target_unit_id,
           pivot_doc_id: 2, target_doc_id: 3, status: null, created: 1,
+          op_id: b.op_id ?? OP_ID,
+        };
+      }
+      if (path === "/align/links/batch_undo") {
+        return {
+          ok: true, op_id: (body as { op_id: number }).op_id,
+          description: "⭙ Absorber la phrase voisine",
+          updated: 0, reinserted: 1, deleted: 1, skipped: 0,
         };
       }
       if (path === "/align/link/delete") {
@@ -197,12 +216,18 @@ describe("AlignMatrixView — « ⭙ Fusionner » (D-W16)", () => {
 
     // The link is re-created on THIS hub unit, inheriting the pair number…
     const create = calls.find((c) => c.path === "/align/link/create");
-    expect(create?.body).toEqual({ pivot_unit_id: 101, target_unit_id: 901, external_id: 2 });
+    expect(create?.body).toEqual({
+      pivot_unit_id: 101, target_unit_id: 901, external_id: 2, label: "⭙ Absorber la phrase voisine",
+    });
     // …the neighbour's link is deleted ATOMICALLY (the gesture itself)…
     const batches = calls.filter((c) => c.path === "/align/links/batch_update");
     expect(batches[0].body).toEqual({
       actions: [{ action: "delete", link_id: 14 }],
       atomic: true,
+      // D-3 : la suppression REJOINT l'opération que la création vient d'ouvrir. Sans
+      // cet op_id, « Annuler » rendrait le lien supprimé en laissant le lien créé —
+      // la cible sur deux segments, exactement ce que décrit ALI-22.
+      op_id: OP_ID, label: "⭙ Absorber la phrase voisine",
     });
     // …and the cell's bead follows in its OWN, non-atomic batch (revue T5): grouping is
     // hygiene — inside the atomic batch, an older sidecar that ignores set_bead would roll
@@ -212,6 +237,9 @@ describe("AlignMatrixView — « ⭙ Fusionner » (D-W16)", () => {
         { action: "set_bead", link_id: 13 },
         { action: "set_bead", link_id: 77 },
       ],
+      // Le regroupement est la TROISIÈME requête du geste et rejoint la même opération :
+      // un « Annuler » qui ne défairait que le bead laisserait la coupe faite.
+      op_id: OP_ID,
     });
     expect(toasts).toContain("✓ Phrase absorbée — le segment voisin est à traiter");
   });
@@ -242,7 +270,10 @@ describe("AlignMatrixView — « ⭙ Fusionner » (D-W16)", () => {
     // The merge itself happens (delete of the neighbour's link)…
     const batches = calls.filter((c) => c.path === "/align/links/batch_update");
     expect(batches).toHaveLength(1);
-    expect(batches[0].body).toEqual({ actions: [{ action: "delete", link_id: 14 }], atomic: true });
+    expect(batches[0].body).toEqual({
+      actions: [{ action: "delete", link_id: 14 }], atomic: true,
+      op_id: OP_ID, label: "⭙ Absorber la phrase voisine",
+    });
     // …but NO set_bead is posted, and the user is told the cell needs arbitration.
     expect(JSON.stringify(batches[0].body)).not.toContain("set_bead");
     expect(toasts.some((t) => t.includes("ambiguïté d'alignement"))).toBe(true);
@@ -324,6 +355,7 @@ describe("AlignMatrixView — « ✂ Couper » on a fused cell (3b, via cell_lin
         { action: "set_target_span", link_id: 12, char_start: 6, char_end: 17 },
       ],
       atomic: true,
+      label: "✂ Couper à cheval",
     });
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
     expect(toasts).toContain("✓ Traduction coupée");
@@ -470,7 +502,9 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     // The missing link goes to the NEIGHBOUR hub unit (FR deux = 102), same target,
     // and inherits the sibling's pair number (D-W13, 1.6.55).
     const create = calls.find((c) => c.path === "/align/link/create");
-    expect(create?.body).toEqual({ pivot_unit_id: 102, target_unit_id: 900, external_id: 1 });
+    expect(create?.body).toEqual({
+      pivot_unit_id: 102, target_unit_id: 900, external_id: 1, label: "✂ Couper la cellule",
+    });
     // "down": the cell keeps the head, the created link takes the tail — atomically.
     // Suggested boundary on "As far back" (hubs "FR un"/"FR deux") = 3.
     const batches = calls.filter((c) => c.path === "/align/links/batch_update");
@@ -480,6 +514,7 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
         { action: "set_target_span", link_id: 77, char_start: 3, char_end: 11 },
       ],
       atomic: true,
+      op_id: OP_ID, label: "✂ Couper la cellule",
     });
     // The neighbour's cell (its own link 14 + the created 77) is grouped into ONE bead in
     // a SEPARATE, best-effort batch (revue T5): hygiene must not be able to roll the cut
@@ -489,6 +524,7 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
         { action: "set_bead", link_id: 14 },
         { action: "set_bead", link_id: 77 },
       ],
+      op_id: OP_ID,
     });
     expect(toasts).toContain("✓ Traduction coupée à cheval");
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
@@ -533,14 +569,20 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     });
     // The whole sentence is re-created on the NEXT hub unit (seg 70 = 103), pair inherited…
     const create = calls.find((c) => c.path === "/align/link/create");
-    expect(create?.body).toEqual({ pivot_unit_id: 103, target_unit_id: 902, external_id: 2 });
+    expect(create?.body).toEqual({
+      pivot_unit_id: 103, target_unit_id: 902, external_id: 2, label: "✂ Couper la cellule",
+    });
     const batches = calls.filter((c) => c.path === "/align/links/batch_update");
     // …the original link is DELETED atomically — NO set_target_span: nothing is sliced.
-    expect(batches[0].body).toEqual({ actions: [{ action: "delete", link_id: 12 }], atomic: true });
+    expect(batches[0].body).toEqual({
+      actions: [{ action: "delete", link_id: 12 }], atomic: true,
+      op_id: OP_ID, label: "✂ Couper la cellule",
+    });
     expect(JSON.stringify(batches[0].body)).not.toContain("set_target_span");
     // …and seg 70's cell (its own link 13 + the moved 77) becomes one bead, out of band.
     expect(batches[1].body).toEqual({
       actions: [{ action: "set_bead", link_id: 13 }, { action: "set_bead", link_id: 77 }],
+      op_id: OP_ID,
     });
     // seg 70 was already translated → the toast flags the continuing cascade.
     expect(toasts.some((t) => t.includes("Phrase déplacée") && t.includes("plusieurs phrases"))).toBe(true);
@@ -626,7 +668,10 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
       expect(toasts.some((t) => t.includes("Coupe refusée"))).toBe(true);
     });
     const del = calls.find((c) => c.path === "/align/link/delete");
-    expect(del?.body).toEqual({ link_id: 77 });
+    // La compensation REJOINT l'opération du geste raté. Sans cet op_id elle ouvrirait
+    // la sienne, et une poignée de gestes échoués suffirait à chasser les vrais de la
+    // pile bornée à 50.
+    expect(del?.body).toEqual({ link_id: 77, op_id: OP_ID });
     expect(document.querySelector(".prep-matrix-cut-overlay")).not.toBeNull();
     expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(1); // nothing changed
   });
@@ -722,7 +767,9 @@ describe("AlignMatrixView — « ＝ Rattacher / re-cibler » (D-W19)", () => {
       expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); // re-projected
     });
     const create = calls.find((c) => c.path === "/align/link/create");
-    expect(create?.body).toEqual({ pivot_unit_id: 101, target_unit_id: 950 });
+    expect(create?.body).toEqual({
+      pivot_unit_id: 101, target_unit_id: 950, label: "＝ Rattacher la traduction",
+    });
     expect(calls.some((c) => c.path === "/align/link/retarget")).toBe(false);
     expect(toasts.some((t) => t.includes("rattachée"))).toBe(true);
   });
@@ -740,7 +787,9 @@ describe("AlignMatrixView — « ＝ Rattacher / re-cibler » (D-W19)", () => {
       expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
     });
     const retarget = calls.find((c) => c.path === "/align/link/retarget");
-    expect(retarget?.body).toEqual({ link_id: 11, new_target_unit_id: 950 });
+    expect(retarget?.body).toEqual({
+      link_id: 11, new_target_unit_id: 950, label: "↔ Re-cibler la traduction",
+    });
     expect(calls.some((c) => c.path === "/align/link/create")).toBe(false);
     expect(toasts.some((t) => t.includes("re-ciblée"))).toBe(true);
   });
@@ -810,6 +859,7 @@ describe("AlignMatrixView — « ↺ » cellule (D-W13)", () => {
         { action: "clear_bead", link_id: 13 },
       ],
       atomic: true,
+      label: "↺ Rendre la phrase entière",
     });
     expect(document.querySelector(".prep-matrix-cut-overlay")).toBeNull();
   });
@@ -830,6 +880,7 @@ describe("AlignMatrixView — « ↺ » cellule (D-W13)", () => {
         { action: "clear_bead", link_id: 13 },
       ],
       atomic: true,
+      label: "↺ Rendre la phrase entière",
     });
     expect(toasts.some((t) => t.includes("✓ Coupe annulée"))).toBe(true);
   });
@@ -951,5 +1002,64 @@ describe("AlignMatrixView — T6.2 handoff scopé (Révision fine)", () => {
 
     expect(scopes).toEqual([]); // les ids de la matrice périmée ne partent PAS vers la Révision fine
     expect(toasts.some((t) => t.includes("Connexion changée"))).toBe(true);
+  });
+});
+
+describe("AlignMatrixView — bandeau d'annulation (ALI-20, D-3)", () => {
+  it("arme le bandeau après un geste, et le bouton défait l'opération ENTIÈRE", async () => {
+    // La preuve de bout en bout du lot : ⭙ Fusionner est un geste en trois requêtes
+    // (create, delete, bead). Une seule opération doit en sortir, et « Annuler » doit
+    // la défaire en entier — sinon le lien supprimé revient en laissant le lien créé,
+    // la cible sur deux segments, exactement ce que décrit ALI-22.
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el, toasts } = await mountWithMatrix(calls, { matrix: MATRIX_STRADDLE });
+
+    el.querySelectorAll<HTMLButtonElement>(".prep-matrix-merge-btn")[0].click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-merge-preview")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-align-undo")).not.toBeNull();
+      expect(document.querySelector<HTMLElement>(".prep-align-undo")!.style.display).not.toBe("none");
+    });
+    expect(document.querySelector(".prep-align-undo")!.textContent)
+      .toContain("⭙ Absorber la phrase voisine");
+
+    const avant = calls.length;
+    document.querySelector<HTMLButtonElement>(".prep-align-undo-btn")!.click();
+    await vi.waitFor(() => {
+      expect(calls.slice(avant).some((c) => c.path === "/align/links/batch_undo")).toBe(true);
+    });
+    const undo = calls.slice(avant).find((c) => c.path === "/align/links/batch_undo");
+    expect(undo!.body).toEqual({ op_id: OP_ID });
+
+    // Le bandeau se retire — l'opération est consommée, un second clic échouerait en 404.
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLElement>(".prep-align-undo")!.style.display).toBe("none");
+    });
+    // Et l'écran dit ce qui est revenu, en distinguant les deux moitiés du geste.
+    expect(toasts.some((t) => t.includes("1 lien rétabli") && t.includes("1 lien retiré"))).toBe(true);
+  });
+
+  it("retire le bandeau quand la famille change", async () => {
+    // Un bandeau destructif qui survit à un changement d'entité décrit la mauvaise
+    // chose — et son bouton agirait sur des liens que la nouvelle grille ne montre pas.
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const { el } = await mountWithMatrix(calls, { matrix: MATRIX_STRADDLE });
+    el.querySelectorAll<HTMLButtonElement>(".prep-matrix-merge-btn")[0].click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".prep-matrix-merge-preview")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("[data-cut-ok]")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector<HTMLElement>(".prep-align-undo")!.style.display).not.toBe("none");
+    });
+
+    const sel = document.querySelector<HTMLSelectElement>("#matrix-family")!;
+    sel.value = "";
+    sel.dispatchEvent(new Event("change"));
+
+    expect(document.querySelector<HTMLElement>(".prep-align-undo")!.style.display).toBe("none");
   });
 });

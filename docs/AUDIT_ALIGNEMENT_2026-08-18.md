@@ -57,9 +57,9 @@ conclusions** des §8 et §10.
 | ALI-17 | ✅ | ~~P1~~ | Réaligner après une **coupe d'unité** superpose une couche au lieu de la remplacer — l'unicité porte sur la paire d'unités. |
 | ALI-18 | 🟠 | P1 | Chaque geste re-projette la famille entière, toutes langues comprises : ~2 s pour une cellule sur 7 652. |
 | ALI-19 | ✅ | ~~P0~~ | Aucune statistique SQLite (`ANALYZE` jamais lancé) → mauvais index sur un `NOT EXISTS` corrélé. **17,6×** pour 46 ms. |
-| ALI-20 | 🟡 | P2 | Pas de bandeau d'annulation dans l'Alignement, **y compris pour les deux gestes qui sont journalisés** (✎, ¶). |
+| ALI-20 | 🟡 | P2 | Pas de bandeau d'annulation dans l'Alignement, **y compris pour les deux gestes qui sont journalisés** (✎, ¶). **Moitié livrée** (§12.10) : la matrice porte un bandeau pour les gestes de lien, et un geste multi-requêtes s'y défait d'un bloc. **Reste ouvert** pour les deux gestes visés par le libellé — ✎ et ¶ passent par `/prep/undo`, une mécanique différente — et pour le panneau Alignement, l'autre surface. |
 | ALI-21 | 🟡 | P2 | Gestes de cellule invisibles au repos, glyphe ↻ ≠ ↺ annoncé, et refus `_cutBusy` totalement muet. |
-| ALI-22 | ✅ | ~~P1~~ | Le ⭙ n'a pas d'inverse ; la réparation intuitive (＝) laisse la cible sur **deux** segments, masquée par le bead. **Démontré en base.** |
+| ALI-22 | ✅ | ~~P1~~ | Le ⭙ n'a pas d'inverse ; la réparation intuitive (＝) laisse la cible sur **deux** segments, masquée par le bead. **Démontré en base.** (a) **payé** (§12.10) : le ⭙ a désormais son inverse — un bouton qui défait les trois requêtes du geste d'un seul bloc. |
 
 > ALI-13 est traité en §5 (passe beads) ; ALI-14 à ALI-22 en §7 à §10 (passes du 2026-08-19) ; §10 chiffre le correctif d'ALI-10/ALI-17 ; le **§11** approfondit la famille « données
 > détruites » (ALI-03/10/17/22 + QA-06) et tranche ses décisions de conception.
@@ -2215,3 +2215,42 @@ incomplet dans la closure de `_handle_segment` d'où le recorder a été extrait
 **Ce que ça dit sur la méthode.** Une doublure dans un test d'intégration n'est pas neutre : elle
 peut être *plus généreuse* que la production et transformer le test en garantie fausse. Les cinq
 tests neufs passent tous par `make_resegment_recorder`.
+
+### 12.10 Le bandeau — ALI-20 à moitié, ALI-22 (a) payé (2026-08-20)
+
+Front pur, aucun changement de contrat. `lib/alignUndoGesture.ts` (pur, 13 tests),
+`components/AlignUndoBanner.ts` (9 tests), câblage dans `AlignMatrixView`.
+
+**Ce qui est réellement démontré.** ⭙ Fusionner émet **trois** requêtes — `create`, `delete`,
+`set_bead` — et les tests vérifient sur le fil qu'elles portent le **même** `op_id`, puis qu'un clic
+sur « ↶ Annuler » envoie cette opération-là à `batch_undo`, que le lien créé repart et que le
+supprimé revient. C'est l'inverse du ⭙ que réclamait ALI-22 (a), et c'est ce qui distingue ce lot
+d'un bandeau décoratif.
+
+**Deux surfaces sont restées muettes**, faute d'être la même mécanique : les gestes ✎ (stylo) et ¶
+(paragraphe) passent par `/prep/undo`, linéaire *par document*, et le panneau Alignement n'a pas
+été touché. Le libellé d'ALI-20 vise explicitement les deux premiers ; le constat reste donc ouvert.
+
+**Trois défauts trouvés en relecture, dont un sérieux.**
+
+1. *Un `op_id` n'a de sens que pour une base.* Le bandeau se désarmait au changement de famille mais
+   **pas de corpus**. `_resetMatrix` porte pourtant déjà, en commentaire, le principe violé — « a
+   conn change invalidates ALL ids ». Le même entier désigne une autre opération ailleurs :
+   « Annuler » y aurait touché des liens sans rapport.
+2. *Un champ décoratif.* `UndoableGesture.familyId` était écrit et jamais lu — il justifiait une
+   sûreté que rien ne vérifiait. Il sert désormais de garde dans le handler.
+3. *Les compensations polluaient la pile.* Les `deleteAlignLink` qui rattrapent un geste raté
+   n'avaient pas d'`op_id` : chacun ouvrait la sienne, et quelques échecs suffisaient à chasser les
+   vrais gestes de la pile bornée à 50.
+
+**Et la doublure, encore une fois.** La connexion factice des tests de la matrice ne rendait pas
+`op_id` : l'enfilage de l'opération à travers les requêtes d'un même geste n'aurait donc été testé
+**nulle part**. C'est le piège de §12.9 à l'envers — là une doublure plus *généreuse* que la
+production masquait un trou, ici une doublure moins *capable* aurait laissé passer un « Annuler »
+qui ne défait que la moitié d'un geste. Les deux rendent un test vert sans valeur. Elle rend
+maintenant l'`op_id` reçu, comme le ferait un sidecar ≥ 1.6.70.
+
+**Au passage**, les assertions de corps de requête — celles qui verrouillent la forme exacte — ont
+attrapé que le client envoyait `op_id: null` au premier appel de chaque geste. Sans conséquence
+serveur, mais une différence de forme entre la première requête et les suivantes que rien ne
+justifie. Retirée à la source.

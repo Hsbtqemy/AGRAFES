@@ -2490,6 +2490,23 @@ button.prep-matrix-cut-word:hover {
 }
 .prep-matrix-align-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .prep-matrix-align-confirm small { font-weight: 400; opacity: 0.85; }
+/* Bandeau d'annulation de l'Alignement (ALI-20, décision D-3). Teinte NEUTRE : c'est
+   une offre passagère, pas un avertissement — l'ambre est prise par la garde d'ancrage
+   et le bleu par la bande d'alignement, deux choses qu'on ne veut pas voir confondues
+   avec « tu peux revenir en arrière ». Il se retire de lui-même dès que le geste est
+   défait, refusé, ou que la famille change. */
+.prep-align-undo {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 8px; padding: 6px 10px; font-size: 0.85rem;
+  border: 1px solid var(--color-border, #dee2e6); border-radius: 6px;
+  background: color-mix(in srgb, #6b7280 5%, var(--color-surface, #fff));
+}
+.prep-align-undo-label { flex: 1 1 auto; color: var(--color-muted, #6b7280); }
+.prep-align-undo-btn { flex: 0 0 auto; }
+/* Un bouton désactivé pendant l'aller-retour doit se voir comme tel : sans ça, un
+   clic sans effet visible invite au double-clic, que le verrou refusera en silence. */
+.prep-align-undo-btn[disabled] { opacity: 0.55; cursor: progress; }
+
 /* Ancrage amont (DESIGN_upstream_anchoring §4) — bandeau passif « ce texte dérivera »
    au-dessus de la grille + garde avant un run risqué. Teinte ambre (avertissement,
    non bloquant), distincte du bleu neutre de la bande d'alignement. */

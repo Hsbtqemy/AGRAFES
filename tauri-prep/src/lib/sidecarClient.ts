@@ -993,6 +993,11 @@ export interface ExportRunReportResponse {
 // ─── V0.4C — Align link edit types ───────────────────────────────────────────
 
 export interface AlignLinkCreateOptions {
+  /** 1.6.70 (D-3) : rejoindre l'opération d'un geste multi-requêtes, pour que
+   *  « Annuler » défasse le geste entier et non la seule requête. */
+  op_id?: number | null;
+  /** Libellé du geste, affiché tel quel par le bandeau d'annulation. */
+  label?: string;
   pivot_unit_id: number;
   target_unit_id: number;
   status?: "accepted" | "rejected" | null;
@@ -1008,18 +1013,37 @@ export interface AlignLinkCreateResponse {
   target_doc_id: number;
   status: "accepted" | "rejected" | null;
   created: number;
+  /** 1.6.70 (D-3) : l'opération que cette création ouvre (ou rejoint). À repasser aux
+   *  requêtes suivantes du même geste — sans quoi « Annuler » ressusciterait le lien
+   *  supprimé en laissant celui-ci, soit le doublon qu'ALI-22 décrit. */
+  op_id?: number | null;
 }
 
 export interface AlignLinkUpdateStatusOptions {
+  /** 1.6.70 (D-3) : rejoindre l'opération d'un geste multi-requêtes, pour que
+   *  « Annuler » défasse le geste entier et non la seule requête. */
+  op_id?: number | null;
+  /** Libellé du geste, affiché tel quel par le bandeau d'annulation. */
+  label?: string;
   link_id: number;
   status: "accepted" | "rejected" | null;
 }
 
 export interface AlignLinkDeleteOptions {
+  /** 1.6.70 (D-3) : rejoindre l'opération d'un geste multi-requêtes, pour que
+   *  « Annuler » défasse le geste entier et non la seule requête. */
+  op_id?: number | null;
+  /** Libellé du geste, affiché tel quel par le bandeau d'annulation. */
+  label?: string;
   link_id: number;
 }
 
 export interface AlignLinkRetargetOptions {
+  /** 1.6.70 (D-3) : rejoindre l'opération d'un geste multi-requêtes, pour que
+   *  « Annuler » défasse le geste entier et non la seule requête. */
+  op_id?: number | null;
+  /** Libellé du geste, affiché tel quel par le bandeau d'annulation. */
+  label?: string;
   link_id: number;
   new_target_unit_id: number;
 }
@@ -2084,20 +2108,31 @@ export async function exportRunReport(conn: Conn, opts: ExportRunReportOptions):
 
 // ─── V0.4C — Align link edit API ─────────────────────────────────────────────
 
+/** Retire `op_id` du corps quand il n'y a pas d'opération à rejoindre.
+ *
+ *  Le premier appel d'un geste n'en a pas encore : envoyer `op_id: null` serait du
+ *  bruit sur le fil, et surtout une différence de forme entre la première requête et
+ *  les suivantes que rien ne justifie côté serveur (`_op_exists` traite un non-entier
+ *  comme une absence). Les tests de contrat sur le corps sont ce qui l'a fait voir. */
+function sansOpIdVide<T extends { op_id?: number | null }>(opts: T): Record<string, unknown> {
+  const { op_id, ...reste } = opts;
+  return typeof op_id === "number" ? { ...reste, op_id } : reste;
+}
+
 export async function createAlignLink(conn: Conn, opts: AlignLinkCreateOptions): Promise<AlignLinkCreateResponse> {
-  return conn.post("/align/link/create", opts) as Promise<AlignLinkCreateResponse>;
+  return conn.post("/align/link/create", sansOpIdVide(opts)) as Promise<AlignLinkCreateResponse>;
 }
 
-export async function updateAlignLinkStatus(conn: Conn, opts: AlignLinkUpdateStatusOptions): Promise<{ link_id: number; status: string | null; updated: number }> {
-  return conn.post("/align/link/update_status", opts) as Promise<{ link_id: number; status: string | null; updated: number }>;
+export async function updateAlignLinkStatus(conn: Conn, opts: AlignLinkUpdateStatusOptions): Promise<{ link_id: number; status: string | null; updated: number; op_id?: number | null }> {
+  return conn.post("/align/link/update_status", sansOpIdVide(opts)) as Promise<{ link_id: number; status: string | null; updated: number; op_id?: number | null }>;
 }
 
-export async function deleteAlignLink(conn: Conn, opts: AlignLinkDeleteOptions): Promise<{ link_id: number; deleted: number }> {
-  return conn.post("/align/link/delete", opts) as Promise<{ link_id: number; deleted: number }>;
+export async function deleteAlignLink(conn: Conn, opts: AlignLinkDeleteOptions): Promise<{ link_id: number; deleted: number; op_id?: number | null }> {
+  return conn.post("/align/link/delete", sansOpIdVide(opts)) as Promise<{ link_id: number; deleted: number; op_id?: number | null }>;
 }
 
-export async function retargetAlignLink(conn: Conn, opts: AlignLinkRetargetOptions): Promise<{ link_id: number; new_target_unit_id: number; updated: number }> {
-  return conn.post("/align/link/retarget", opts) as Promise<{ link_id: number; new_target_unit_id: number; updated: number }>;
+export async function retargetAlignLink(conn: Conn, opts: AlignLinkRetargetOptions): Promise<{ link_id: number; new_target_unit_id: number; updated: number; op_id?: number | null }> {
+  return conn.post("/align/link/retarget", sansOpIdVide(opts)) as Promise<{ link_id: number; new_target_unit_id: number; updated: number; op_id?: number | null }>;
 }
 
 // ─── V1.3 — Batch align link update ──────────────────────────────────────────
@@ -2105,12 +2140,31 @@ export async function retargetAlignLink(conn: Conn, opts: AlignLinkRetargetOptio
 export async function batchUpdateAlignLinks(
   conn: Conn,
   actions: AlignBatchAction[],
-  opts: { atomic?: boolean } = {}
+  opts: { atomic?: boolean; opId?: number | null; label?: string } = {}
 ): Promise<AlignBatchUpdateResponse> {
   // atomic (1.6.54): all-or-nothing — required for compound gestures (D-W12).
   // Older sidecars ignore the field (historical partial semantics).
-  const body = opts.atomic ? { actions, atomic: true } : { actions };
+  // opId (1.6.70, D-3) : rejoindre l'opération d'un geste multi-requêtes. Sans lui,
+  // « Annuler » ne défait que cette requête — le lien supprimé reviendrait en laissant
+  // le lien créé, soit le doublon d'ALI-22 sous une commande qui a l'air complète.
+  const body: Record<string, unknown> = { actions };
+  if (opts.atomic) body.atomic = true;
+  if (typeof opts.opId === "number") body.op_id = opts.opId;
+  if (opts.label) body.label = opts.label;
   return conn.post("/align/links/batch_update", body) as Promise<AlignBatchUpdateResponse>;
+}
+
+/** 1.6.70 (D-3) — défait un geste de lot archivé.
+ *
+ *  Refus possibles, tous deux explicites côté moteur : `404` si l'opération est déjà
+ *  annulée ou sortie de la pile bornée (50 gestes), `409` si un geste POSTÉRIEUR porte
+ *  sur les mêmes liens — l'annuler l'écraserait sans le dire.
+ */
+export async function undoAlignBatch(
+  conn: Conn,
+  opId: number
+): Promise<AlignBatchUndoResponse> {
+  return conn.post("/align/links/batch_undo", { op_id: opId }) as Promise<AlignBatchUndoResponse>;
 }
 
 // ─── V0.5 — Job enqueue / cancel / list ──────────────────────────────────────
@@ -2195,6 +2249,25 @@ export interface AlignBatchUpdateResponse {
   errors: Array<{ index: number; link_id: number | null; error: string }>;
   /** 1.6.54: true when `atomic` was set and an error rolled the whole batch back. */
   rolled_back?: boolean;
+  /** 1.6.70 (D-3) : poignée d'annulation, ou null quand il n'y a rien à annuler.
+   *  Absent des sidecars antérieurs — le bandeau ne s'arme donc simplement pas. */
+  op_id?: number | null;
+}
+
+/** 1.6.70 — rapport de `POST /align/links/batch_undo`. */
+export interface AlignBatchUndoResponse {
+  ok: boolean;
+  op_id: number;
+  /** Libellé archivé du geste, tel que le bandeau l'affichait. */
+  description: string;
+  /** Liens qui avaient SURVÉCU au geste et retrouvent leurs colonnes. */
+  updated: number;
+  /** Liens que le geste avait détruits, remis avec leur link_id d'origine. */
+  reinserted: number;
+  /** Liens que le geste avait CRÉÉS : les défaire, c'est les supprimer. */
+  deleted: number;
+  /** Ce qui n'a pas pu revenir : unité disparue, ou paire réoccupée. */
+  skipped: number;
 }
 
 // ─── V1.1 — Align quality ─────────────────────────────────────────────────────
