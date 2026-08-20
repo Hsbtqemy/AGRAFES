@@ -79,12 +79,18 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
 
     - ``hub_unit_ids`` (∥ ``rows``) / ``language_doc_ids`` (∥ ``languages``) — tranche 3a.
       On a flux **addition row** ``hub_unit_ids[i]`` is ``None`` (no hub unit).
+    - ``hub_text_norms`` (∥ ``rows``, 1.6.67) — the hub segment's ``text_norm``; ``None``
+      on an addition row. ``rows[i][2]`` is and stays ``text_raw`` (the projection); this
+      is what the inline stylo must SEED FROM, since it writes ``text_norm``. Seeding from
+      the projection made a second correction overwrite the first (audit §11.12).
     - ``cell_links`` (A2, revue 3b) — ``cell_links[i][j]`` is the list of links behind
       row ``i`` × translation column ``j`` (``languages[j+1]``), in the cell's
       concatenation order; each link is ``{"link_id", "target_unit_id", "char_start",
-      "char_end", "target_text_raw"}`` (offsets null = whole unit; ``target_text_raw``
-      is the verbatim string the cut offsets index). Built from the same query as the
-      cells, so it can never diverge from what the cell displays.
+      "char_end", "target_text_raw", "target_text_norm"}`` (offsets null = whole unit;
+      ``target_text_raw`` is the verbatim string the cut offsets index — cut anchors
+      live in RAW space because ``text_raw`` is immutable; ``target_text_norm`` is the
+      stylo's edit space, 1.6.67). Built from the same query as the cells, so it can
+      never diverge from what the cell displays.
     - ``hub_unit_statuses`` (∥ ``rows``) — the hub unit's **global** ``unit_status``
       (marker-lift axis; ``non_traduit`` ⇒ the whole row shows the token). ``None``
       on addition rows.
@@ -125,8 +131,8 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
     ]
 
     hub_units = conn.execute(
-        "SELECT unit_id, text_raw, meta_json, unit_status, n, unit_role FROM units"
-        " WHERE doc_id=? AND unit_type='line' ORDER BY n",
+        "SELECT unit_id, text_raw, meta_json, unit_status, n, unit_role, text_norm"
+        " FROM units WHERE doc_id=? AND unit_type='line' ORDER BY n",
         (family_root_id,),
     ).fetchall()
     # The « paragraphe » column is a 1-based SEQUENTIAL paragraph index (1, 2, 3…), NOT the
@@ -166,10 +172,10 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         # Cell concatenation order = READING order of the target document (unit n,
         # then cut offset within the unit) — not link creation order, so a link
         # added later by a gesture (D-W12 straddle cut) still lands where it reads.
-        for link_id, tuid, pivot_id, cs, ce, traw, ext_id, run_id, t_n in conn.execute(
+        for link_id, tuid, pivot_id, cs, ce, traw, ext_id, run_id, t_n, tnorm in conn.execute(
             "SELECT al.link_id, al.target_unit_id, al.pivot_unit_id,"
             "       al.target_char_start, al.target_char_end, tu.text_raw,"
-            "       al.external_id, al.run_id, tu.n"
+            "       al.external_id, al.run_id, tu.n, tu.text_norm"
             " FROM alignment_links al JOIN units tu ON tu.unit_id = al.target_unit_id"
             " WHERE al.pivot_doc_id=? AND al.target_doc_id=?"
             "   AND (al.status IS NULL OR al.status <> 'rejected')"
@@ -182,6 +188,10 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
                 "char_start": cs,
                 "char_end": ce,
                 "target_text_raw": traw,
+                # 1.6.67 — the text the stylo EDITS (ALI-01 tranche 1). The grid still
+                # projects ``raw``; the inline editor must seed from ``norm``, or a
+                # second correction silently overwrites the first (audit §11.12).
+                "target_text_norm": tnorm,
                 # D-W13 : the gestures need to place (external_id inheritance) and
                 # undo (manual links are deleted by the cell ↺) what they created.
                 "external_id": ext_id,
@@ -247,6 +257,7 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
     rows: list[list[Any]] = []
     cell_links: list[list[list[dict[str, Any]]]] = []
     hub_unit_ids: list[Any] = []
+    hub_text_norms: list[Any] = []
     hub_unit_statuses: list[Any] = []
     cell_statuses: list[list[Any]] = []
     addition_rows: list[dict[str, Any]] = []
@@ -258,6 +269,7 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         rows.append(row)
         cell_links.append([[] for _ in range(n_trans)])
         hub_unit_ids.append(None)
+        hub_text_norms.append(None)
         hub_unit_statuses.append(None)
         cell_statuses.append([None] * n_trans)
         addition_rows.append(
@@ -269,7 +281,9 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
 
     for add in additions_by_anchor.get(-1, []):
         _append_addition(add)
-    for i, (uid, text_raw, meta_json, hub_status, n, unit_role) in enumerate(hub_units):
+    for i, (uid, text_raw, meta_json, hub_status, n, unit_role, text_norm) in enumerate(
+        hub_units
+    ):
         is_paratext = hub_text_start_n is not None and n < hub_text_start_n
         # An intertitre-role line is a section heading, not a paragraph (derive_coarse_blocks
         # classes it kind='heading'; the toggle treats it as a section wall). It carries no
@@ -306,6 +320,7 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         rows.append(row)
         cell_links.append(row_links)
         hub_unit_ids.append(int(uid))
+        hub_text_norms.append(text_norm)
         hub_unit_statuses.append(hub_status)
         cell_statuses.append(row_statuses)
         for add in additions_by_anchor.get(i, []):
@@ -340,6 +355,10 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         # hub_unit_ids[i] is the hub unit behind rows[i] (None on an addition row);
         # language_doc_ids[j] is the doc_id behind languages[j] (0 = hub).
         "hub_unit_ids": hub_unit_ids,
+        # 1.6.67 (ALI-01 tranche 1) — le texte NORMALISÉ du segment moyeu, ∥ rows.
+        # rows[i][2] reste ``text_raw`` : c'est la projection. Le stylo, lui, édite
+        # ``text_norm`` et doit donc en repartir (§11.12).
+        "hub_text_norms": hub_text_norms,
         "language_doc_ids": [int(family_root_id), *[tdoc for tdoc, _lang in translations]],
         # A2 (revue 3b) — cell_links[i][j]: links behind rows[i] × translation j.
         "cell_links": cell_links,

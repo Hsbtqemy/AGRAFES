@@ -47,6 +47,10 @@ export interface MatrixRowView {
   /** 1-based hub segment index (the row's `segment` column); 0 on addition rows. */
   segment: number;
   hubText: string;
+  /** 1.6.67 — the hub segment's `text_norm`: what the stylo edits, hence what its editor
+   *  is seeded from. `hubText` stays the PROJECTION (`text_raw`). Null on an addition row
+   *  or on a sidecar that predates the field. */
+  hubTextNorm: string | null;
   /** Hub unit behind this row (3a) — null when the sidecar predates hub_unit_ids,
    *  and on flux addition rows (D8 — no hub segment). */
   hubUnitId: number | null;
@@ -82,6 +86,11 @@ export interface MatrixView {
   hasCellLinks: boolean;
   /** True when the payload carried the status axes (1.6.56) — ∅/＋ gestures available. */
   hasStatuses: boolean;
+  /** True when the payload carried the stylo's edit space (1.6.67, `hub_text_norms`).
+   *  False = the pen must stay hidden: seeding it from the projection is what made a
+   *  second correction overwrite the first (audit §11.12), so offering the gesture on an
+   *  older sidecar would knowingly destroy text. */
+  hasTextNorm: boolean;
   /** Parallel to translationLangs (D-W14): uncovered units per column ([] when absent). */
   uncovered: MatrixUncoveredUnit[][];
   /** 1.6.58 — every link of the family, REJECTED INCLUDED (what the aligner's unique
@@ -107,6 +116,8 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
   const cellStatuses = data.cell_statuses ?? null;
   const hubStatuses = data.hub_unit_statuses ?? null;
   const hasStatuses = cellStatuses !== null;
+  const hubTextNorms = data.hub_text_norms ?? null;
+  const hasTextNorm = hubTextNorms !== null;
   const uncovered = translationLangs.map((_l, i) => data.uncovered?.[i] ?? []);
   const additionByRow = new Map<number, { docId: number; unitId: number; n: number }>();
   (data.addition_rows ?? []).forEach((a) => {
@@ -145,6 +156,7 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
         paragraph,
         segment,
         hubText,
+        hubTextNorm: null,
         hubUnitId: null,
         addition,
         cells,
@@ -186,6 +198,7 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
       paragraph,
       segment,
       hubText,
+      hubTextNorm: hubTextNorms ? (hubTextNorms[rowIdx] ?? null) : null,
       hubUnitId: hubUnitIds ? (hubUnitIds[rowIdx] ?? null) : null,
       addition: null,
       cells,
@@ -207,6 +220,7 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
     translationDocIds,
     hasCellLinks,
     hasStatuses,
+    hasTextNorm,
     uncovered,
     linkCount: data.link_count ?? null,
     rows,
@@ -221,4 +235,48 @@ export function matrixSummaryLine(view: MatrixView): string {
   const base = `${ok}/${totalCells} cellules alignées · ${warningCells} à réparer · ${completionPct}%`;
   // D-W14 — the completeness line must not lie: surface what the grid cannot show.
   return uncoveredUnits > 0 ? `${base} · ${uncoveredUnits} hors matrice` : base;
+}
+
+// ─── Stylo: which unit, and above all WITH WHICH TEXT (ALI-01 tranche 1) ────────
+//
+// The grid PROJECTS `text_raw` — deliberately: the cut offsets index it, and `text_raw`
+// is immutable (only merge/split rewrite it, and both delete the links in the same
+// transaction). The stylo, however, WRITES `text_norm`. Seeding the editor with the
+// displayed text therefore reopened the ORIGINAL text on every edit: a second correction
+// reverted the first, silently. Two cases measured on the reference corpus (audit §11.12)
+// — u251536 lost `Sais-tu` and gained a stray « fb », u251524 lost a line break, each
+// within seconds of the first fix. Pure function: this is the exact point the regression
+// test has to hold, and it did not belong buried in a click handler.
+
+export type StyloTarget =
+  | { ok: true; unitId: number; text: string }
+  | { ok: false; reason: "no-row" | "not-editable" | "no-unit" | "no-norm" };
+
+/** Resolve the stylo's (unit, seed text) for row `viewRow` x column `col`
+ *  ("hub" or a numeric translation index). The seed is ALWAYS `text_norm`. */
+export function resolveStyloTarget(
+  view: MatrixView, viewRow: number, col: string,
+): StyloTarget {
+  const r = view.rows[viewRow];
+  if (!r) return { ok: false, reason: "no-row" };
+  let unitId: number | null;
+  let text: string | null;
+  if (col === "hub") {
+    unitId = r.hubUnitId;
+    text = r.hubTextNorm;
+  } else {
+    const c = r.cells[Number(col)];
+    // Clean cell only: ONE whole, uncut link — a cut window slices a fraction of the
+    // unit and a multi-link cell has no single unit to edit.
+    if (!c || !view.hasCellLinks || c.links.length !== 1 || c.links[0].char_start != null) {
+      return { ok: false, reason: "not-editable" };
+    }
+    unitId = c.links[0].target_unit_id;
+    text = c.links[0].target_text_norm ?? null;
+  }
+  if (unitId == null) return { ok: false, reason: "no-unit" };
+  // No norm in the payload (older sidecar) -> REFUSE. Falling back to the projection is
+  // exactly the defect: it would knowingly overwrite the user's previous correction.
+  if (text == null) return { ok: false, reason: "no-norm" };
+  return { ok: true, unitId, text };
 }

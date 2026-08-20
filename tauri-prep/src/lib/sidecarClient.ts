@@ -1655,6 +1655,10 @@ export interface MatrixCellLink {
   char_end: number | null;
   /** Verbatim target text — the string the cut offsets index. */
   target_text_raw: string;
+  /** 1.6.67: the target's `text_norm` — what the stylo EDITS, and therefore what its
+   *  editor must be seeded from. Never index the cut offsets with it: those live in
+   *  `target_text_raw` space, which is immutable. Absent on an older sidecar. */
+  target_text_norm?: string | null;
   /** 1.6.55 (D-W13): pair number — a gesture-created link inherits its sibling's. */
   external_id?: number | null;
   /** 1.6.55 (D-W13): run_id='manual' — the cell ↺ deletes these, never aligner links. */
@@ -1673,6 +1677,10 @@ export interface AlignMatrix {
   /** Parallel to `rows`: the hub unit_id behind each row (R3.3 tranche 3a — for
    *  gestures). Null on a flux addition row (1.6.56, D8 — no hub unit). */
   hub_unit_ids?: Array<number | null>;
+  /** 1.6.67: parallel to `rows` — the hub segment's `text_norm`. `rows[i][2]` is and
+   *  stays `text_raw` (the projection); this is the stylo's edit space. Null on an
+   *  addition row, absent on an older sidecar. */
+  hub_text_norms?: Array<string | null>;
   /** Parallel to `languages`: the doc_id behind each column (index 0 = hub). */
   language_doc_ids?: number[];
   /** A2 (1.6.54): cell_links[i][j] = links behind rows[i] × translation column j

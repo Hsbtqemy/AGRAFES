@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildMatrixView, matrixSummaryLine } from "../alignMatrix.ts";
+import { buildMatrixView, matrixSummaryLine, resolveStyloTarget } from "../alignMatrix.ts";
 import type { AlignMatrix, MatrixCellLink } from "../sidecarClient.ts";
 
 function lk(link_id: number, target: number, over: Partial<MatrixCellLink> = {}): MatrixCellLink {
@@ -302,5 +302,99 @@ describe("matrixSummaryLine", () => {
     expect(line).toContain("2 à réparer");
     expect(line).toContain("80%");
     expect(line).not.toContain("hors matrice");
+  });
+});
+
+// ─── Stylo : le texte d'amorçage (ALI-01 tranche 1) ─────────────────────────────
+//
+// Le défaut corrigé ici a détruit du texte sur le corpus de référence : l'éditeur était
+// amorcé avec la PROJECTION (`text_raw`) alors qu'il écrit `text_norm`, donc une seconde
+// correction repartait du texte d'origine et écrasait la première (audit §11.12).
+
+const STYLO: AlignMatrix = {
+  headers: ["paragraphe", "segment", "fr", "en"],
+  languages: ["fr", "en"],
+  hub_doc_id: 2,
+  //          la grille montre le RAW, non corrigé
+  rows: [["1", 1, "Sais - tu ?", "Do you know ?"]],
+  hub_unit_ids: [10],
+  //                  et voici la correction déjà enregistrée
+  hub_text_norms: ["Sais-tu ?"],
+  cell_links: [[[
+    { link_id: 1, target_unit_id: 20, char_start: null, char_end: null,
+      target_text_raw: "Do you know ?", target_text_norm: "Do you know?" },
+  ]]],
+};
+
+describe("resolveStyloTarget — on repart du texte qu'on édite, pas de celui qu'on affiche", () => {
+  it("amorce la colonne moyeu depuis text_norm, jamais depuis la projection", () => {
+    const t = resolveStyloTarget(buildMatrixView(STYLO), 0, "hub");
+    expect(t.ok).toBe(true);
+    if (!t.ok) return;
+    expect(t.unitId).toBe(10);
+    expect(t.text).toBe("Sais-tu ?");        // la correction précédente est là
+    expect(t.text).not.toBe("Sais - tu ?");  // …et le texte d'origine n'y est pas
+  });
+
+  it("amorce une cellule de traduction depuis target_text_norm", () => {
+    const t = resolveStyloTarget(buildMatrixView(STYLO), 0, "0");
+    expect(t.ok).toBe(true);
+    if (!t.ok) return;
+    expect(t.unitId).toBe(20);
+    expect(t.text).toBe("Do you know?");
+  });
+
+  it("REFUSE plutôt que de retomber sur la projection quand le norm manque", () => {
+    // Sidecar antérieur à 1.6.67 : le payload ne transporte que le raw. Retomber dessus
+    // rendrait le geste destructif — mieux vaut pas de stylo qu'un stylo qui efface.
+    const old: AlignMatrix = {
+      ...STYLO,
+      hub_text_norms: undefined,
+      cell_links: [[[
+        { link_id: 1, target_unit_id: 20, char_start: null, char_end: null,
+          target_text_raw: "Do you know ?" },
+      ]]],
+    };
+    const v = buildMatrixView(old);
+    expect(v.hasTextNorm).toBe(false);
+    for (const col of ["hub", "0"]) {
+      const t = resolveStyloTarget(v, 0, col);
+      expect(t.ok).toBe(false);
+      if (t.ok) return;
+      expect(t.reason).toBe("no-norm");
+    }
+  });
+
+  it("refuse une cellule coupée ou multi-liens — aucune unité unique à éditer", () => {
+    const cut: AlignMatrix = {
+      ...STYLO,
+      cell_links: [[[
+        { link_id: 1, target_unit_id: 20, char_start: 0, char_end: 5,
+          target_text_raw: "Do you know ?", target_text_norm: "Do you know?" },
+      ]]],
+    };
+    const t = resolveStyloTarget(buildMatrixView(cut), 0, "0");
+    expect(t.ok).toBe(false);
+    if (t.ok) return;
+    expect(t.reason).toBe("not-editable");
+  });
+
+  it("refuse une ligne d'ajout : elle n'a pas de segment moyeu", () => {
+    const add: AlignMatrix = {
+      ...STYLO,
+      rows: [["", 0, "[ajout]", "Added"]],
+      hub_unit_ids: [null],
+      hub_text_norms: [null],
+      addition_rows: [{ row: 0, doc_id: 3, unit_id: 99, n: 4 }],
+      cell_links: [[[]]],
+    };
+    const t = resolveStyloTarget(buildMatrixView(add), 0, "hub");
+    expect(t.ok).toBe(false);
+    if (t.ok) return;
+    expect(t.reason).toBe("no-unit");
+  });
+
+  it("hasTextNorm est vrai dès que le payload porte hub_text_norms", () => {
+    expect(buildMatrixView(STYLO).hasTextNorm).toBe(true);
   });
 });

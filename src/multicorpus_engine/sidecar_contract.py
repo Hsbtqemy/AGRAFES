@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.66"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.67"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -308,6 +308,21 @@ API_VERSION = CONTRACT_VERSION
 #         same pair makes the revert 409 CONFLICT: restoring would superpose a
 #         generation, which is precisely the accumulation ALI-17 describes.
 #         NEW route → openapi + snapshot + .md all move.
+
+# 1.6.67: le stylo de la matrice repart du texte qu'il édite (ALI-01 tranche 1).
+#         /align/matrix response (non-schematized) gains `hub_text_norms` (∥ rows, null on an
+#         addition row) and cell_links items gain `target_text_norm`. The grid still PROJECTS
+#         text_raw — that is deliberate and unchanged: the cut offsets
+#         (target_char_start/end) index text_raw precisely because text_raw is immutable
+#         (only merge/split rewrite it, and both delete the links in the same transaction).
+#         But the inline stylo WRITES text_norm while it was seeded from the projection, so a
+#         second correction reopened the ORIGINAL text and overwrote the first. Measured on
+#         the reference corpus: two units of doc 416 lost a correction that way, one of them
+#         also gaining a stray « fb » (audit §11.12). Sending both texts is what lets the
+#         editor seed from norm without moving the cut anchors — the arbitration « what does a
+#         correction do to an existing cut » stays open (tranche 2). Additive
+#         non-schematized fields → snapshot/.md unchanged; openapi moves (version only).
+#         Logic in services/matrix_export_service.build_alignment_matrix.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"

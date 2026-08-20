@@ -352,3 +352,48 @@ def test_matrix_anchor_status_parallel_to_languages(db_conn: sqlite3.Connection)
     # EN, RO: no external_id, no parent_n → unanchored (the aligner would drift).
     assert m["anchor_status"][1] == {"anchored": False, "kind": None, "line_count": 1}
     assert m["anchor_status"][2] == {"anchored": False, "kind": None, "line_count": 2}
+
+
+def test_matrix_carries_both_text_planes(db_conn: sqlite3.Connection) -> None:
+    """1.6.67 — the payload carries the projection AND the stylo's edit space.
+
+    ``rows[i][2]`` is ``text_raw`` (what the grid shows, what the cut offsets index)
+    and ``hub_text_norms[i]`` is ``text_norm`` (what the stylo writes). Sending only
+    the first made the matrix editor reopen the ORIGINAL text on every edit, so a
+    second correction silently reverted the first (audit §11.12).
+    """
+    _setup_family(db_conn)
+    m = build_alignment_matrix(db_conn, 1)
+
+    # The fixture's hub units already differ across the two planes ("Le matin." /
+    # "le matin.") — the test is worthless if they happen to be equal.
+    assert m["rows"][0][2] == "Le matin."
+    assert m["hub_text_norms"][0] == "le matin."
+    assert m["rows"][0][2] != m["hub_text_norms"][0]
+    assert len(m["hub_text_norms"]) == len(m["rows"])
+
+    # Same on the translation side, per link.
+    ro_links = m["cell_links"][0][1]
+    assert [lk["target_text_norm"] for lk in ro_links] == ["buna", "ziua"]
+    assert all("target_text_raw" in lk for lk in ro_links)
+
+
+def test_matrix_hub_text_norm_is_none_on_addition_row(db_conn: sqlite3.Connection) -> None:
+    """An ajout row has no hub segment: its norm slot must be None, not "" — the front
+    reads it to decide whether the stylo can open at all."""
+    _setup_family(db_conn)
+    db_conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm,unit_status)"
+        " VALUES (2,'line',9,'Added by the translator','added by the translator','ajout')"
+    )
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    add_rows = [a["row"] for a in m["addition_rows"]]
+    assert add_rows, "the ajout unit should have been woven in"
+    for i in add_rows:
+        assert m["hub_unit_ids"][i] is None
+        assert m["hub_text_norms"][i] is None
+    # …and a real hub row still carries its norm.
+    hub_rows = [i for i in range(len(m["rows"])) if m["hub_unit_ids"][i] is not None]
+    assert all(m["hub_text_norms"][i] is not None for i in hub_rows)

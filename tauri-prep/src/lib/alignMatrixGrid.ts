@@ -156,7 +156,12 @@ export function buildMatrixGridHtml(view: MatrixView): string {
         // Stylo (β) — correct this translation's text_norm in place. Only a clean cell (a
         // single WHOLE, uncut link) has one well-defined unit to edit; a cut window slices a
         // fraction of the unit and a multi-link cell has no single unit. Hover-revealed.
-        const editBtn = view.hasCellLinks && c.links.length === 1 && c.links[0].char_start == null
+        // `hasTextNorm` (1.6.67) is a HARD gate, not a nicety: without the norm in the payload
+        // the editor can only be seeded from the projection (`text_raw`), and saving then
+        // overwrites any earlier correction — measured twice on the reference corpus (§11.12).
+        // Better no pen at all than a pen that silently destroys text.
+        const editBtn = view.hasCellLinks && view.hasTextNorm
+          && c.links.length === 1 && c.links[0].char_start == null
           ? ` <button type="button" class="prep-matrix-edit-btn" data-edit-row="${rowIdx}" data-edit-col="${colIdx}"`
             + ` title="Corriger le texte de cette traduction (β)">&#9998;</button>`
           : "";
@@ -171,7 +176,7 @@ export function buildMatrixGridHtml(view: MatrixView): string {
       + (r.paragraphStart ? " prep-matrix-row--para-start" : "");
     // Stylo (β) on the source segment: editing the pivot's text_norm flags its aligned
     // translations stale server-side (D-C2). Only a real hub unit (not a flux [ajout] row).
-    const hubEdit = r.hubUnitId != null
+    const hubEdit = r.hubUnitId != null && view.hasTextNorm
       ? ` <button type="button" class="prep-matrix-edit-btn" data-edit-row="${rowIdx}" data-edit-col="hub"`
         + ` title="Corriger le texte de la source (β)">&#9998;</button>`
       : "";

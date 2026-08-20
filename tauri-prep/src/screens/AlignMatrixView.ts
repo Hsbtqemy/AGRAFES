@@ -42,7 +42,7 @@ import {
 } from "../lib/alignRunBar.ts";
 import type { AlignMatrix } from "../lib/sidecarClient.ts";
 import type { MatrixView, MatrixRowView } from "../lib/alignMatrix.ts";
-import { buildMatrixView, matrixSummaryLine } from "../lib/alignMatrix.ts";
+import { buildMatrixView, matrixSummaryLine, resolveStyloTarget } from "../lib/alignMatrix.ts";
 import { buildMatrixGridHtml } from "../lib/alignMatrixGrid.ts";
 import type { AnchorWarning } from "../lib/anchorWarn.ts";
 import { anchorWarnings, buildAnchorNoticeHtml, buildAnchorGateHtml } from "../lib/anchorWarn.ts";
@@ -701,7 +701,16 @@ export class AlignMatrixView {
   /** Open the inline stylo editor on a cell. `col` is "hub" (source pivot) or a numeric
    *  translation column index. Resolves the unit_id + current text through the view-model
    *  (the <td> is anonymous), then swaps the cell content for a textarea. The stale-flag on
-   *  aligned translations is posted server-side by updateUnitTextNorm (D-C2). */
+   *  aligned translations is posted server-side by updateUnitTextNorm (D-C2).
+   *
+   *  ALI-01 tranche 1 — the editor is seeded from `text_norm`, NOT from the cell's displayed
+   *  text. The grid projects `text_raw` (deliberate: the cut offsets index it and it is
+   *  immutable), while the stylo writes `text_norm`. Seeding from the projection meant every
+   *  edit reopened the ORIGINAL text: a second correction silently reverted the first.
+   *  Measured on the reference corpus — u251536 lost `Sais-tu` and gained a stray « fb »,
+   *  u251524 lost a line break, both within seconds of the first fix (audit §11.12).
+   *  The two texts differ on 82 of 46 648 units, so the bug is rare AND invisible: nothing
+   *  in the grid changes when a correction is lost. */
   private _openCellEdit(btn: HTMLElement, viewRow: number, col: string): void {
     const conn = this._getConn();
     const view = this._view;
@@ -711,23 +720,17 @@ export class AlignMatrixView {
       this._resetMatrix();
       return;
     }
-    const r = view.rows[viewRow];
-    if (!r) return;
-    let unitId: number | null;
-    let text: string;
-    if (col === "hub") {
-      unitId = r.hubUnitId;
-      text = r.hubText;
-    } else {
-      const c = r.cells[Number(col)];
-      // Re-check the clean predicate defensively (payload could differ from the button).
-      if (!c || !view.hasCellLinks || c.links.length !== 1 || c.links[0].char_start != null) return;
-      unitId = c.links[0].target_unit_id;
-      text = c.text;
+    // Re-checks the clean predicate defensively (the payload could differ from the button).
+    const target = resolveStyloTarget(view, viewRow, col);
+    if (!target.ok) {
+      if (target.reason === "no-norm") { // button is gated on hasTextNorm; defensive half
+        this._cb.toast?.(
+          "✗ Sidecar trop ancien — texte normalisé absent (recompiler le sidecar)", true);
+      }
+      return;
     }
-    if (unitId == null) return;
     const td = btn.closest<HTMLElement>("td");
-    if (td) this._mountCellEditor(td, unitId, text);
+    if (td) this._mountCellEditor(td, target.unitId, target.text);
   }
 
   /** Replace a cell's content with a single-textarea editor (seeded from its text_norm).

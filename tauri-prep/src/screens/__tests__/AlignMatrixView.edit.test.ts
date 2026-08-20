@@ -11,26 +11,34 @@ import { AlignMatrixView } from "../AlignMatrixView.ts";
 import type { AlignMatrix, Conn, MatrixCellLink } from "../../lib/sidecarClient.ts";
 
 function lk(link_id: number, target: number, raw: string, over: Partial<MatrixCellLink> = {}): MatrixCellLink {
-  return { link_id, target_unit_id: target, char_start: null, char_end: null, target_text_raw: raw, ...over };
+  return { link_id, target_unit_id: target, char_start: null, char_end: null,
+           target_text_raw: raw, target_text_norm: raw, ...over };
 }
 
 const base = { headers: ["paragraphe", "segment", "fr", "en"], languages: ["fr", "en"], hub_doc_id: 2, language_doc_ids: [2, 3] };
 
-/** One clean 1-1 row: hub (101) + a single uncut translation link (→ 900). Both editable. */
+/** One clean 1-1 row: hub (101) + a single uncut translation link (→ 900). Both editable.
+ *  The two text planes DIFFER here on purpose (ALI-01 tranche 1, audit §11.12): `rows` is
+ *  the projection (`text_raw`), `hub_text_norms` / `target_text_norm` are what the stylo
+ *  edits. A fixture where they coincide cannot tell a correct seed from the defect that
+ *  made a second correction overwrite the first. */
 const MATRIX_CLEAN: AlignMatrix = {
   ...base, rows: [["1", 1, "FR un", "EN one"]], hub_unit_ids: [101],
-  cell_links: [[[lk(11, 900, "EN one")]]],
+  hub_text_norms: ["FR un — déjà corrigé"],
+  cell_links: [[[lk(11, 900, "EN one", { target_text_norm: "EN one — déjà corrigé" })]]],
 };
 
 /** A resolved cut cell (char window) — the translation is only a slice, not the whole unit. */
 const MATRIX_CUT: AlignMatrix = {
   ...base, rows: [["1", 1, "FR un", "As far"]], hub_unit_ids: [101],
+  hub_text_norms: ["FR un"],
   cell_links: [[[lk(13, 900, "As far back", { char_start: 0, char_end: 6 })]]],
 };
 
 /** A cell with two links — no single unit to edit. */
 const MATRIX_TWO: AlignMatrix = {
   ...base, rows: [["1", 1, "FR un", "EN a. EN b."]], hub_unit_ids: [101],
+  hub_text_norms: ["FR un"],
   cell_links: [[[lk(11, 900, "EN a."), lk(12, 901, "EN b.")]]],
 };
 
@@ -100,7 +108,8 @@ describe("AlignMatrixView — stylo (β correction inline)", () => {
     const { el, toasts } = await mountWithMatrix(calls, MATRIX_CLEAN);
     el.querySelector<HTMLButtonElement>('.prep-matrix-edit-btn[data-edit-col="hub"]')!.click();
     const ta = el.querySelector<HTMLTextAreaElement>(".prep-matrix-edit-ta")!;
-    expect(ta.value).toBe("FR un");
+    // Le texte de la 1re correction, PAS celui de la grille : c'est tout le correctif.
+    expect(ta.value).toBe("FR un — déjà corrigé");
     ta.value = "FR corrigé";
     el.querySelector<HTMLButtonElement>(".prep-matrix-edit-save")!.click();
     await vi.waitFor(() => { expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); });
@@ -114,7 +123,7 @@ describe("AlignMatrixView — stylo (β correction inline)", () => {
     const { el } = await mountWithMatrix(calls, MATRIX_CLEAN);
     el.querySelector<HTMLButtonElement>('.prep-matrix-edit-btn[data-edit-col="0"]')!.click();
     const ta = el.querySelector<HTMLTextAreaElement>(".prep-matrix-edit-ta")!;
-    expect(ta.value).toBe("EN one");
+    expect(ta.value).toBe("EN one — déjà corrigé");
     ta.value = "EN fixed";
     el.querySelector<HTMLButtonElement>(".prep-matrix-edit-save")!.click();
     await vi.waitFor(() => { expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); });
@@ -149,5 +158,23 @@ describe("AlignMatrixView — stylo (β correction inline)", () => {
     expect(toasts.some((t) => t.includes("Connexion changée"))).toBe(true);
     expect(el.querySelector(".prep-matrix-edit-ta")).toBeNull(); // editor never opened
     expect(calls.some((c) => c.path === "/units/update_text")).toBe(false);
+  });
+});
+
+describe("AlignMatrixView — stylo et sidecar antérieur à 1.6.67", () => {
+  afterEach(() => { document.body.innerHTML = ""; });
+
+  it("ne montre AUCUN ✎ quand le payload ne porte pas le texte normalisé", async () => {
+    // Sans `hub_text_norms` / `target_text_norm`, l'éditeur ne pourrait être amorcé que
+    // depuis la projection — c'est-à-dire reproduire l'écrasement mesuré au §11.12. Mieux
+    // vaut ne pas proposer le geste que le proposer destructif.
+    const OLD: AlignMatrix = {
+      ...base, rows: [["1", 1, "FR un", "EN one"]], hub_unit_ids: [101],
+      cell_links: [[[{ link_id: 11, target_unit_id: 900, char_start: null,
+                       char_end: null, target_text_raw: "EN one" }]]],
+    };
+    const { el } = await mountWithMatrix([], OLD);
+    expect(el.querySelector('.prep-matrix-edit-btn[data-edit-col="hub"]')).toBeNull();
+    expect(el.querySelector(".prep-matrix-cell .prep-matrix-edit-btn")).toBeNull();
   });
 });

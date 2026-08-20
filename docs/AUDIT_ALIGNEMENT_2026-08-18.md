@@ -38,7 +38,7 @@ conclusions** des §8 et §10.
 
 | ID | Sév | Prio | Constat |
 |----|-----|------|---------|
-| ALI-01 | 🔴 | P0 | La matrice projette `text_raw` ; le stylo, l'aligneur, la FTS et la curation travaillent sur `text_norm`. Les corrections sont invisibles et la surface de contrôle n'est pas la surface de calcul. |
+| ALI-01 | 🟠 | P1 | La matrice projette `text_raw` ; le stylo, l'aligneur, la FTS et la curation travaillent sur `text_norm`. **Tranche 1 livrée** (contrat 1.6.67) : l'éditeur repart de `text_norm`, la perte de correction mesurée au §11.12 est fermée. Reste la projection elle-même — juger un alignement sur une colonne que le système n'utilise pas — dont la bascule demande une arbitration (§11.12). |
 | ALI-02 | 🟠 | P1 | Stratégie `position` : la borne exclut le paratexte mais ne **rebase** pas la numérotation → n'est correcte que si les deux documents ont exactement le même nombre de lignes d'en-tête. |
 | ALI-03 | ✅ | ~~P1~~ | La fusion d'unités supprime les liens **sans confirmation**, et l'annulation ne les restaure **jamais**. |
 | ALI-04 | 🟠 | P1 | Gale–Church dépend entièrement du grain de paragraphes ; **rien ne compare les deux grains** (l'avertissement d'ALI-12 ne couvre que la présence d'une ancre) → grain dégénéré = alignement absurde présenté avec assurance. |
@@ -1494,3 +1494,89 @@ depuis ALI-22 : la métrique historique compte 0 dans les deux cas.
    une action de préparation ; et la garde `needsAlignmentConfirm` d'ALI-03.
    ALI-22 (a) — un ↻ sur une cellule issue d'un ⭙ — devient possible maintenant que l'archive
    existe, mais le geste front reste à écrire.
+
+### 11.12 ALI-01 instruit — une revendication tombe, une autre se vérifie en base (2026-08-20)
+
+Passe d'investigation avant tout correctif, sur le code d'aujourd'hui et sur la base de travail
+(46 648 unités, 9 777 liens).
+
+**Ce qui est réfuté : la corruption par les offsets de coupe.** L'hypothèse — les offsets calculés
+sur `text_raw` mais appliqués à `text_norm` — ne tient pas. Le système de fenêtres est **entièrement
+en espace `raw`** : le front calcule sur `target_text_raw` (`alignCellCut.ts:64`), le moteur valide
+contre `length(u.text_raw)` (`align_links_service.py:52-58`) et projette `raw[cs:ce]`
+(`matrix_export_service.py:61-64`). Aucune application croisée. Mesure : **6 liens coupés** dans
+toute la base, dont **0** visent une unité divergente, et **0** span sort des bornes — ni de `raw`,
+ni de `norm`.
+
+**Ce qui se vérifie, et qui est pire qu'un défaut d'affichage : l'écrasement a déjà eu lieu.**
+Deux unités du doc 416, éditées deux fois à quelques secondes d'intervalle, sans `undo` ni
+`curation_apply` dans l'intervalle pour l'expliquer (dernier `curation_apply` du doc : #107, deux
+jours plus tôt) :
+
+| unité | 1re correction | 2e édition | état aujourd'hui |
+|---|---|---|---|
+| u251536 (n=210) | `Sais - tu` → `Sais-tu` (#170) | 5 s plus tard (#171) | `Sais - tu` **+ `fb`** collé en fin |
+| u251524 (n=200) | `: —` → `:` + saut de ligne (#168) | 11 s plus tard (#169) | `:—` — le saut de ligne a disparu |
+
+Le mécanisme est celui décrit au §ALI-01 : l'éditeur de cellule est amorcé avec le texte du
+view-model, donc `text_raw` (`AlignMatrixView.ts:722-730`), et enregistre dans `text_norm`. La
+seconde édition repart du texte **d'origine** et réécrit par-dessus la première. Sur u251536, non
+seulement la correction est perdue mais une coquille (`fb`, une frappe parasite) est entrée dans le
+corpus sans que rien ne la signale.
+
+**La matrice est la seule surface concernée.** Les cinq autres surfaces du stylo amorcent bien
+depuis `text_norm` (`SegmentPane.ts:270`, `UnitInspectorPanel.ts:367` — « Seed from text_norm
+(D-C1) », idem Curation/Rôles/Annotation). La matrice ne le peut pas : son payload ne transporte
+que `raw`.
+
+**Ampleur réelle de la divergence.** 82 unités sur 46 648 ont `text_raw <> text_norm`. Après
+pliage du BOM et de la typographie (guillemets, espaces insécables, `¤`), il **en reste 8** : 4 dans
+le doc 423 où `text_norm` a retiré le balisage TEI (`<hi rend="bold">` — que la matrice affiche donc
+tel quel), 1 en-tête du doc 410, et 3 corrections au stylo du doc 416. Pour tout le reste, l'écart
+est nul.
+
+**Ce que l'investigation change dans le constat.** ALI-01 n'est pas « quelqu'un a projeté la mauvaise
+colonne ». La docstring de `set_target_span` donne la raison du choix : « offsets index the target
+unit's verbatim `text_raw` (**immutable → stable**) » — et c'est exact, `text_raw` n'est réécrit que
+par la fusion et la scission, qui suppriment les liens dans la même transaction. `text_norm`, lui,
+est mutable : le stylo l'édite. **Projeter `norm`, c'est donc déplacer les ancres de coupe dans un
+espace mutable**, et il faudra dire ce qu'une correction fait d'une coupe existante (refuser,
+effacer le span, ou le rebaser). Cette question n'a jamais été tranchée ; elle ne se posait pas tant
+que la matrice montrait `raw`.
+
+**Découpe proposée.**
+
+1. *Arrêter la perte* — amorcer l'éditeur de la matrice depuis `text_norm`. Indépendant du choix
+   d'affichage (le §ALI-01 le notait déjà comme « minimum vital »), et le champ `norm` ajouté au
+   payload est celui dont la tranche 2 aura besoin : pas de travail jeté.
+2. *Trancher puis basculer* — projeter `text_norm` et statuer sur le sort d'une coupe dont la cible
+   est corrigée. Population concernée aujourd'hui : 6 liens, 0 en conflit — la décision est à
+   prendre à froid, pas sous la pression d'un cas.
+
+### 11.13 ALI-01 tranche 1 — livrée (2026-08-20)
+
+Contrat **1.6.67**. `/align/matrix` transporte désormais les **deux plans** : `rows` reste la
+projection (`text_raw`), et deux champs additifs non schématisés portent l'espace d'édition du
+stylo — `hub_text_norms` (∥ `rows`, `null` sur une ligne d'ajout) et `target_text_norm` dans chaque
+item de `cell_links`. L'éditeur inline de la matrice s'amorce sur ce second plan.
+
+La résolution « quelle unité, avec quel texte » est sortie de l'écran en fonction pure
+(`alignMatrix.resolveStyloTarget`) : c'est le point exact que la régression doit tenir, il ne
+devait pas rester enfoui dans un gestionnaire de clic. Rouge prouvé — en réamorçant la fonction sur
+la projection, les trois tests de graine échouent avec le message du cas réel
+(`expected 'Sais - tu ?' to be 'Sais-tu ?'`).
+
+**Un sidecar antérieur fait disparaître le stylo, il ne le fait pas retomber sur la projection.**
+Sans les champs, `hasTextNorm` est faux et les deux ✎ (source et traduction) ne sont pas rendus.
+Retomber sur le texte affiché aurait été proposer un geste dont on sait qu'il détruit une
+correction antérieure ; l'absence de bouton est le seul comportement honnête.
+
+**Un marqueur de divergence a été envisagé puis écarté, sur mesure.** Signaler les cellules où
+`norm ≠ raw` allumerait **82** lignes sur ce corpus — BOM, guillemets, `¤`, balisage TEI — pour
+**8** écarts substantiels. Distinguer « corrigé au stylo » d'« écart de normalisation » demanderait
+un signal qui n'existe pas dans le payload (`source_changed_at` porte sur les *traductions* d'une
+source modifiée, pas sur l'unité elle-même). Même arbitration que la bascule : tranche 2.
+
+**Non traité, et assumé** : après enregistrement, la grille se recharge et affiche toujours
+`text_raw` — l'utilisateur corrige, le toast confirme, la cellule ne bouge pas. C'est le cœur
+d'ALI-01, et c'est la tranche 2.
