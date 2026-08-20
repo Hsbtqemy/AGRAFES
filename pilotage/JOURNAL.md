@@ -5,7 +5,7 @@ statut: interrompu
 
 # JOURNAL — journal de bord local
 
-**Arrêté sur** — onglet *masses* : une courbe par aire de code, cumul `--numstat`, jalons = les retraits de plus de 1 000 lignes, 19 août 2026.
+**Arrêté sur** — outillage porté sur `dev` (`bb0d030`) et réconcilié dans refonte (`96b0324`) ; CI verte sur les deux, PR #195 `MERGEABLE / CLEAN`, 20 août 2026.
 
 ## Reste
 
@@ -82,6 +82,23 @@ merge commits se sont arrêtés le 30 juin). Deux parades : `dev` étant ancêtr
 un `git merge` est un fast-forward qui préserve tout ; sinon `git tag archive/refonte` avant
 le squash — le dépôt le fait déjà, `archive/shell-split` retient à lui seul 12 commits
 qu'aucune branche ne contient, et `git log --all` les lit.
+
+**Le portage sur `dev`, et pourquoi un instantané.** L'outil lit les fiches dans l'arbre
+de travail : tant que `pilotage/` ne vivait que sur refonte, un checkout de dev affichait
+un journal vide. Rejouer les 8 commits d'origine par cherry-pick a été essayé en worktree
+jetable : conflit `add/add` immédiat sur `R3.md` et `R6.md`, parce que le rejeu fige un
+contenu que refonte a fait bouger depuis. Un `add/add` n'est pas un conflit de lignes —
+sans base commune, git jette le fichier entier. Un commit portant le **contenu actuel** :
+zéro conflit. Et l'étape qui n'est pas optionnelle est la suivante — **fusionner `dev`
+dans refonte tout de suite**, ce qui rend le commit de portage ancêtre de refonte : la base
+des merges suivants contient alors `pilotage/`, et la classe `add/add` disparaît. Vérifié
+dans les deux sens : sans réconciliation, une simple ligne ajoutée d'un côté rouvre le
+conflit ; avec, une divergence des deux côtés fusionne toute seule.
+
+Effet de bord à ne pas prendre pour un défaut : le front d'intégration de cette fiche
+affiche toujours `refonte`. C'est exact — il suit le dernier commit **citant le code**, et
+le commit de portage n'en cite aucun. Les fichiers sont sur dev, l'historique de l'outil
+non.
 
 **L'axe fossile est cassé, mesuré le 19 août — ne pas le rouvrir.** L'idée était de
 signaler le code que personne n'a touché depuis longtemps. Au niveau du module, l'échelle
