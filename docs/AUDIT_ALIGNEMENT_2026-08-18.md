@@ -1606,3 +1606,45 @@ différence-là qui produisait le va-et-vient `1.` / `1. ` de l'unité 251319.
 et sert le contrat 1.6.66. Tant qu'il n'est pas reconstruit, le ✎ **ne s'affiche plus** dans la
 matrice — c'est la garde dure qui joue, exactement comme voulu, mais il faut le savoir avant la
 prochaine QA visuelle.
+
+### 11.14 ALI-10 instruit — cinq sites, pas deux, et un seul a de quoi accrocher une annulation (2026-08-20)
+
+Le constat désignait « `segmenter.py:476` et `:703` ». La chasse aux appelants en trouve **cinq**,
+et c'est leur *journalisation* qui les sépare, pas leur ligne de code.
+
+| site | route | action journalisée | liens détruits |
+|---|---|---|---|
+| `resegment_document` (l. 703) | `POST /segment` | ✅ `resegment` (`record_action`) | tout le document |
+| `resegment_document_markers` (l. 476) | `POST /segment` (spec *markers*) | ❌ aucune | tout le document |
+| `resegment_document` | `POST /families/{id}/segment` | ❌ aucune | **tous les documents de la famille** |
+| les deux | job async (`_run_async_job`) | ❌ aucune | idem |
+| `_handle_segment_apply_propagated` (`sidecar.py:4853`) | `POST /segment/apply_propagated` | ❌ aucune | tout le document |
+
+Un seul appelant sur six passe `record_action`. Les autres suppriment
+`WHERE pivot_doc_id = ? OR target_doc_id = ?` et n'écrivent **rien** dans
+`prep_action_history` : il n'existe aucune action à laquelle rattacher une archive, donc pas
+d'annulation possible dans le modèle actuel — pas seulement « pas encore faite ».
+
+**Le pire des cinq n'est pas une resegmentation isolée.** `POST /families/{id}/segment` avec
+`force=true` boucle sur *tous* les documents de la famille et appelle `resegment_document` sans
+recorder : une seule requête efface l'alignement complet d'une famille — 5 770 liens sur Modiano —
+sans trace, sans avertissement et sans retour possible. Le garde-fou existant (`force=false` saute
+les documents déjà segmentés) protège l'usage normal, pas celui-là.
+
+**Ce qui est prêt côté annulation.** `_undo_resegment` réinsère les unités **avec leur `unit_id`
+d'origine** (`INSERT INTO units (unit_id, …)`), donc une archive par `unit_id` se recolle
+exactement — la condition qui manquait à ALI-03 est déjà remplie ici. Et l'ordre du chemin
+interactif est le même que celui déjà traité pour `regroup_document_coarse` : le `DELETE` (l. 703)
+précède le `record_action` (l. 775) dans **la même transaction**, donc le motif
+« `collect_links_for_document` avant, `insert_link_snapshots` après » s'applique tel quel. La
+restitution, elle, est déjà centrale dans `undo.py` — rien à y ajouter.
+
+**Découpe proposée.**
+
+1. *Chemin interactif* (`POST /segment` avec recorder) — archiver et laisser l'annulation existante
+   rendre les liens. Incrément sur la migration 035, aucun nouvel artefact.
+2. *Chemins de masse* (famille, job, propagate, markers) — leur donner une annulation, c'est
+   retrouver le problème d'ALI-17 : une opération qui embrasse N documents ne rentre pas dans un
+   historique **linéaire par document**. À court terme, le correctif honnête n'est pas une archive
+   mais un **compte annoncé avant destruction** (« cette segmentation détruira 5 770 liens »),
+   comme l'avertissement du « Compléter ». À trancher.
