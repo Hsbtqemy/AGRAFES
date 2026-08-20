@@ -131,3 +131,21 @@ export function autoSplitText(text: string): { a: string; b: string } {
   const splitAt = lastSpace > 0 ? lastSpace : midPoint;
   return { a: text.slice(0, splitAt).trim(), b: text.slice(splitAt).trim() };
 }
+
+/** Message announcing what a merge/split just did to the document's alignment.
+ *
+ *  Reported AFTER the gesture, not confirmed before it. The obvious move was to reuse
+ *  `needsAlignmentConfirm` on the merge — but that helper takes the DOCUMENT's
+ *  `aligned_count`, and a merge only ever destroys the two units' links: on a family of
+ *  5 770 links it would have announced « ce document a 5 770 liens, fusionner les
+ *  effacera » before destroying two, or none at all. Announcing the wrong magnitude is
+ *  the very defect this audit keeps finding elsewhere (audit §11.16).
+ *
+ *  Silent on 0 (the common case) and on an older sidecar (`undefined`): nothing happened
+ *  to the alignment, so there is nothing to say.
+ */
+export function alignmentLossNote(linksArchived: number | null | undefined): string {
+  if (typeof linksArchived !== "number" || linksArchived <= 0) return "";
+  const s = linksArchived > 1 ? "s" : "";
+  return ` ${linksArchived} lien${s} d’alignement retiré${s} — « Annuler » les rend.`;
+}

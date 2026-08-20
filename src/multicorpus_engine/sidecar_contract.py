@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.67"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.68"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -323,6 +323,17 @@ API_VERSION = CONTRACT_VERSION
 #         correction do to an existing cut » stays open (tranche 2). Additive
 #         non-schematized fields → snapshot/.md unchanged; openapi moves (version only).
 #         Logic in services/matrix_export_service.build_alignment_matrix.
+
+# 1.6.68: fusion et scission disent ce qu'elles ont détruit (ALI-03, reliquat). POST /units/merge
+#         and POST /units/split responses gain `links_archived` (integer): the alignment links the
+#         gesture destroyed and archived in migration 035. The reliquat on file asked to wire
+#         needsAlignmentConfirm on the merge; that would have LIED. That helper takes the
+#         DOCUMENT's aligned_count, while a merge only ever touches the two units' links — on the
+#         reference corpus it would announce « ce document a 5 770 liens, fusionner les effacera »
+#         before destroying two, or none. An exact figure reported afterwards is both truthful and
+#         cheaper than a pre-flight count query, and it is only actionable information now that
+#         undo really restores the links (ALI-03, 1.6.65). Additive response fields → no new route
+#         → snapshot unchanged; openapi moves (version + schemas); .md response lines added.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
@@ -3406,6 +3417,7 @@ def openapi_spec() -> dict[str, Any]:
                                 "deleted_n": {"type": "integer"},
                                 "text": {"type": "string"},
                                 "fts_stale": {"type": "boolean"},
+                                "links_archived": {"type": "integer", "description": "1.6.68 — alignment links this gesture destroyed AND archived (migration 035): 0 when the unit(s) carried none. Reported after the fact rather than pre-confirmed, because a confirmation built on the document's aligned_count would announce a loss that is not the one about to happen."},
                             },
                         },
                     ]
@@ -3434,6 +3446,7 @@ def openapi_spec() -> dict[str, Any]:
                                 "text_a": {"type": "string"},
                                 "text_b": {"type": "string"},
                                 "fts_stale": {"type": "boolean"},
+                                "links_archived": {"type": "integer", "description": "1.6.68 — alignment links this gesture destroyed AND archived (migration 035): 0 when the unit(s) carried none. Reported after the fact rather than pre-confirmed, because a confirmation built on the document's aligned_count would announce a loss that is not the one about to happen."},
                             },
                         },
                     ]

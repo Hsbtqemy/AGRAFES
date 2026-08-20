@@ -5,6 +5,7 @@ import {
   groupSegmentsBySource,
   segmentSummaryLine,
   needsAlignmentConfirm,
+  alignmentLossNote,
   surfaceHint,
   defaultAbbreviations,
   parseAbbreviations,
@@ -138,3 +139,33 @@ describe("autoSplitText", () => {
   });
 });
 
+
+describe("alignmentLossNote — dire ce qui a été détruit, après, et exactement", () => {
+  it("se tait quand rien n'a été détruit", () => {
+    expect(alignmentLossNote(0)).toBe("");
+  });
+
+  it("se tait sur un sidecar antérieur à 1.6.68 (champ absent)", () => {
+    // Silence plutôt qu'un « 0 lien » trompeur : on ne sait pas, on ne dit rien.
+    expect(alignmentLossNote(undefined)).toBe("");
+    expect(alignmentLossNote(null)).toBe("");
+  });
+
+  it("annonce le compte EXACT du geste, pas celui du document", () => {
+    // Le reliquat au dossier demandait de câbler needsAlignmentConfirm sur la fusion.
+    // Sur le corpus de référence, cela aurait annoncé « ce document a 5 770 liens,
+    // fusionner les effacera » avant d'en détruire deux. C'est ce mensonge-là que ce
+    // message remplace.
+    expect(alignmentLossNote(2)).toContain("2 liens");
+    expect(alignmentLossNote(2)).not.toContain("5770");
+  });
+
+  it("accorde le singulier", () => {
+    expect(alignmentLossNote(1)).toContain("1 lien d’alignement retiré —");
+    expect(alignmentLossNote(1)).not.toContain("liens");
+  });
+
+  it("rappelle que l'annulation les rend — c'est vrai depuis la migration 035", () => {
+    expect(alignmentLossNote(3)).toContain("« Annuler » les rend");
+  });
+});

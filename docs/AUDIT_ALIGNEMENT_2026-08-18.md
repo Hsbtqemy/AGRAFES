@@ -40,7 +40,7 @@ conclusions** des §8 et §10.
 |----|-----|------|---------|
 | ALI-01 | 🟠 | P1 | La matrice projette `text_raw` ; le stylo, l'aligneur, la FTS et la curation travaillent sur `text_norm`. **Tranche 1 livrée** (contrat 1.6.67) : l'éditeur repart de `text_norm`, la perte de correction mesurée au §11.12 est fermée. Reste la projection elle-même — juger un alignement sur une colonne que le système n'utilise pas — dont la bascule demande une arbitration (§11.12). |
 | ALI-02 | 🟠 | P1 | Stratégie `position` : la borne exclut le paratexte mais ne **rebase** pas la numérotation → n'est correcte que si les deux documents ont exactement le même nombre de lignes d'en-tête. |
-| ALI-03 | ✅ | ~~P1~~ | La fusion d'unités supprime les liens **sans confirmation**, et l'annulation ne les restaure **jamais**. |
+| ALI-03 | ✅ | ~~P1~~ | La fusion d'unités supprime les liens **sans confirmation**, et l'annulation ne les restaure **jamais**. Reliquat clos autrement que prévu : la confirmation demandée aurait annoncé la perte du document entier pour un geste qui n'en touche que deux liens — remplacée par un compte rendu exact après coup (`links_archived`, contrat 1.6.68, §11.16). |
 | ALI-04 | 🟠 | P1 | Gale–Church dépend entièrement du grain de paragraphes ; **rien ne compare les deux grains** (l'avertissement d'ALI-12 ne couvre que la présence d'une ancre) → grain dégénéré = alignement absurde présenté avec assurance. |
 | ALI-05 | 🟡 | P3 | DP `length_bounded` : le garde-fou **existe** (`_MAX_LENGTHS = 5 000`) — constat initial corrigé en passe adverse ; subsiste que le pire cas admis alloue deux matrices pleines (~400 Mo). |
 | ALI-06 | 🟠 | P1 | Le « % » du sélecteur de cible est une **proximité de marqueur**, pas une ressemblance de texte. |
@@ -1682,3 +1682,34 @@ lui, garde sa forme technique avec le `doc_id`.
 **Reste ouvert** : les chemins de masse. Ils n'ont pas d'action, donc pas d'annulation possible dans
 un historique linéaire par document — ils disent désormais qu'ils sont définitifs, ce qui est le
 minimum, pas le correctif.
+
+### 11.16 ALI-03 reliquat — le garde-fou demandé aurait menti (2026-08-20)
+
+Le reliquat au dossier disait : « câbler `needsAlignmentConfirm` sur la fusion
+(`SegmentPane.ts:583`) ». Vérifié avant d'écrire : **ce correctif-là aurait été faux**.
+
+`needsAlignmentConfirm(alignedCount)` prend l'`aligned_count` du **document** — c'est ce qu'il faut
+pour la resegmentation, qui efface effectivement tout. Mais une fusion ne détruit jamais que les
+liens des **deux unités** concernées. Sur le corpus de référence, le câbler tel quel aurait affiché
+« ce document a 5 770 liens d'alignement. Fusionner les effacera » avant d'en détruire **deux** —
+ou zéro. Annoncer le mauvais ordre de grandeur est exactement le défaut que cet audit poursuit
+ailleurs (ALI-06, ALI-12, QA-13).
+
+**Correctif retenu : dire après, et exactement.** `POST /units/merge` et `POST /units/split`
+renvoient `links_archived` — le nombre de liens que le geste a détruits **et archivés** (migration
+035). La bande de segmentation l'annonce quand il est non nul : « Fusion effectuée — 2 liens
+d'alignement retirés — « Annuler » les rend. » Silencieux à zéro, qui est le cas courant, et
+silencieux sur un sidecar antérieur (champ absent = on ne sait pas, on ne dit rien).
+
+Deux raisons de préférer l'après :
+
+* **c'est exact** — le compte vient du geste lui-même, pas d'une estimation à l'échelle du document ;
+* **c'est devenu une information actionnable** — la promesse « Annuler les rend » n'est vraie que
+  depuis ALI-03 (migration 035, contrat 1.6.65). Avant, une confirmation avant coup était la seule
+  protection possible ; maintenant, le retour arrière existe et il est exact, donc l'utilisateur n'a
+  plus besoin d'être arrêté, seulement informé. Un test vérifie la promesse elle-même :
+  `alignments_restored` de `/prep/undo` **égale** le `links_archived` du geste annulé.
+
+Contrat **1.6.68** (champs additifs sur deux routes existantes → snapshot inchangé, openapi et .md
+mis à jour). La docstring de `_merge` promettait déjà « recoverable via the undo button » : elle est
+datée, cette promesse n'étant vraie pour l'alignement que depuis la migration 035.

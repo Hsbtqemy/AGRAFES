@@ -510,6 +510,10 @@ export interface UnitsMergeResponse {
   fts_stale?: boolean;
   /** prep_action_history id for Mode A undo. */
   action_id?: number;
+  /** 1.6.68 — alignment links this gesture destroyed AND archived (migration 035),
+   *  so `/prep/undo` gives them back. 0 when the two units carried none. Absent on an
+   *  older sidecar. */
+  links_archived?: number;
 }
 
 export async function mergeUnits(
@@ -530,6 +534,10 @@ export interface UnitsSplitResponse {
   fts_stale?: boolean;
   /** prep_action_history id for Mode A undo. */
   action_id?: number;
+  /** 1.6.68 — alignment links this gesture destroyed AND archived (migration 035),
+   *  so `/prep/undo` gives them back. 0 when the unit(s) carried none. Absent on an
+   *  older sidecar. */
+  links_archived?: number;
 }
 
 export async function splitUnit(

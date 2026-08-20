@@ -36,6 +36,7 @@ import {
   groupSegmentsBySource,
   segmentSummaryLine,
   needsAlignmentConfirm,
+  alignmentLossNote,
   surfaceHint,
   defaultAbbreviations,
   parseAbbreviations,
@@ -579,7 +580,11 @@ export class SegmentPane {
 
   /** Merge unit n with its previous ("up") or next ("down") neighbour — both must be adjacent
    *  line units (the sidecar requires n2 == n1+1). Destructive (clears the two units' alignment);
-   *  recoverable via the undo button, and the host reload keeps the state strip honest. */
+   *  recoverable via the undo button, and the host reload keeps the state strip honest.
+   *
+   *  « Recoverable » became true for the ALIGNMENT only with migration 035 (ALI-03): before it,
+   *  undo returned the units and dropped their links for good. Now that the promise holds, the
+   *  gesture reports what it cost — see alignmentLossNote for why after and not before. */
   private async _merge(n: number, dir: "up" | "down"): Promise<void> {
     const conn = this._getConn();
     if (!conn || this._docId === null || this._busy) return;
@@ -591,7 +596,11 @@ export class SegmentPane {
     const n2 = dir === "up" ? n : other.n;
     this._busy = true;
     try {
-      await mergeUnits(conn, { doc_id: this._docId, n1, n2 });
+      const res = await mergeUnits(conn, { doc_id: this._docId, n1, n2 });
+      // Say what was destroyed, exactly, instead of confirming a loss we can't size
+      // beforehand (audit §11.16). Silent when the two units carried no link.
+      const note = alignmentLossNote(res.links_archived);
+      if (note) this._notify(`Fusion effectuée —${note}`);
       this._pendingFocusN = n1; // the surviving unit keeps n1
       await this._onResegmented?.();
     } catch (e) {
@@ -610,7 +619,10 @@ export class SegmentPane {
     if (!textA || !textB) { this._notify("Les deux parties doivent être non-vides.", true); return; }
     this._busy = true;
     try {
-      await splitUnit(conn, { doc_id: this._docId, unit_n: n, text_a: textA, text_b: textB });
+      const res = await splitUnit(
+        conn, { doc_id: this._docId, unit_n: n, text_a: textA, text_b: textB });
+      const note = alignmentLossNote(res.links_archived);
+      if (note) this._notify(`Scission effectuée —${note}`);
       this._splitEditingN = null;
       this._splitDraft = null;
       this._pendingFocusN = n; // the first half keeps n

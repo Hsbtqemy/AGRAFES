@@ -5223,12 +5223,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 ],
             )
 
+            links_archived = 0  # rebound just below; never left unbound for the response
             # ALI-03 — archive the links before destroying them (migration 035).
             # The action already exists (recorded above), so the snapshot rides in the
             # same transaction: snapshot + delete either both land or both roll back.
             # Until this, « fusionner puis annuler » returned the two units and lost
             # their alignment for good, without a word.
-            snapshot_links_for_units(conn, action_id, [uid1, uid2])
+            links_archived = snapshot_links_for_units(conn, action_id, [uid1, uid2])
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
                 " pivot_unit_id IN (?,?) OR target_unit_id IN (?,?)",
@@ -5269,6 +5270,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "text":      merged_norm,
             "fts_stale": True,  # ENG-03: merged unit's text_norm changed → reindex
             "action_id": action_id,
+            # 1.6.68 — how many alignment links this merge destroyed (and archived).
+            # A pre-confirmation built on the DOCUMENT's aligned_count would announce
+            # a loss that is not the one about to happen: a merge only ever touches
+            # the two units' links. Reporting the exact figure afterwards is both
+            # truthful and cheaper (audit §11.16).
+            "links_archived": links_archived,
         }))
 
     def _handle_units_split(self, body: dict) -> None:
@@ -5341,6 +5348,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # links here and write the archive further down, once action_id exists: same
             # transaction, same guarantee, no reordering of the mutation itself.
             links_before = collect_links_for_units(conn, [uid])
+            links_archived = 0  # rebound after record_prep_action, below
             conn.execute(
                 "DELETE FROM alignment_links WHERE"
                 " pivot_unit_id=? OR target_unit_id=?",
@@ -5399,7 +5407,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 ],
             )
             # The links read before the DELETE, archived now that the action exists.
-            insert_link_snapshots(action_id, links_before, conn=conn)
+            links_archived = insert_link_snapshots(action_id, links_before, conn=conn)
 
             conn.commit()
 
@@ -5411,6 +5419,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "text_b":     text_b,
             "fts_stale":  True,  # ENG-03: split rewrote/added units → reindex
             "action_id":  action_id,
+            "links_archived": links_archived,  # 1.6.68, same rationale as /units/merge
         }))
 
     # ------------------------------------------------------------------

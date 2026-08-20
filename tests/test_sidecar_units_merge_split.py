@@ -187,3 +187,51 @@ class TestUnitsSplit:
             {"doc_id": 1, "unit_n": 1, "text_a": "A.", "text_b": "B."},
         )
         assert code == 401
+
+
+class TestLinksArchivedReported:
+    """1.6.68 — le geste dit EXACTEMENT ce qu'il a détruit.
+
+    Le reliquat au dossier demandait de câbler needsAlignmentConfirm sur la fusion.
+    Ce garde-fou prend l'aligned_count du DOCUMENT, alors qu'une fusion ne touche
+    jamais que les liens des deux unités : il aurait annoncé une perte qui n'est pas
+    celle qui va avoir lieu. Le compte rendu après coup est exact, lui.
+    """
+
+    def test_merge_reports_the_links_it_destroyed(self, ms_sidecar):
+        base, token, _ = ms_sidecar
+        # La fixture aligne 5 ↔ 5 par external_id : les unités 1 et 2 portent un lien
+        # chacune, donc cette fusion en détruit deux — pas les cinq du document.
+        code, body = _post(f"{base}/units/merge", {"doc_id": 1, "n1": 1, "n2": 2}, token)
+        assert code == 200, body
+        assert body["links_archived"] == 2, body
+
+    def test_split_reports_the_links_it_destroyed(self, ms_sidecar):
+        base, token, _ = ms_sidecar
+        code, body = _post(
+            f"{base}/units/split",
+            {"doc_id": 1, "unit_n": 3, "text_a": "Trois", "text_b": "bis."},
+            token,
+        )
+        assert code == 200, body
+        assert body["links_archived"] == 1, body
+
+    def test_zero_when_the_units_carried_no_alignment(self, ms_sidecar):
+        base, token, _ = ms_sidecar
+        # Il faut DEUX unités adjacentes sans lien, et la fusion renumérote : après
+        # avoir fusionné (1,2), le nouveau n=2 est l'ancien n=3, encore aligné. On
+        # libère donc deux voisines avant de mesurer le cas à zéro.
+        a = _post(f"{base}/units/merge", {"doc_id": 2, "n1": 1, "n2": 2}, token)[1]
+        b = _post(f"{base}/units/merge", {"doc_id": 2, "n1": 2, "n2": 3}, token)[1]
+        assert (a["links_archived"], b["links_archived"]) == (2, 2)
+        code, body = _post(f"{base}/units/merge", {"doc_id": 2, "n1": 1, "n2": 2}, token)
+        assert code == 200, body
+        assert body["links_archived"] == 0, body
+
+    def test_the_count_is_what_undo_gives_back(self, ms_sidecar):
+        """Le message promet « Annuler les rend » : la promesse est vérifiée ici."""
+        base, token, _ = ms_sidecar
+        _code, merged = _post(f"{base}/units/merge", {"doc_id": 1, "n1": 1, "n2": 2}, token)
+        code, undone = _post(f"{base}/prep/undo", {"doc_id": 1}, token)
+        assert code == 200, undone
+        assert undone["alignments_restored"] == merged["links_archived"]

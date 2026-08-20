@@ -4226,6 +4226,10 @@
               "fts_stale": {
                 "type": "boolean"
               },
+              "links_archived": {
+                "description": "1.6.68 — alignment links this gesture destroyed AND archived (migration 035): 0 when the unit(s) carried none. Reported after the fact rather than pre-confirmed, because a confirmation built on the document's aligned_count would announce a loss that is not the one about to happen.",
+                "type": "integer"
+              },
               "merged_n": {
                 "type": "integer"
               },
@@ -4281,6 +4285,10 @@
               },
               "fts_stale": {
                 "type": "boolean"
+              },
+              "links_archived": {
+                "description": "1.6.68 — alignment links this gesture destroyed AND archived (migration 035): 0 when the unit(s) carried none. Reported after the fact rather than pre-confirmed, because a confirmation built on the document's aligned_count would announce a loss that is not the one about to happen.",
+                "type": "integer"
               },
               "new_unit_n": {
                 "type": "integer"
@@ -4416,8 +4424,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.67",
-    "x-contract-version": "1.6.67"
+    "version": "1.6.68",
+    "x-contract-version": "1.6.68"
   },
   "openapi": "3.0.3",
   "paths": {
