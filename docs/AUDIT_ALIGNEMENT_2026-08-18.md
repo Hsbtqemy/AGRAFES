@@ -47,7 +47,7 @@ conclusions** des §8 et §10.
 | ALI-07 | 🟠 | P2 | Aucune propagation d'une correction manuelle : la réparation est O(n) gestes, sans capitalisation. |
 | ALI-08 | 🟡 | P2 | `alignment_links.external_id` (NOT NULL, indexé, documenté « the shared external_id anchor ») contient en réalité une valeur **dépendant de la stratégie**. |
 | ALI-09 | 🟡 | P2 | FK sans `ON DELETE` : sûr aujourd'hui parce que **chaque** chemin supprime explicitement, mais l'invariant n'est ni documenté ni testé. |
-| ALI-10 | 🟠 | P1 | Resegmentation et propagation détruisent les liens **sans laisser de trace**. Instruit : **cinq** sites, un seul journalisé (§11.14). **Tranche 1 livrée** — le chemin interactif archive et rend ses liens (§11.15). **Tranche 2 livrée** (décision D-2, §12.5) — les six appels de masse (famille, job ×2, markers ×3) passent un recorder et sont annulables document par document. **Reste ouvert pour un seul site** : `apply_propagated`, qui ne passe par aucune des deux fonctions de resegmentation et reconstruit le document avec son propre DELETE. Relevé de 🟡 : `POST /families/{id}/segment` `force=true` efface l'alignement d'une famille entière sans retour.
+| ALI-10 | ✅ | ~~P1~~ | Resegmentation et propagation détruisent les liens **sans laisser de trace**. Instruit : **cinq** sites, un seul journalisé (§11.14). **Tranche 1 livrée** — le chemin interactif archive et rend ses liens (§11.15). **Tranche 2 livrée** (décision D-2, §12.5) — les six appels de masse (famille, job ×2, markers ×3) passent un recorder et sont annulables document par document. **Clos** (§12.9) — `apply_propagated`, le dernier site, enregistre une action Mode A et archive ses liens. Les sept chemins destructeurs laissent une trace. Relevé de 🟡 : `POST /families/{id}/segment` `force=true` efface l'alignement d'une famille entière sans retour.
 | ALI-11 | 🟡 | P2 | Trous de test : `text_start_n` absent des tests d'alignement ; la projection matrice n'est jamais confrontée à `text_norm`. |
 | ALI-12 | 🟠 | P1 | Le diagnostic préalable **existe et est bon** (constat initial corrigé), mais son critère d'ancrage n'a **aucun seuil de couverture** : 1 ligne porteuse sur 1 231 suffit à éteindre l'avertissement. |
 | ALI-13 | 🟠 | P1 | Le bead posé par le ⭙ **masque une collision légitime** — risque jugé résiduel en §5, **matérialisé** en §8 (voir ALI-22). |
@@ -2180,3 +2180,38 @@ autre table et sort de l'opération.
 **Ce que ce lot ne fait pas.** Le bandeau d'annulation de l'écran (ALI-20) n'est pas posé : le
 moteur rend la poignée `op_id`, personne ne l'affiche encore. ALI-22 (a) et ALI-20 restent donc
 ouverts tant que le front n'a pas sa moitié.
+
+### 12.9 ALI-10 clos — et deux défauts que le dernier site a mis au jour (2026-08-20)
+
+Contrat **1.6.71**. `POST /segment/apply_propagated` enregistre une action Mode A et archive les
+liens qu'il détruit ; sa réponse rend `action_id` et `links_archived`. Aucune migration : les deux
+archives dont il a besoin existent (019, 035).
+
+Pourquoi D-2 l'avait laissé : il ne passe par **aucune** des deux fonctions de resegmentation. Il
+reconstruit le document depuis la liste d'unités que le front lui donne, avec son propre `DELETE` —
+la voie que le recorder ne pouvait pas atteindre.
+
+**Deux défauts hors du handler, sans lesquels la journalisation aurait menti.**
+
+1. *`_undo_resegment` réinsérait en `unit_type = 'line'` **en dur**.* C'était exact tant que seule
+   la resegmentation était journalisée : elle ne touche que des lignes. Ce chemin-ci détruit aussi
+   les unités `structure`, si bien qu'un intertitre serait revenu **converti en ligne**, sans un
+   mot. Le type se restaure désormais depuis le contexte ; les actions enregistrées avant ce
+   changement n'ont pas la clé et retombent sur `line`, ce qui reste juste pour elles.
+2. *Le recorder de production omettait `text_source`.* `_undo_resegment` le relit pourtant depuis
+   le `context_json` — il n'a pas de colonne `_before` dans la table d'instantanés. Conséquence :
+   **toute** annulation de resegmentation, y compris sur le chemin interactif `/segment`, rendait
+   l'unité avec `text_source = NULL` et perdait sans bruit la provenance d'import (le repli « voir
+   l'original »). Vérifié en base avant d'affirmer, puis vérifié corrigé.
+
+**Ce qui a masqué le second pendant tout ce temps.** `test_undo.py` porte un test nommé
+`test_resegment_propagates_and_undo_restores_text_source`, et il passe. Mais il définit **sa propre**
+doublure de recorder, qui transmet `units_before` verbatim. Le recorder de production, lui, re-mappe
+vers une liste de clés explicite — et `text_source` n'y était pas. Le test prouvait la mécanique
+d'annulation, pas le chemin réel. Le défaut est **antérieur à D-2** : le mapping était déjà
+incomplet dans la closure de `_handle_segment` d'où le recorder a été extrait (vérifié à
+`36834f1~1`). Les deux correctifs sont prouvés ROUGE sur l'ancien code.
+
+**Ce que ça dit sur la méthode.** Une doublure dans un test d'intégration n'est pas neutre : elle
+peut être *plus généreuse* que la production et transformer le test en garantie fausse. Les cinq
+tests neufs passent tous par `make_resegment_recorder`.

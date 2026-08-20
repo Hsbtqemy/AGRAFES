@@ -4851,6 +4851,26 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             text_start_n = doc_row["text_start_n"]
             start_n = text_start_n if text_start_n is not None else 1
 
+            # ── ALI-10, reliquat : ce chemin détruisait sans laisser de trace ──
+            # Il ne passe par aucune des deux fonctions de resegmentation (il
+            # reconstruit le document depuis une liste d'unités fournie, avec son
+            # propre DELETE), donc D-2 ne l'avait pas couvert. La lecture se fait
+            # AVANT les suppressions, et avec EXACTEMENT leurs prédicats : une archive
+            # plus large ressusciterait des unités que le geste n'a pas touchées.
+            from multicorpus_engine.action_history import (
+                collect_links_for_document,
+                insert_link_snapshots,
+            )
+            archived_links = collect_links_for_document(conn, doc_id)
+            units_before_rows = conn.execute(
+                "SELECT unit_id, unit_type, n, external_id, text_raw, text_norm,"
+                " unit_role, meta_json, text_source FROM units"
+                " WHERE doc_id = ? AND unit_type IN ('line', 'structure')"
+                + (" AND n >= ?" if text_start_n is not None else "")
+                + " ORDER BY n",
+                (doc_id, text_start_n) if text_start_n is not None else (doc_id,),
+            ).fetchall()
+
             # Delete stale alignment links
             conn.execute(
                 "DELETE FROM alignment_links WHERE pivot_doc_id = ? OR target_doc_id = ?",
@@ -4888,12 +4908,54 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 insert_rows,
             )
+
+            # Mode A — même forme que les six chemins câblés par D-2 : l'action et ses
+            # instantanés partagent la transaction de la mutation, ils tombent ou
+            # tiennent ensemble. `_undo_resegment` réinsère les unités AVEC leur
+            # unit_id d'origine, ce qui est la condition pour que les liens archivés
+            # recollent (ALI-03).
+            action_id = None
+            if units_before_rows:
+                new_rows = conn.execute(
+                    "SELECT unit_id, n FROM units"
+                    " WHERE doc_id = ? AND unit_type IN ('line', 'structure')"
+                    + (" AND n >= ?" if text_start_n is not None else "")
+                    + " ORDER BY n",
+                    (doc_id, text_start_n) if text_start_n is not None else (doc_id,),
+                ).fetchall()
+                action_id = make_resegment_recorder(conn)({
+                    "doc_id":           doc_id,
+                    "pack":             "propagate",
+                    "lang":             "und",
+                    "text_start_n":     text_start_n,
+                    "units_before":     [
+                        {
+                            "unit_id":     int(r["unit_id"]),
+                            "unit_type":   r["unit_type"],
+                            "n":           int(r["n"]),
+                            "external_id": r["external_id"],
+                            "text_raw":    r["text_raw"],
+                            "text_norm":   r["text_norm"],
+                            "unit_role":   r["unit_role"],
+                            "meta_json":   r["meta_json"],
+                            "text_source": r["text_source"],
+                        }
+                        for r in units_before_rows
+                    ],
+                    "created_unit_ids": [int(r["unit_id"]) for r in new_rows],
+                    "new_units_n":      [int(r["n"]) for r in new_rows],
+                })
+                if action_id is not None and archived_links:
+                    insert_link_snapshots(int(action_id), archived_links, conn=conn)
             conn.commit()
 
         self._send_json(success_payload({
             "doc_id": doc_id,
             "units_written": len(validated),
             "fts_stale": True,
+            # ALI-10 : ce que le geste a détruit, dit plutôt que tu.
+            "action_id": action_id,
+            "links_archived": len(archived_links),
         }))
 
     def _handle_segment_preview(self, body: dict) -> None:
@@ -9301,6 +9363,17 @@ def make_resegment_recorder(conn: "sqlite3.Connection", calibrate_to: object = N
                         "text_norm":   u["text_norm"],
                         "unit_role":   u["unit_role"],
                         "meta_json":   u["meta_json"],
+                        # Absent des chemins qui ne resegmentent que des lignes ;
+                        # apply_propagated, lui, embrasse aussi les `structure`.
+                        "unit_type":   u.get("unit_type") or "line",
+                        # `_undo_resegment` relit text_source depuis ce JSON — il n'a
+                        # pas de colonne `_before` dans la table d'instantanés. Ce
+                        # mapping l'omettait, donc toute annulation de resegmentation
+                        # rendait l'unité avec text_source NULL et perdait sans bruit
+                        # la provenance d'import (le repli « voir l'original »). Le
+                        # test qui semblait couvrir le cas passe par une doublure de
+                        # recorder qui, elle, transmet le payload verbatim.
+                        "text_source": u.get("text_source"),
                     }
                     for u in units_before
                 ],

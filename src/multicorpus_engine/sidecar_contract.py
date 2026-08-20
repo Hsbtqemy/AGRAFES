@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.70"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.71"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -389,6 +389,26 @@ API_VERSION = CONTRACT_VERSION
 #         deux. Idem pour le statut, reglable par lot depuis la matrice et a l'unite depuis le
 #         panneau. Hors pile : /align/cell_status, qui ecrit dans alignment_cell_status et non
 #         dans alignment_links -- autre objet, autre archive si le besoin se presente.
+
+# 1.6.71: le dernier site destructeur non journalise (ALI-10, reliquat). POST
+#         /segment/apply_propagated enregistre desormais une action Mode A et archive les
+#         liens qu'il detruit ; sa reponse gagne `action_id` et `links_archived`. Reponse
+#         non schematisee + route existante -> snapshot inchange ; openapi (version) et .md
+#         bougent. D-2 ne l'avait pas couvert parce qu'il ne passe par AUCUNE des deux
+#         fonctions de resegmentation : il reconstruit le document depuis une liste
+#         d'unites fournie, avec son propre DELETE.
+#         Deux correctifs hors du handler, sans lesquels la journalisation aurait menti :
+#         (1) _undo_resegment reinserait en unit_type='line' EN DUR -- exact tant que seule
+#         la resegmentation etait journalisee (elle ne touche que des lignes), faux ici ou
+#         les unites `structure` sont detruites aussi : un intertitre serait revenu converti
+#         en ligne. Les actions enregistrees avant ce changement n'ont pas la cle et
+#         retombent sur 'line', ce qui reste exact pour elles.
+#         (2) make_resegment_recorder OMETTAIT text_source de son context_json, alors que
+#         _undo_resegment l'y relit (il n'a pas de colonne _before). TOUTE annulation de
+#         resegmentation rendait donc l'unite sans sa provenance d'import, silencieusement,
+#         y compris sur le chemin interactif /segment -- et ce depuis avant l'extraction du
+#         recorder. Le test qui semblait couvrir le cas passe par une DOUBLURE de recorder
+#         qui transmet le payload verbatim ; c'est ce qui a masque le trou.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"

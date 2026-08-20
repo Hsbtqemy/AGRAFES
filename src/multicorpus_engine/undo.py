@@ -404,16 +404,23 @@ def _undo_resegment(
         # text_source lives only in the context JSON snapshot (no *_before column),
         # so restore it from there regardless of the snapshot-table branch (ADR-043 P2).
         text_source = u.get("text_source")
+        # Le TYPE de l'unite se restaure, il ne se suppose pas. Il etait ecrit 'line'
+        # en dur, ce qui etait juste tant que seule la resegmentation etait journalisee
+        # -- elle ne touche que des lignes. `apply_propagated` (ALI-10, reliquat) detruit
+        # aussi des unites `structure` : les rendre en 'line' les convertirait
+        # silencieusement. Les actions enregistrees AVANT ce changement n'ont pas la cle
+        # et retombent sur 'line', ce qui reste exact pour elles.
         conn.execute(
             """
             INSERT INTO units
               (unit_id, doc_id, unit_type, n, external_id,
                text_raw, text_norm, meta_json, unit_role, text_source)
-            VALUES (?, ?, 'line', ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uid,
                 doc_id,
+                u.get("unit_type") or "line",
                 int(u["n"]),
                 u.get("external_id"),
                 text_raw,

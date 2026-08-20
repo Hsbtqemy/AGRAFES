@@ -421,7 +421,19 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /segment/apply_propagated` (token required) — write pre-computed segmentation to DB
   - body: `{ doc_id, units: [{ type: "line"|"structure", text, role? }] }`
   - respects `text_start_n` (paratext preserved); deletes stale alignment_links
-  - response: `{ units_written, fts_stale: true }`
+  - response: `{ units_written, fts_stale: true, action_id, links_archived }`
+  - **annulable depuis 1.6.71** (ALI-10, reliquat). Ce chemin ne passe par aucune des deux
+    fonctions de resegmentation — il reconstruit le document depuis la liste d'unités fournie,
+    avec son propre `DELETE` — et D-2 ne l'avait donc pas couvert. Il enregistre désormais une
+    action Mode A (`action_type = resegment`) et archive les liens détruits (migration 035) ;
+    `action_id` est la poignée pour `POST /prep/undo`, `links_archived` dit ce que le geste a
+    coûté. La lecture d'archive utilise **exactement** les prédicats des deux `DELETE`, borne
+    de paratexte comprise : une archive plus large ressusciterait des unités jamais touchées.
+  - deux conséquences hors de cette route, car l'annulation aurait menti sans elles : le type
+    d'unité est désormais **restauré** et non plus supposé `line` (ce chemin détruit aussi des
+    `structure`, qui seraient revenues converties en lignes), et `text_source` est **porté par
+    le recorder** — il ne l'était pas, si bien que toute annulation de resegmentation, chemin
+    interactif compris, rendait l'unité sans sa provenance d'import.
 - `GET /jobs`
 - `POST /jobs`
 - `GET /jobs/{job_id}`
