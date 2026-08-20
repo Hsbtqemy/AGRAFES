@@ -47,7 +47,7 @@ conclusions** des §8 et §10.
 | ALI-07 | 🟠 | P2 | Aucune propagation d'une correction manuelle : la réparation est O(n) gestes, sans capitalisation. |
 | ALI-08 | 🟡 | P2 | `alignment_links.external_id` (NOT NULL, indexé, documenté « the shared external_id anchor ») contient en réalité une valeur **dépendant de la stratégie**. |
 | ALI-09 | 🟡 | P2 | FK sans `ON DELETE` : sûr aujourd'hui parce que **chaque** chemin supprime explicitement, mais l'invariant n'est ni documenté ni testé. |
-| ALI-10 | 🟡 | P2 | Resegmentation et propagation détruisent les liens **sans laisser de trace** dans `prep_action_history`. |
+| ALI-10 | 🟠 | P1 | Resegmentation et propagation détruisent les liens **sans laisser de trace**. Instruit : **cinq** sites, un seul journalisé (§11.14). **Tranche 1 livrée** — le chemin interactif archive et rend ses liens (§11.15). Les chemins de masse (famille, job, markers, propagate) restent irréversibles ; ils l'annoncent désormais. Relevé de 🟡 : `POST /families/{id}/segment` `force=true` efface l'alignement d'une famille entière sans retour.
 | ALI-11 | 🟡 | P2 | Trous de test : `text_start_n` absent des tests d'alignement ; la projection matrice n'est jamais confrontée à `text_norm`. |
 | ALI-12 | 🟠 | P1 | Le diagnostic préalable **existe et est bon** (constat initial corrigé), mais son critère d'ancrage n'a **aucun seuil de couverture** : 1 ligne porteuse sur 1 231 suffit à éteindre l'avertissement. |
 | ALI-13 | 🟠 | P1 | Le bead posé par le ⭙ **masque une collision légitime** — risque jugé résiduel en §5, **matérialisé** en §8 (voir ALI-22). |
@@ -1648,3 +1648,37 @@ restitution, elle, est déjà centrale dans `undo.py` — rien à y ajouter.
    historique **linéaire par document**. À court terme, le correctif honnête n'est pas une archive
    mais un **compte annoncé avant destruction** (« cette segmentation détruira 5 770 liens »),
    comme l'avertissement du « Compléter ». À trancher.
+
+### 11.15 ALI-10 tranche 1 — le chemin interactif rend ses liens (2026-08-20)
+
+`resegment_document` archive les liens du document **avant** de les détruire, quand l'appel est
+journalisé. Incrément sur la migration 035, aucun nouvel artefact de contrat : la restitution était
+déjà centrale dans `undo.py` depuis ALI-03, il ne manquait que l'archive.
+
+Le collecteur est **scopé au document** (`collect_links_for_document`) et non aux unités : il
+reproduit à la lettre le prédicat du `DELETE` (`pivot_doc_id = ? OR target_doc_id = ?`). Une archive
+qui scoperait autrement rendrait un ensemble différent de celui détruit — et le test le vérifie sur
+un cas asymétrique (deux liens où le document est pivot, un troisième où il est cible).
+
+Rouge prouvé : sur le code d'avant, `0 == 3` liens archivés. Restitution vérifiée **identique sur
+les quatorze colonnes**, `link_id` compris — `link_id` est `INTEGER PRIMARY KEY AUTOINCREMENT`
+(migration 003) et `_undo_resegment` réinsère les unités avec leur `unit_id` d'origine, donc rien
+n'a besoin d'être renuméroté.
+
+**Et l'utilisateur l'apprend enfin dans sa langue.** `SegmentPane.ts:715` rend `report.warnings`
+verbatim ; le message disait `Deleted 3 alignment_link(s) for doc_id=1 (stale after
+resegmentation)`. Il dit maintenant l'une ou l'autre de ces deux phrases, et la différence entre
+les deux est précisément le §11.14 :
+
+> 3 liens d'alignement supprimés — annulables tant que cette resegmentation reste la dernière
+> action du document.
+
+> 1 lien d'alignement supprimé — définitif : cette opération n'est pas annulable.
+
+La seconde est ce que verra quiconque passe par la segmentation de famille, le job async ou les
+markers. Aucun test ni aucun code front ne dépendait de l'ancienne chaîne (vérifié). Le journal,
+lui, garde sa forme technique avec le `doc_id`.
+
+**Reste ouvert** : les chemins de masse. Ils n'ont pas d'action, donc pas d'annulation possible dans
+un historique linéaire par document — ils disent désormais qu'ils sont définitifs, ce qui est le
+minimum, pas le correctif.

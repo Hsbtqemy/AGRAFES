@@ -169,6 +169,28 @@ def collect_links_for_units(
     ]
 
 
+def collect_links_for_document(
+    conn: sqlite3.Connection, doc_id: int
+) -> list[tuple]:
+    """Read every link of ``doc_id``, on either side, as plain tuples. No write.
+
+    Mirrors, deliberately and to the character, the predicate the resegmentation
+    paths delete with (``pivot_doc_id = ? OR target_doc_id = ?``, segmenter.py):
+    an archive that scoped differently from the DELETE would restore a different
+    set than the one destroyed. The unit-based variant is not equivalent here —
+    a resegmentation drops the document's units wholesale, so the link set is
+    naturally addressed by document, not by unit.
+    """
+    cols = ", ".join(LINK_SNAPSHOT_COLUMNS)
+    return [
+        tuple(r) for r in conn.execute(
+            f"SELECT {cols} FROM alignment_links"
+            f" WHERE pivot_doc_id = ? OR target_doc_id = ?",
+            (int(doc_id), int(doc_id)),
+        )
+    ]
+
+
 def insert_link_snapshots(
     action_id: int, rows: list[tuple], *, conn: sqlite3.Connection
 ) -> int:

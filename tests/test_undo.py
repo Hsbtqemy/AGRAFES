@@ -1294,3 +1294,123 @@ def test_undo_skips_a_link_whose_unit_disappeared(
 
     assert out == {"restored": 0, "skipped": 1}
     assert db_conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0] == 0
+
+
+def test_undo_resegment_restores_alignment_links(db_conn: sqlite3.Connection) -> None:
+    """ALI-10 — resegmenter detruisait TOUS les liens du document sans les archiver.
+
+    RED avant ce correctif : les unites revenaient a l'identique (le test voisin le
+    prouve deja) mais l'alignement de la famille restait perdu, en silence. La
+    condition qui manquait a ALI-03 est ici remplie d'avance : _undo_resegment
+    reinsere les unites avec leur unit_id d'origine, donc une archive par unit_id
+    se recolle exactement.
+    """
+    from multicorpus_engine.action_history import (
+        ACTION_RESEGMENT,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.segmenter import resegment_document
+    from multicorpus_engine.undo import execute_undo
+
+    _COLS = (
+        "SELECT link_id, run_id, pivot_unit_id, target_unit_id, external_id,"
+        " pivot_doc_id, target_doc_id, created_at, status, source_changed_at,"
+        " bead_id, bead_uid, target_char_start, target_char_end"
+        " FROM alignment_links ORDER BY link_id"
+    )
+
+    doc_id, [p1, p2] = _seed_doc(db_conn, ["Phrase un. Phrase deux.", "Et trois ?"])
+    tgt_doc, [t1, t2] = _seed_doc(db_conn, ["Target one.", "Target two."])
+    # Deux liens ou le document resegmente est PIVOT, un troisieme ou il est CIBLE :
+    # le DELETE porte sur les deux sens (pivot_doc_id OR target_doc_id), l'archive doit
+    # donc en faire autant — sans quoi l'annulation rendrait une demi-famille.
+    for pu, tu, ext, pd, td in ((p1, t1, 1, doc_id, tgt_doc), (p2, t2, 2, doc_id, tgt_doc)):
+        db_conn.execute(
+            "INSERT INTO alignment_links (run_id, pivot_unit_id, target_unit_id,"
+            " external_id, pivot_doc_id, target_doc_id, created_at, bead_id)"
+            " VALUES ('r-1', ?, ?, ?, ?, ?, '2026-08-20T00:00:00Z', 7)",
+            (pu, tu, ext, pd, td),
+        )
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id, pivot_unit_id, target_unit_id,"
+        " external_id, pivot_doc_id, target_doc_id, created_at, status)"
+        " VALUES ('r-2', ?, ?, 9, ?, ?, '2026-08-20T00:00:00Z', 'accepted')",
+        (t1, p1, tgt_doc, doc_id),
+    )
+    db_conn.commit()
+    before = db_conn.execute(_COLS).fetchall()
+    assert len(before) == 3
+
+    def recorder(payload):
+        units_before = payload["units_before"]
+        if not units_before:
+            return None
+        action_id = record_prep_action(
+            db_conn, doc_id=payload["doc_id"], action_type=ACTION_RESEGMENT,
+            description=f"Reseg {len(units_before)} → {len(payload['created_unit_ids'])}",
+            context={
+                "pack": payload["pack"], "lang": payload["lang"],
+                "text_start_n": payload["text_start_n"],
+                "units_deleted_after_ids": [u["unit_id"] for u in units_before],
+                "units_created_after_json": [
+                    {"unit_id": uid, "n": n}
+                    for uid, n in zip(payload["created_unit_ids"], payload["new_units_n"])
+                ],
+                "units_before": units_before,
+            },
+        )
+        insert_unit_snapshots(
+            db_conn, action_id,
+            [{"unit_id": u["unit_id"], "text_raw_before": u["text_raw"],
+              "text_norm_before": u["text_norm"] or "",
+              "unit_role_before": u["unit_role"],
+              "meta_json_before": u["meta_json"]} for u in units_before],
+        )
+        return action_id
+
+    report = resegment_document(
+        db_conn, doc_id=doc_id, lang="fr", pack="auto", record_action=recorder)
+    assert report.warnings and "annulables" in report.warnings[0], report.warnings
+    assert db_conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0] == 0, \
+        "la resegmentation doit bien detruire les liens (c'est le comportement, pas le defaut)"
+    archived = db_conn.execute(
+        "SELECT COUNT(*) FROM prep_action_link_snapshots"
+    ).fetchone()[0]
+    assert archived == 3, f"les 3 liens des DEUX sens doivent etre archives, vu {archived}"
+
+    execute_undo(db_conn, doc_id)
+    db_conn.commit()
+
+    restored = db_conn.execute(_COLS).fetchall()
+    assert [tuple(r) for r in restored] == [tuple(r) for r in before], (
+        "restitution non identique.\navant   = %s\nrestitue= %s"
+        % ([tuple(r) for r in before], [tuple(r) for r in restored])
+    )
+
+
+def test_resegment_without_recorder_archives_nothing(db_conn: sqlite3.Connection) -> None:
+    """Sans record_action il n'existe aucune action a laquelle rattacher l'archive :
+    ces appelants (segmentation de famille, job async, markers) detruisent
+    irreversiblement — audit §11.14. Le test fixe l'etat des lieux, pas un souhait."""
+    from multicorpus_engine.segmenter import resegment_document
+
+    doc_id, [p1, _p2] = _seed_doc(db_conn, ["Phrase un. Phrase deux.", "Et trois ?"])
+    tgt_doc, [t1, _t2] = _seed_doc(db_conn, ["Target one.", "Target two."])
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id, pivot_unit_id, target_unit_id,"
+        " external_id, pivot_doc_id, target_doc_id, created_at)"
+        " VALUES ('r-1', ?, ?, 1, ?, ?, '2026-08-20T00:00:00Z')",
+        (p1, t1, doc_id, tgt_doc),
+    )
+    db_conn.commit()
+
+    report = resegment_document(db_conn, doc_id=doc_id, lang="fr", pack="auto")
+
+    assert db_conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0] == 0
+    assert db_conn.execute(
+        "SELECT COUNT(*) FROM prep_action_link_snapshots"
+    ).fetchone()[0] == 0
+    # Et surtout : l'utilisateur doit le LIRE. SegmentPane rend report.warnings tel
+    # quel, c'est sa seule chance de savoir que l'alignement ne reviendra pas.
+    assert report.warnings and "n'est pas annulable" in report.warnings[0], report.warnings

@@ -698,16 +698,42 @@ def resegment_document(
             new_units.append((doc_id, "line", global_n, ext_id, sent, sent, parent_meta, src))
             global_n += 1
 
+    # ALI-10 — archive the links BEFORE destroying them, when this call is undoable.
+    # The action does not exist yet (record_action runs after the writes, below), so
+    # this is the read half of the collect/insert pair: read now, delete, insert once
+    # the action_id is known — the same shape as _handle_units_split.
+    # Without a recorder there is no action to hang an archive from: those callers
+    # (family segment, async job, markers) destroy irreversibly, see audit §11.14.
+    archived_links: list[tuple] = []
+    if record_action is not None:
+        from multicorpus_engine.action_history import collect_links_for_document
+
+        archived_links = collect_links_for_document(conn, doc_id)
+
     # Delete stale alignment_links
     deleted_links = conn.execute(
         "DELETE FROM alignment_links WHERE pivot_doc_id = ? OR target_doc_id = ?",
         (doc_id, doc_id),
     ).rowcount
-    warn = (
-        f"Deleted {deleted_links} alignment_link(s) for doc_id={doc_id}"
-        " (stale after resegmentation)"
+    # Two audiences, two sentences. The log keeps the doc_id and stays technical; the
+    # report's warning is read by the user in the segmentation pane (SegmentPane.ts:715
+    # renders report.warnings verbatim), so it says what happened AND whether it can be
+    # taken back — the archive only exists on the recorded path (audit §11.14).
+    log.warning(
+        "Deleted %d alignment_link(s) for doc_id=%d (stale after resegmentation, %s)",
+        deleted_links, doc_id,
+        f"{len(archived_links)} archived for undo" if record_action is not None else "no archive",
     )
-    log.warning(warn)
+    plural = "s" if deleted_links > 1 else ""
+    warn = (
+        f"{deleted_links} lien{plural} d'alignement supprimé{plural} — "
+        + (
+            "annulable" + plural + " tant que cette resegmentation reste la dernière "
+            "action du document."
+            if record_action is not None
+            else "définitif" + plural + " : cette opération n'est pas annulable."
+        )
+    )
 
     # Delete only text units (n >= text_start_n) — paratext units are preserved
     if text_start_n is not None:
@@ -781,6 +807,12 @@ def resegment_document(
             "created_unit_ids":  [int(r["unit_id"]) for r in new_rows],
             "new_units_n":       [int(r["n"]) for r in new_rows],
         })
+        # The action exists now: the archive can be attached. Same transaction as the
+        # DELETE above, so snapshot and destruction land or roll back together.
+        if action_id is not None and archived_links:
+            from multicorpus_engine.action_history import insert_link_snapshots
+
+            insert_link_snapshots(int(action_id), archived_links, conn=conn)
 
     conn.commit()
 
