@@ -51,6 +51,101 @@ def _validate_user_regex(pattern: str) -> None:
         )
 
 
+# ── Assainissement de la requête FTS5 ────────────────────────────────────────
+#
+# FTS5 reçoit la saisie brute de l'utilisateur, et une partie de la ponctuation y est
+# de la SYNTAXE. Mesuré le 2026-08-20 sur un échantillon multilingue : sept caractères
+# ASCII font échouer la requête — `' - : . + & /` — tandis que TOUS les scripts non
+# latins passent (arabe, chinois, japonais, coréen, grec, cyrillique, hébreu, devanagari),
+# ponctuation non-ASCII comprise (« », ，。, le maqaf hébreu ־, l'apostrophe courbe ’).
+# Le problème est donc confiné à la ponctuation ASCII, et la règle n'a pas besoin de
+# connaître les langues — ce qui est la seule façon tenable pour un corpus multilingue.
+#
+# Le cas qui l'a révélé : « Mi - ar face plăcere. » (roumain) → `no such column: ar`,
+# FTS5 lisant `- ar` comme un filtre de colonne négatif. Sur le corpus de travail,
+# 14,7 % des lignes contiennent une séquence de ce genre — 21,5 % en français, 29,8 %
+# en roumain. Autrement dit : copier-coller une ligne du concordancier pour la
+# retrouver échouait une fois sur sept.
+#
+# Ce qui est PRÉSERVÉ, parce que c'est la syntaxe que l'écran promet : les phrases
+# entre guillemets, la troncature `mot*`, l'ancre `^mot`, `NEAR(...)`, `AND`/`OR`/`NOT`
+# et les parenthèses de groupement.
+
+# Caractères ASCII admis dans un mot nu : lettres, chiffres, souligné. Tout le reste de
+# l'ASCII est traité comme de la ponctuation. Le non-ASCII n'est jamais suspecté — c'est
+# ce que la mesure autorise, et c'est ce qui rend la règle indépendante de la langue.
+_FTS_MOT_SUR = re.compile(r"^[A-Za-z0-9_]+$")
+_FTS_MOTS_CLES = frozenset({"AND", "OR", "NOT", "NEAR"})
+
+# Balayage : soit une phrase déjà entre guillemets (qu'on laisse telle quelle), soit un
+# mot nu. Tout ce qui n'est capturé par NI l'un NI l'autre — espaces, parenthèses de
+# groupement, virgule de NEAR() — reste en place, à l'octet près. C'est ce qui garantit
+# que `NEAR(chat chien, 3)` traverse intact : la structure n'est jamais reconstruite,
+# seuls les mots qui posent problème sont réécrits sur place.
+_FTS_BALAYAGE = re.compile(r'"[^"]*"|[^\s()",]+')
+
+
+def _token_a_besoin_de_guillemets(token: str) -> bool:
+    """Le token contient-il de la ponctuation ASCII que FTS5 lirait comme syntaxe ?"""
+    return any(c.isascii() and not (c.isalnum() or c == "_") for c in token)
+
+
+def _assainir_token(brut: str) -> str:
+    """Réécrit un mot nu. Renvoie une chaîne vide quand le token doit disparaître."""
+    if brut.upper() in _FTS_MOTS_CLES or _FTS_MOT_SUR.match(brut):
+        return brut
+    # L'ancre et la troncature restent HORS des guillemets (`^"mot"`, `"mot"*`) : les
+    # deux formes sont acceptées, et les enfermer dedans en ferait des caractères
+    # littéraux, donc une recherche vide.
+    ancre = "^" if brut.startswith("^") else ""
+    corps = brut[len(ancre):]
+    etoile = "*" if corps.endswith("*") else ""
+    if etoile:
+        corps = corps[:-1]
+    if not corps or not _token_a_besoin_de_guillemets(corps):
+        return ancre + corps + etoile
+    # Ponctuation pure, dans aucun script : écartée et non quotée. FTS5 accepte `"-"`
+    # mais ne le fait correspondre à rien — le quoter changerait le plantage en zéro
+    # résultat silencieux, ce qui est pire : l'utilisateur croirait sa phrase absente.
+    if not any(c.isalnum() or c == "_" for c in corps):
+        return ""
+    return ancre + '"' + corps.replace('"', '""') + '"' + etoile
+
+
+def sanitize_fts_query(q: str) -> str:
+    """Rend une requête utilisateur acceptable par FTS5, sans changer son intention.
+
+    Chaque mot nu qui contient de la ponctuation ASCII est mis entre guillemets — il
+    devient une phrase, ce qui est précisément ce que veut quelqu'un qui colle une ligne
+    du concordancier. Le reste de la requête est laissé intact, à l'octet près.
+
+    Renvoie `'""'` — une phrase vide, que FTS5 accepte et qui ne correspond à rien —
+    quand la requête ne contenait aucun mot cherchable. Rendre la saisie brute
+    relancerait l'erreur qu'on vient d'éviter ; rendre une chaîne vide ferait planter
+    l'appelant ailleurs. Zéro résultat est la réponse exacte à « — - — ».
+    """
+    if not q or not q.strip():
+        return q
+
+    # Un guillemet non apparié laisse FTS5 sur « unterminated string ». On retire LE
+    # dernier, et non pas tous : `"phrase" AND mot"` doit garder sa phrase légitime et
+    # ne perdre que la coquille finale.
+    if q.count('"') % 2:
+        dernier = q.rfind('"')
+        q = q[:dernier] + q[dernier + 1:]
+
+    def _remplacer(m: re.Match[str]) -> str:
+        tok = m.group(0)
+        return tok if tok.startswith('"') else _assainir_token(tok)
+
+    assaini = _FTS_BALAYAGE.sub(_remplacer, q)
+    if not assaini.strip(" ()\",^*"):
+        return '""'
+    if assaini != q:
+        logger.debug("FTS query sanitised: %r -> %r", q, assaini)
+    return assaini
+
+
 def _extract_literal_terms(q: str) -> list[str]:
     """Extract plain text terms from an FTS5 query for case-sensitive post-filtering.
 
@@ -99,11 +194,23 @@ def proximity_query(terms: list[str], distance: int = 5) -> str:
 
 
 def _highlight_segment(text: str, query: str) -> str:
-    """Wrap occurrences of query terms with << >> markers.
+    r"""Wrap occurrences of query terms with << >> markers.
 
     Simple case-insensitive substring approach for Increment 1.
+
+    Les termes sont les MOTS de la requête, pas ses tokens bruts découpés sur l'espace.
+    La nuance s'est vue le jour où l'assainissement FTS5 a rendu ces recherches
+    possibles : découper « Mi - ar face plăcere. » sur l'espace surlignait le tiret isolé
+    comme un résultat (`<<Mi>> <<->> <<ar>>`), et « mi-ar » ne surlignait RIEN — le texte
+    porte « mi - ar », donc la chaîne brute ne s'y trouve pas, alors même que la
+    recherche, elle, avait bien trouvé la ligne. Un résultat sans surlignage se lit comme
+    un faux positif.
+
+    `\w+` est unicode par défaut : la découpe vaut pour tous les scripts, et la
+    ponctuation — de toute origine — n'est jamais prise pour un terme.
     """
-    terms = [re.escape(t.strip('"')) for t in query.split() if t.strip('"')]
+    mots = [w for t in query.split() for w in re.findall(r"\w+", t.strip('"'))]
+    terms = [re.escape(w) for w in mots]
     if not terms:
         return text
     pattern = re.compile(
@@ -815,7 +922,11 @@ def run_query_page(
         }
 
     filters: list[str] = ["u.unit_type = 'line'"]
-    params: list[Any] = [q]
+    # La saisie brute contient de la ponctuation que FTS5 lit comme syntaxe
+    # (mesuré : 14,7 % des lignes du corpus de travail en portent). Assainie ici,
+    # au plus près du MATCH, pour que les deux chemins — hits et facettes — ne
+    # puissent pas diverger.
+    params: list[Any] = [sanitize_fts_query(q)]
 
     _apply_doc_filters(
         filters, params,
@@ -951,7 +1062,11 @@ def run_query_facets(
         }
 
     filters: list[str] = ["u.unit_type = 'line'"]
-    params: list[Any] = [q]
+    # La saisie brute contient de la ponctuation que FTS5 lit comme syntaxe
+    # (mesuré : 14,7 % des lignes du corpus de travail en portent). Assainie ici,
+    # au plus près du MATCH, pour que les deux chemins — hits et facettes — ne
+    # puissent pas diverger.
+    params: list[Any] = [sanitize_fts_query(q)]
 
     _apply_doc_filters(
         filters, params,

@@ -1833,8 +1833,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _handle_query(self, body: dict) -> None:
-        from multicorpus_engine.query import run_query_page
-
         raw_aligned_limit = body.get("aligned_limit", 20)
         aligned_limit: int | None
         if raw_aligned_limit is None:
@@ -1985,6 +1983,19 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "case_sensitive": params["case_sensitive"],
             "regex_pattern": params["regex_pattern"],
         }
+        try:
+            self._run_query_block(params, query_kwargs)
+        except sqlite3.OperationalError as exc:
+            # Même raison qu'aux facettes : une syntaxe FTS5 invalide est une saisie
+            # fautive. Les deux chemins doivent répondre pareil, sinon l'écran reçoit
+            # un 400 d'un côté et un 500 de l'autre pour la MÊME requête.
+            self._send_error(f"Requête de recherche invalide : {exc}",
+                             code=ERR_BAD_REQUEST, http_status=400)
+        return
+
+    def _run_query_block(self, params: dict, query_kwargs: dict) -> None:
+        from multicorpus_engine.query import run_query_page
+
         with self._lock():
             run_id = self._create_run("query", params)
             if params["db_paths"] is None:
@@ -2395,8 +2406,18 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "unit_status": unit_status_f,
             "top_docs_limit": top_docs_limit,
         }
-        with self._lock():
-            result = run_query_facets(conn=self._conn(), **params)
+        try:
+            with self._lock():
+                result = run_query_facets(conn=self._conn(), **params)
+        except sqlite3.OperationalError as exc:
+            # Une syntaxe FTS5 invalide est une SAISIE fautive, pas une panne du serveur.
+            # L'assainissement (query.sanitize_fts_query) rattrape la ponctuation
+            # accidentelle, mais pas un `NEAR()` vide ou une parenthèse orpheline tapés
+            # à dessein. Rendre 500 sur ces cas-là faisait passer une faute de frappe
+            # pour un défaut de l'application, pile d'appel comprise.
+            self._send_error(f"Requête de recherche invalide : {exc}",
+                             code=ERR_BAD_REQUEST, http_status=400)
+            return
         self._send_json(success_payload(result))
 
     # ── Stats endpoints ───────────────────────────────────────────────────────

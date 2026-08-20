@@ -993,6 +993,25 @@ contrat. Schémas req/resp détaillés dans `docs/openapi.json` ; résumé ici.
 
 **Statistiques lexicales & facettes** (lecture, sans token)
 - `POST /query/facets` — résumé de facettes d'une requête (compteurs + top docs, sans contenu des hits).
+
+> **Assainissement de la requête FTS5 (1.6.72).** `POST /query` et `POST /query/facets` reçoivent la
+> saisie de l'utilisateur, dont une partie de la ponctuation est de la **syntaxe** pour FTS5. Chaque
+> mot nu contenant de la ponctuation **ASCII** est donc mis entre guillemets avant d'atteindre le
+> moteur — il devient une phrase, ce que veut précisément quelqu'un qui colle une ligne du
+> concordancier. Le cas qui l'a révélé : « Mi - ar face plăcere. » (roumain) rendait
+> `no such column: ar`, FTS5 lisant `- ar` comme un filtre de colonne négatif ; **14,7 %** des lignes
+> du corpus de travail portent une séquence de ce genre.
+>
+> **Le périmètre est mesuré, et il est confiné à l'ASCII** : sept caractères cassent (`' - : . + & /`)
+> tandis que **tous** les scripts non latins passent — arabe, chinois, japonais, coréen, grec,
+> cyrillique, hébreu, devanagari — ponctuation non-ASCII comprise (`« »`, `，。`, le maqaf `־`,
+> l'apostrophe courbe `’`). La règle ne connaît donc aucune langue, et des tests verrouillent
+> qu'elle ne s'y mette pas. Restent intactes : les phrases `"…"`, la troncature `mot*`, l'ancre
+> `^mot`, `NEAR(…)`, `AND`/`OR`/`NOT` et les parenthèses de groupement.
+>
+> Une syntaxe FTS5 **réellement** fautive (un `NEAR()` vide, une parenthèse orpheline) n'est pas
+> rattrapable : les deux routes rendent alors **`400`** « Requête de recherche invalide », là où
+> elles rendaient un `500` avec pile d'appel — une faute de frappe passait pour une panne.
 - `POST /stats/lexical` — stats de fréquence lexicale pour un *slot* (jeu de filtres).
 - `POST /stats/compare` — comparaison des distributions de deux slots A et B.
 

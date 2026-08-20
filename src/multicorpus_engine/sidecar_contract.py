@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.71"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.72"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -409,6 +409,32 @@ API_VERSION = CONTRACT_VERSION
 #         y compris sur le chemin interactif /segment -- et ce depuis avant l'extraction du
 #         recorder. Le test qui semblait couvrir le cas passe par une DOUBLURE de recorder
 #         qui transmet le payload verbatim ; c'est ce qui a masque le trou.
+
+# 1.6.72: la ponctuation d'une requete ne fait plus tomber la recherche. FTS5 recevait la
+#         saisie BRUTE, et une partie de la ponctuation y est de la syntaxe : « Mi - ar face
+#         placere. » (roumain) rendait `no such column: ar`, FTS5 lisant `- ar` comme un
+#         filtre de colonne negatif. Mesure sur le corpus de travail : 14,7 % des lignes
+#         portent une sequence de ce genre (21,5 % en francais, 29,8 % en roumain) --
+#         autrement dit, copier-coller une ligne du concordancier pour la retrouver echouait
+#         une fois sur sept. query.sanitize_fts_query() met entre guillemets les seuls mots
+#         qui contiennent de la ponctuation ASCII ; /query et /query/facets l'appliquent tous
+#         deux. Aucun changement de forme de reponse -> snapshot inchange ; openapi (version)
+#         et .md bougent.
+#         PERIMETRE MESURE, et c'est ce qui rend la regle tenable en multilingue : sept
+#         caracteres ASCII cassent (' - : . + & /) tandis que TOUS les scripts non latins
+#         passent -- arabe, chinois, japonais, coreen, grec, cyrillique, hebreu, devanagari --
+#         ponctuation non-ASCII comprise (« », les CJK, le maqaf hebreu, l'apostrophe courbe).
+#         La regle ne connait donc aucune langue, et des tests verrouillent qu'elle ne s'y
+#         mette pas. Preservees : phrases entre guillemets, `mot*`, `^mot`, NEAR(), AND/OR/NOT.
+#         Deux pieges que la mesure a imposes : un token de pure ponctuation est ECARTE et
+#         non quote (FTS5 accepte `"-"` mais ne le fait correspondre a rien -- le quoter
+#         changerait le plantage en zero resultat silencieux) ; l'ancre et la troncature
+#         restent HORS des guillemets (`^"mot"`, `"mot"*`), les enfermer dedans en ferait des
+#         caracteres litteraux.
+#         AUSSI : une syntaxe FTS5 reellement fautive (NEAR() vide, parenthese orpheline)
+#         rendait un 500 avec pile d'appel -- une faute de frappe passait pour une panne.
+#         Les deux routes rendent desormais 400 « Requete de recherche invalide ». Les deux
+#         codes etaient deja declares, donc aucun schema ne bouge.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"
