@@ -17,7 +17,10 @@ qu'il édite. Fusion et scission annoncent les liens qu'elles retirent. Un run
 d'alignement s'annule. Une segmentation de famille laisse une trace.
 
 **Contexte d'exécution.** Shell dev (`npm --prefix tauri-shell run tauri -- dev`) avec le
-sidecar reconstruit le 2026-08-20. Contrat live attendu **1.6.69**, engine **0.4.0**.
+sidecar reconstruit le 2026-08-20 à 18h46. Contrat live attendu **1.6.71**, engine
+**0.4.0**. La passe a été écrite quand 1.6.69 était courant ; la campagne a livré deux
+contrats depuis (1.6.70 = gestes annulables, 1.6.71 = `apply_propagated` journalisé), et
+la version attendue les suit. Corrigé le 2026-08-20 en cours de passe.
 Base servie : une WORKCOPY, jamais le corpus réel.
 
 **Préalable** : ouvrir l'inspecteur et le garder ouvert — panneau Diagnostic → bouton
@@ -30,14 +33,14 @@ conserve (sessionStorage), un redémarrage non — c'est voulu.
 
 ### Version et contrat
 
-- [ ] Le panneau Diagnostic annonce contrat **1.6.69** et engine **0.4.0**
-- [ ] Le panneau Diagnostic ne dit plus « Running : no » alors que l'application dialogue
-- [ ] Le bouton **🔍 Inspecteur** ouvre bien la console du webview
+- [x] Le panneau Diagnostic annonce contrat **1.6.71** et engine **0.4.0**
+- [x] Le panneau Diagnostic ne dit plus « Running : no » alors que l'application dialogue
+- [x] Le bouton **🔍 Inspecteur** ouvre bien la console du webview
 
 ### Matrice — ce qui est projeté
 
-- [ ] Aucune cellule n'affiche de caractère `¤` (famille Modiano, colonnes de traduction)
-- [ ] Aucune cellule n'affiche de balisage TEI brut du type `<hi rend="bold">`
+- [x] Aucune cellule n'affiche de caractère `¤` (famille Modiano, colonnes de traduction)
+- [x] Aucune cellule n'affiche de balisage TEI brut du type `<hi rend="bold">`
 - [ ] Le texte des cellules est celui que la recherche retrouve (copier une phrase, la chercher dans le concordancier)
 - [ ] L'export CSV de la matrice ne contient pas non plus de `¤`
 
