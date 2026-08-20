@@ -9379,10 +9379,13 @@ def make_resegment_recorder(conn: "sqlite3.Connection", calibrate_to: object = N
                 ],
             },
         )
-        # Snapshots for the deleted units. The undo path will use
-        # context_json.units_before to reconstruct the rows since the
-        # snapshot table only carries text_raw/text_norm/role/meta —
-        # n and external_id live in context_json.
+        # Instantanés des unités supprimées. `n` et `external_id` n'ont pas de colonne
+        # dans cette table : c'est `context_json.units_before` qui les porte, et c'est
+        # de là que l'annulation reconstruit les lignes.
+        # `text_source_before`, EN REVANCHE, a bien sa colonne (migration 021) — le
+        # commentaire qui tenait ici affirmait le contraire et la laissait vide. Deux
+        # dépôts pour la même valeur, dont un toujours NULL, est un piège pour qui lira
+        # la table : on remplit les deux, ils viennent de la même source.
         insert_unit_snapshots(
             conn,
             action_id,
@@ -9393,6 +9396,7 @@ def make_resegment_recorder(conn: "sqlite3.Connection", calibrate_to: object = N
                     "text_norm_before": u["text_norm"] or "",
                     "unit_role_before": u["unit_role"],
                     "meta_json_before": u["meta_json"],
+                    "text_source_before": u.get("text_source"),
                 }
                 for u in units_before
             ],

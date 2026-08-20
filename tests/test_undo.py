@@ -7,6 +7,7 @@ and verify the DB matches the original "before" state.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
@@ -1485,3 +1486,64 @@ def test_undo_resegment_markers_restores_units_and_links(db_conn: sqlite3.Connec
 
     assert _snapshot_units(db_conn, doc_id) == before_units
     assert [tuple(r) for r in db_conn.execute(_COLS)] == before_links
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Le contrat entre le recorder de PRODUCTION et l'annulation
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Ce fichier contient neuf doublures de recorder — des fonctions `recorder(payload)`
+# définies dans les tests eux-mêmes. Elles sont commodes, mais elles ont un défaut de
+# nature : elles transmettent `units_before` VERBATIM, là où `make_resegment_recorder`
+# re-mappe vers une liste de clés explicite. Une doublure plus généreuse que la
+# production transforme un test vert en garantie fausse.
+#
+# C'est arrivé : `text_source` manquait du mapping de production depuis avant
+# l'extraction du recorder, et `test_resegment_propagates_and_undo_restores_text_source`
+# passait quand même, parce que sa doublure le transmettait. Toute annulation de
+# resegmentation rendait l'unité sans sa provenance d'import (contrat 1.6.71, §12.9).
+#
+# Auditer les doublures une à une ne protégerait pas la prochaine. Ce test épingle le
+# contrat : tout ce que `_undo_resegment` LIT doit être ÉCRIT par le vrai recorder.
+
+def test_the_production_recorder_writes_everything_the_undo_reads(
+    db_conn: sqlite3.Connection,
+) -> None:
+    from multicorpus_engine.sidecar import make_resegment_recorder
+
+    # Les clés que `_undo_resegment` lit dans context_json.units_before. Ajouter une
+    # lecture là-bas sans l'ajouter ici laisserait le trou se rouvrir en silence.
+    LUES_PAR_UNDO = {
+        "unit_id", "n", "external_id", "text_raw", "text_norm",
+        "unit_role", "meta_json", "text_source", "unit_type",
+    }
+
+    doc_id = int(db_conn.execute(
+        "INSERT INTO documents (title, language, source_path, source_hash, created_at)"
+        " VALUES ('D','fr','d.txt','d','2024-01-01T00:00:00')"
+    ).lastrowid)
+    unit_id = int(db_conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm, text_source)"
+        " VALUES (?, 'line', 1, 'Un.', 'un.', 'ORIGINAL')", (doc_id,)
+    ).lastrowid)
+    db_conn.commit()
+
+    action_id = make_resegment_recorder(db_conn)({
+        "doc_id": doc_id, "pack": "test", "lang": "fr", "text_start_n": None,
+        "units_before": [{
+            "unit_id": unit_id, "n": 1, "external_id": None,
+            "text_raw": "Un.", "text_norm": "un.", "unit_role": None,
+            "meta_json": None, "text_source": "ORIGINAL", "unit_type": "line",
+        }],
+        "created_unit_ids": [], "new_units_n": [],
+    })
+    context = json.loads(db_conn.execute(
+        "SELECT context_json FROM prep_action_history WHERE action_id = ?", (action_id,)
+    ).fetchone()[0])
+
+    ecrites = set(context["units_before"][0])
+    manquantes = LUES_PAR_UNDO - ecrites
+    assert not manquantes, (
+        f"le recorder de production laisse tomber {sorted(manquantes)} —"
+        " l'annulation les lira et trouvera None, sans erreur ni trace"
+    )
