@@ -634,3 +634,24 @@ export function buildCellSplitPanelsHtml(
     + `<div class="prep-matrix-cut-sep" aria-hidden="true">&#9986;</div>`
     + panel("bottom", labels.bottomSeg, labels.bottomHub, bottom);
 }
+
+// ─── Revenir sur un ⭙ (ALI-22, correctif (b)) ────────────────────────────────────
+//
+// Le modal annonçait « réversible — ⭙ dans l'autre sens », et c'est vrai à moitié :
+// le ⭙ inverse RAMÈNE bien la phrase au voisin, mais par un lien `manual` neuf. Le
+// lien détruit par le premier ⭙ est parti avec son `link_id`, son `run_id` d'aligneur
+// et son statut de révision — rien ne les rend (audit §11.17). Le dire est le minimum
+// tant que l'archive de geste n'existe pas.
+//
+// Le piège nommé ici a coûté un cas réel : ＝ Rattacher sur le voisin paraît la
+// réparation naturelle, et laisse la phrase portée par LES DEUX segments — invisible,
+// puisque le bead de cellule la masque à la métrique historique (ALI-13/ALI-22).
+
+/** HTML note explaining how to come back from a ⭙, and what will NOT come back. */
+export function cellMergeReversalNoteHtml(): string {
+  return `<p class="prep-matrix-merge-back">`
+    + `<b>Pour revenir&nbsp;:</b> refaire un ⭙ depuis le segment voisin — il reprendra la phrase.`
+    + `<br><small>Le lien rendu sera un lien manuel neuf&nbsp;: le run d’alignement d’origine et `
+    + `son état de révision ne reviennent pas. Et n’utilisez pas ＝ Rattacher pour cela — la `
+    + `phrase se retrouverait portée par les <b>deux</b> segments à la fois.</small></p>`;
+}

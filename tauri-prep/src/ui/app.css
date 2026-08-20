@@ -2525,6 +2525,13 @@ button.prep-matrix-cut-word:hover {
   background: color-mix(in srgb, #6d28d9 4%, var(--color-surface, #fff));
 }
 .prep-matrix-merge-text { font-style: italic; }
+/* ALI-22 — comment revenir sur un fusionner, et ce qui ne reviendra pas. Discret :
+   c'est une precision, pas un avertissement — le geste reste recommande. */
+.prep-matrix-merge-back {
+  margin: 6px 0 0; font-size: 0.82rem; line-height: 1.45;
+  color: var(--color-muted, #64748b);
+}
+.prep-matrix-merge-back small { display: block; margin-top: 3px; }
 /* D-W8/D8/D-W14 — lignes blanches : ∅ non traduit, lignes [ajout], hors matrice. */
 .prep-matrix-cell--non-traduit { background: color-mix(in srgb, #94a3b8 8%, transparent); }
 .prep-matrix-nt { color: var(--color-muted, #94a3b8); font-style: italic; }

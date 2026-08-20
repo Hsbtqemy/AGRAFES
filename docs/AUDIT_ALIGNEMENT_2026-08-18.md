@@ -1751,3 +1751,14 @@ réparation reste approximative (le lien rendu perd son `run_id` d'origine).
 un seul geste serait du gâchis ; la bâtir comme « l'annulation de l'espace Alignement » paie ALI-22
 (a), ALI-20 et une partie d'ALI-07 d'un coup. Ce n'est pas une queue de lot, c'est un chantier — et
 il mérite d'être cadré comme tel, pas glissé ici.
+
+**(C) livré le 2026-08-20.** Le modal du ⭙ porte désormais une note sous l'aperçu :
+comment revenir (refaire un ⭙ depuis le voisin), ce qui ne reviendra pas (le run d'alignement
+d'origine et l'état de révision — le lien rendu est un lien manuel neuf), et le piège nommé
+(*ne pas* utiliser ＝ Rattacher pour cela, la phrase se retrouverait portée par les deux segments).
+
+Le sous-titre a été **corrigé** dans le même geste : il disait « réversible — ⭙ dans l'autre sens »
+et s'arrêtait là. Vérifié au code : c'est vrai pour la phrase, faux pour sa provenance. Une demi-
+vérité affichée au moment de décider est de la même famille que les constats que cet audit poursuit.
+
+Reste (A), cadré comme chantier : l'annulation de l'espace Alignement.

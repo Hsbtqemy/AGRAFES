@@ -49,6 +49,7 @@ import { anchorWarnings, buildAnchorNoticeHtml, buildAnchorGateHtml } from "../l
 import type { CellLinkColumn, StraddleDirection, CellSplitPlan, CutPanelsLabels } from "../lib/alignCellCut.ts";
 import {
   resolveFusedCellLinks, resolveCellUncut, resolveCellMerge, resolveCellSplit,
+  cellMergeReversalNoteHtml,
   cellCutTargets, buildPartitionActions, buildUncutActions, buildCellBeadActions,
   suggestCutOffset, buildCutPanelsHtml, buildCellSplitPanelsHtml, linkWindow,
   cellRemovableTranslations, viableCutOffsetsIn,
@@ -1282,12 +1283,15 @@ export class AlignMatrixView {
     const extra = `<div class="prep-matrix-cut-dir" role="radiogroup" aria-label="Sens de la fusion">`
       + radio("down", `Absorber la phrase du segment <b>suivant</b>${segDown != null ? ` (${segDown})` : ""}`)
       + radio("up", `Absorber la phrase du segment <b>précédent</b>${segUp != null ? ` (${segUp})` : ""}`)
-      + `</div><div class="prep-matrix-merge-host"></div>`;
+      + `</div><div class="prep-matrix-merge-host"></div>`
+      + cellMergeReversalNoteHtml();
 
     const { dialog, okBtn } = this._openPickerShell(
       `⭙ Fusionner (${lang}, segment ${rowCur.segment})`,
+      // « réversible — ⭙ dans l'autre sens » disait vrai à moitié et s'arrêtait là :
+      // la phrase revient, sa provenance non. Le détail est dans la note, sous l'aperçu.
       `La traduction est découpée plus finement que l'original : la phrase voisine appartient `
-      + `à ce segment. Elle sera rattachée ici (réversible — ⭙ dans l'autre sens).`,
+      + `à ce segment. Elle sera rattachée ici.`,
       extra,
     );
     okBtn.textContent = "⭙ Fusionner";

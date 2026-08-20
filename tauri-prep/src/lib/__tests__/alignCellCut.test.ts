@@ -5,6 +5,7 @@ import {
   suggestCutOffset, buildCutPanelsHtml, buildCellSplitPanelsHtml, resolveCellSplit,
   cellRemovableTranslations,
   viableCutOffsets, viableCutOffsetsIn, linkWindow, cellsShareFusedTarget,
+  cellMergeReversalNoteHtml,
 } from "../alignCellCut.ts";
 import type { CellLinkColumn } from "../alignCellCut.ts";
 import { codePointSlice, codePointLength, cutOffsets } from "../alignBeads.ts";
@@ -571,5 +572,27 @@ describe("revue 2026-07-13 — le bead ne doit pas étouffer une vraie collision
       { action: "delete", link_id: 7 },
       { action: "clear_bead", link_id: 1 },
     ]);
+  });
+});
+
+describe("cellMergeReversalNoteHtml — dire comment revenir, et ce qui ne revient pas", () => {
+  const html = cellMergeReversalNoteHtml();
+
+  it("nomme le geste du retour", () => {
+    expect(html).toContain("⭙");
+    expect(html).toContain("segment voisin");
+  });
+
+  it("ne promet pas une réversibilité qu'on n'a pas", () => {
+    // Le sous-titre disait « réversible — ⭙ dans l'autre sens » et s'arrêtait là.
+    // La phrase revient, sa provenance non : le lien détruit est parti avec son
+    // run_id d'aligneur et son statut (audit §11.17).
+    expect(html).toContain("lien manuel neuf");
+    expect(html).toContain("ne reviennent pas");
+  });
+
+  it("nomme le piège — c'est lui qui a coûté un cas réel", () => {
+    expect(html).toContain("＝ Rattacher");
+    expect(html).toContain("deux");
   });
 });
