@@ -37,6 +37,7 @@ import {
   segmentSummaryLine,
   needsAlignmentConfirm,
   alignmentLossNote,
+  cutDissolvedNote,
   surfaceHint,
   defaultAbbreviations,
   parseAbbreviations,
@@ -650,6 +651,10 @@ export class SegmentPane {
       const res = await updateUnitTextNorm(conn, u.unitId, newText);
       u.text = res.text_norm; // β edits text_norm; reflect it, keep provenance from the response
       u.textRaw = res.text_raw;
+      // D-1 — si cette phrase etait coupee entre plusieurs segments source, la correction
+      // vient de dissoudre la coupe : les bornes indexaient la chaine qu'on reecrit.
+      const cut = cutDissolvedNote(res.cut_spans_cleared);
+      if (cut) this._notify(`Texte corrige.${cut}`);
       this._textEditingN = null;
       this._textDraft = null;
       await this._refreshUndoElig(); // the edit recorded an undoable Mode-A action

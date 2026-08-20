@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.68"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.69"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -323,6 +323,22 @@ API_VERSION = CONTRACT_VERSION
 #         correction do to an existing cut » stays open (tranche 2). Additive
 #         non-schematized fields → snapshot/.md unchanged; openapi moves (version only).
 #         Logic in services/matrix_export_service.build_alignment_matrix.
+
+# 1.6.69: la surface de controle devient la surface de calcul (ALI-01 tranche 2, decision D-1).
+#         /align/matrix now PROJECTS `text_norm`: `rows[i][2]`, the translation cells, the woven
+#         addition rows and the cut slices all come from the plane the aligner, the FTS and the
+#         curation compute on. `uncovered` items gain `text_norm` (additive; `text_raw` kept).
+#         The cut offsets move with it — set_target_span validates against `length(text_norm)`
+#         and `alignment_links.target_char_start/end` index that plane. They used to index
+#         `text_raw` precisely because it is immutable; the invariant is now held from the other
+#         end: POST /units/update_text CLEARS every cut span on the corrected unit and reports
+#         `cut_spans_cleared`. Clearing one half alone would make the two complementary windows
+#         OVERLAP, so the scope is the unit, not the cell. Measured before switching: 0 existing
+#         span would be invalidated (the 6 cut links target units where raw == norm), so NO data
+#         migration; and the 33 cells whose display changes differ by 577 non-breaking spaces,
+#         236 « ¤ » (import debris the grid used to show) and 5 BOMs — the correct plane is also
+#         the cleaner one. /export/matrix follows, sharing `rows` by design. Additive fields +
+#         changed projection, no new route -> snapshot unchanged; openapi (version) and .md move.
 
 # 1.6.68: fusion et scission disent ce qu'elles ont détruit (ALI-03, reliquat). POST /units/merge
 #         and POST /units/split responses gain `links_archived` (integer): the alignment links the

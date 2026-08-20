@@ -3,7 +3,7 @@
 Projects the *aligned form* of a family into the multilingual matrix (the prototype
 `Test-Alignement(Hugo).csv`): one row per **hub** (parent/original) segment, one column
 per language, each translation cell being the text aligned to that hub segment —
-source-anchored **cut slices** applied (`text_raw[cs:ce]`, code-point native in Python),
+source-anchored **cut slices** applied (`text_norm[cs:ce]`, code-point native in Python),
 N-M **bead** targets concatenated, empty on omission. The matrix is a *projection*
 (never stored, cf. D4): it is recomputed from documents + alignment_links on each call.
 
@@ -53,15 +53,22 @@ def _parent_n(meta_json: Optional[str]) -> Any:
 
 
 def _cell(links: list[dict[str, Any]]) -> str:
-    """One translation cell: cut slices applied, bead targets concatenated, trimmed."""
+    """One translation cell: cut slices applied, bead targets concatenated, trimmed.
+
+    Slices ``text_norm`` (ALI-01 tranche 2, décision D-1). The grid used to project
+    ``text_raw`` while the aligner, the FTS, the curation and the stylo all worked on
+    ``text_norm``: judging an alignment meant judging a column the system does not use.
+    The cut offsets index this same plane now — they are no longer anchored in an
+    immutable string, which is why a correction on a cut sentence clears its cut.
+    """
     if not links:
         return ""
     parts: list[str] = []
     for lk in links:
-        raw = lk["target_text_raw"] or ""
+        norm = lk["target_text_norm"] or ""
         cs, ce = lk["char_start"], lk["char_end"]
         # cs/ce are code-point offsets (the cut); Python str slicing is code-point native.
-        parts.append(raw[cs:ce] if cs is not None and ce is not None else raw)
+        parts.append(norm[cs:ce] if cs is not None and ce is not None else norm)
     return " ".join(p.strip() for p in parts if p.strip()).strip()
 
 
@@ -80,17 +87,19 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
     - ``hub_unit_ids`` (∥ ``rows``) / ``language_doc_ids`` (∥ ``languages``) — tranche 3a.
       On a flux **addition row** ``hub_unit_ids[i]`` is ``None`` (no hub unit).
     - ``hub_text_norms`` (∥ ``rows``, 1.6.67) — the hub segment's ``text_norm``; ``None``
-      on an addition row. ``rows[i][2]`` is and stays ``text_raw`` (the projection); this
-      is what the inline stylo must SEED FROM, since it writes ``text_norm``. Seeding from
-      the projection made a second correction overwrite the first (audit §11.12).
+      on an addition row. Since 1.6.69 ``rows[i][2]`` carries that same string: the grid
+      now PROJECTS what the system computes on. The field is kept on purpose — the stylo
+      seeding from an explicit « edit space » rather than from « whatever the grid shows »
+      is what makes the invariant enforceable, and it was their conflation that let a
+      second correction overwrite the first (audit §11.12).
     - ``cell_links`` (A2, revue 3b) — ``cell_links[i][j]`` is the list of links behind
       row ``i`` × translation column ``j`` (``languages[j+1]``), in the cell's
       concatenation order; each link is ``{"link_id", "target_unit_id", "char_start",
       "char_end", "target_text_raw", "target_text_norm"}`` (offsets null = whole unit;
-      ``target_text_raw`` is the verbatim string the cut offsets index — cut anchors
-      live in RAW space because ``text_raw`` is immutable; ``target_text_norm`` is the
-      stylo's edit space, 1.6.67). Built from the same query as the cells, so it can
-      never diverge from what the cell displays.
+      since 1.6.69 the cut offsets index ``target_text_norm`` — the plane the grid shows
+      and the aligner computes on; ``target_text_raw`` remains the verbatim import
+      original (D-C1), no longer what is displayed or sliced). Built from the same query
+      as the cells, so it can never diverge from what the cell displays.
     - ``hub_unit_statuses`` (∥ ``rows``) — the hub unit's **global** ``unit_status``
       (marker-lift axis; ``non_traduit`` ⇒ the whole row shows the token). ``None``
       on addition rows.
@@ -216,7 +225,7 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
             # an active link in this family is projected by its cell — weaving it as a
             # flux row too would print the same sentence twice (grid AND CSV export).
             # Same NOT EXISTS as the `uncovered` query below (revue 2026-07-13, R2).
-            "SELECT u.unit_id, u.n, u.text_raw FROM units u"
+            "SELECT u.unit_id, u.n, u.text_norm FROM units u"
             " WHERE u.doc_id=? AND u.unit_type='line' AND u.unit_status='ajout'"
             "   AND NOT EXISTS (SELECT 1 FROM alignment_links al"
             "                   WHERE al.target_unit_id = u.unit_id"
@@ -236,9 +245,13 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         # Uncovered = no active link in THIS family and no status: invisible in the
         # grid (nothing projects it), so the « ＋ Ajout » panel must list it.
         uncovered.append([
-            {"unit_id": int(r[0]), "n": r[1], "text_raw": r[2] or ""}
+            # 1.6.69 — ``text_norm`` additif : le panneau « ＋ Ajout » doit montrer
+            # le même plan que la grille où l'unité atterrira. ``text_raw`` est
+            # conservé (clé historique, plan verbatim d'origine).
+            {"unit_id": int(r[0]), "n": r[1], "text_raw": r[2] or "",
+             "text_norm": r[3] or ""}
             for r in conn.execute(
-                "SELECT u.unit_id, u.n, u.text_raw FROM units u"
+                "SELECT u.unit_id, u.n, u.text_raw, u.text_norm FROM units u"
                 " WHERE u.doc_id=? AND u.unit_type='line' AND u.unit_status IS NULL"
                 "   AND NOT EXISTS (SELECT 1 FROM alignment_links al"
                 "                   WHERE al.target_unit_id = u.unit_id"
@@ -298,7 +311,10 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
                 para_counter += 1
                 prev_anchor = anchor
             para_label = para_counter
-        row = [para_label, i + 1, (text_raw or "").strip()]
+        # ALI-01 tranche 2 — la grille montre le plan que le système utilise.
+        # ``text_raw`` reste dans la charge utile (plan verbatim d'origine, D-C1),
+        # il n'est simplement plus ce qu'on affiche ni ce qu'on coupe.
+        row = [para_label, i + 1, (text_norm or "").strip()]
         row_links: list[list[dict[str, Any]]] = []
         row_statuses: list[Any] = []
         for tdoc, _lang in translations:

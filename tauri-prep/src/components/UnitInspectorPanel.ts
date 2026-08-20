@@ -14,6 +14,7 @@
  * conn / selectedDoc / editPanelEl and emits log/toast through its deps.
  */
 
+import { cutDissolvedNote } from "../lib/segmentControls.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { escHtml as esc, escHtml as escHtmlMeta } from "../lib/diff.ts";
 import { truncateMid } from "../lib/textTruncate.ts";
@@ -398,9 +399,11 @@ export class UnitInspectorPanel {
       try {
         // β immediate, edits text_norm only (D-C1): keeps text_raw, and flags aligned
         // translations stale + records an undoable action server-side (D-C2/D-C7).
-        await updateUnitTextNorm(conn, unitId, newText);
+        const res = await updateUnitTextNorm(conn, unitId, newText);
         if (line) line.text = newText; // reflect the correction; text_raw is left untouched
-        this._deps.log(`✓ Unité ${unitId} mise à jour.`);
+        // D-1 — les bornes de coupe indexent text_norm, que cette édition réécrit.
+        this._deps.log(
+          `✓ Unité ${unitId} mise à jour.${cutDissolvedNote(res.cut_spans_cleared)}`);
         this.renderPreviewPanel();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

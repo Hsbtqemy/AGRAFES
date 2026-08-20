@@ -36,7 +36,7 @@ export type CellLinkColumn = ReadonlyArray<readonly MatrixCellLink[]>;
 
 /** The link's current slice of its target, numeric ([0, len] when uncut). */
 export function linkWindow(l: MatrixCellLink): [number, number] {
-  const len = codePointLength(l.target_text_raw ?? "");
+  const len = codePointLength(l.target_text_norm ?? "");
   return [l.char_start ?? 0, l.char_end ?? len];
 }
 
@@ -125,7 +125,7 @@ export function resolveFusedCellLinks(column: CellLinkColumn, row: number): Fuse
   if (above.length === 0 || below.length === 0) {
     return { error: "Liens d'alignement introuvables pour cette cellule." };
   }
-  const raw = ref.target_text_raw ?? "";
+  const raw = ref.target_text_norm ?? "";
   if (viableCutOffsetsIn(raw, ws, we).length === 0) {
     return { error: "Aucun point de coupe possible dans cette tranche (un seul mot)." };
   }
@@ -168,7 +168,7 @@ export function resolveStraddleCut(
       : { error: "Le segment voisin porte déjà une part de cette traduction — annuler la coupe (↺) puis recouper." };
   }
   const [ws, we] = linkWindow(link);
-  if (viableCutOffsetsIn(link.target_text_raw ?? "", ws, we).length === 0) {
+  if (viableCutOffsetsIn(link.target_text_norm ?? "", ws, we).length === 0) {
     return { error: "Aucun point de coupe possible dans cette tranche (un seul mot)." };
   }
   return { link, neighborRow, window: [ws, we] };
@@ -191,7 +191,7 @@ export type CellSplitResult =
 /**
  * Resolve « couper à cheval » generalized to the whole cell (D-W17). The cut is a point
  * in the cell's projected text, expressed as `(linkIndex k, offset o)` — `o` a code-point
- * offset in link k's own `target_text_raw`, at a viable boundary or on a window edge.
+ * offset in link k's own `target_text_norm`, at a viable boundary or on a window edge.
  *
  * - `down`: the TAIL (cut → end of cell) belongs to the segment BELOW.
  * - `up`: the HEAD (start of cell → cut) belongs to the segment ABOVE.
@@ -247,7 +247,7 @@ export function resolveCellSplit(
   }
 
   if (split) {
-    if (viableCutOffsetsIn(link.target_text_raw ?? "", ws, we).indexOf(offset) === -1) {
+    if (viableCutOffsetsIn(link.target_text_norm ?? "", ws, we).indexOf(offset) === -1) {
       return { error: "Point de coupe invalide (tranche vide)." };
     }
   }
@@ -287,7 +287,7 @@ export function cellRemovableTranslations(
     return {
       link_id: l.link_id,
       target_unit_id: l.target_unit_id,
-      text: codePointSlice(l.target_text_raw ?? "", ws, we).trim(),
+      text: codePointSlice(l.target_text_norm ?? "", ws, we).trim(),
       removable: l.char_start == null,
     };
   });
@@ -312,7 +312,7 @@ export function cellCutTargets(
     if (l.char_start == null || seen.has(l.target_unit_id)) continue;
     seen.add(l.target_unit_id);
     const [ws, we] = linkWindow(l);
-    out.push({ target_unit_id: l.target_unit_id, slice: codePointSlice(l.target_text_raw ?? "", ws, we).trim() });
+    out.push({ target_unit_id: l.target_unit_id, slice: codePointSlice(l.target_text_norm ?? "", ws, we).trim() });
   }
   return out;
 }
@@ -574,7 +574,7 @@ export function buildCellSplitPanelsHtml(
   const words: W[] = [];
   const viableByLink: Set<number>[] = [];
   cell.forEach((lk, i) => {
-    const raw = lk.target_text_raw ?? "";
+    const raw = lk.target_text_norm ?? "";
     const [ws, we] = linkWindow(lk);
     viableByLink[i] = new Set(viableCutOffsetsIn(raw, ws, we));
     const starts = [ws, ...cutOffsets(raw).filter((o) => o > ws && o < we)];

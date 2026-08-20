@@ -3,7 +3,14 @@ import { buildMatrixView, matrixSummaryLine, resolveStyloTarget } from "../align
 import type { AlignMatrix, MatrixCellLink } from "../sidecarClient.ts";
 
 function lk(link_id: number, target: number, over: Partial<MatrixCellLink> = {}): MatrixCellLink {
-  return { link_id, target_unit_id: target, char_start: null, char_end: null, target_text_raw: "t", ...over };
+  return {
+    link_id, target_unit_id: target, char_start: null, char_end: null,
+    target_text_raw: "t", ...over,
+    // ALI-01 tranche 2 : le plan des offsets ET de l'affichage est `text_norm`.
+    // Les fixtures le refletent en le calquant sur le raw par defaut ; les tests qui
+    // veulent distinguer les deux plans passent explicitement `target_text_norm`.
+    target_text_norm: over.target_text_norm ?? over.target_text_raw ?? "t",
+  };
 }
 
 // Mirror of the Le Clézio shape: FR hub + EN + RO, with an empty EN cell and an uncut

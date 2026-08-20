@@ -14,7 +14,13 @@ import { AlignMatrixView } from "../AlignMatrixView.ts";
 import type { AlignMatrix, Conn, MatrixCellLink } from "../../lib/sidecarClient.ts";
 
 function lk(link_id: number, target: number, raw: string, over: Partial<MatrixCellLink> = {}): MatrixCellLink {
-  return { link_id, target_unit_id: target, char_start: null, char_end: null, target_text_raw: raw, ...over };
+  return {
+    link_id, target_unit_id: target, char_start: null, char_end: null,
+    target_text_raw: raw, ...over,
+    // ALI-01 tranche 2 : le plan des offsets est `text_norm`. Calque par defaut ;
+    // un test qui veut distinguer les deux passe explicitement `target_text_norm`.
+    target_text_norm: over.target_text_norm ?? over.target_text_raw ?? raw,
+  };
 }
 
 /** Two hub rows sharing one uncut EN target (the fused 2-1 of tranche 3b). */

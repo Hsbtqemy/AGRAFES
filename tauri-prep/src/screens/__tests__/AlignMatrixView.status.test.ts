@@ -11,7 +11,12 @@ import { AlignMatrixView } from "../AlignMatrixView.ts";
 import type { AlignMatrix, Conn, MatrixCellLink } from "../../lib/sidecarClient.ts";
 
 function lk(link_id: number, target: number, raw: string, over: Partial<MatrixCellLink> = {}): MatrixCellLink {
-  return { link_id, target_unit_id: target, char_start: null, char_end: null, target_text_raw: raw, ...over };
+  return {
+    link_id, target_unit_id: target, char_start: null, char_end: null,
+    target_text_raw: raw, ...over,
+    // ALI-01 tranche 2 : le plan des offsets et de l'affichage est `text_norm`.
+    target_text_norm: over.target_text_norm ?? over.target_text_raw ?? raw,
+  };
 }
 
 /** Row 0 aligned; row 1 empty (∅ candidate). One uncovered EN unit (the badge). */

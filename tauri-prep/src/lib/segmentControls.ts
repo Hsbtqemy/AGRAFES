@@ -149,3 +149,22 @@ export function alignmentLossNote(linksArchived: number | null | undefined): str
   const s = linksArchived > 1 ? "s" : "";
   return ` ${linksArchived} lien${s} d’alignement retiré${s} — « Annuler » les rend.`;
 }
+
+/** Message announcing that a correction dissolved the cut of the sentence it edited.
+ *
+ *  Décision D-1 (ALI-01 tranche 2): the cut offsets index `text_norm`, which a stylo
+ *  correction rewrites — so the correction clears every cut span on that unit. Not
+ *  saying so would make a cut vanish under an unrelated gesture, which is the kind of
+ *  silent surprise this audit keeps finding.
+ *
+ *  Note that the MATRIX pen can never trigger this: it is gated to a single WHOLE link
+ *  (`char_start == null`), and a cut unit carries only cut links. The rule fires from the
+ *  surfaces that edit a unit without knowing about alignment — Segment, Curation, Rôles,
+ *  Annotation, inspecteur.
+ */
+export function cutDissolvedNote(cutSpansCleared: number | null | undefined): string {
+  if (typeof cutSpansCleared !== "number" || cutSpansCleared <= 0) return "";
+  return cutSpansCleared > 1
+    ? ` La coupe de cette phrase a été retirée (${cutSpansCleared} segments la partageaient).`
+    : " La coupe de cette phrase a été retirée.";
+}

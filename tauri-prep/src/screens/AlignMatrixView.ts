@@ -1002,7 +1002,7 @@ export class AlignMatrixView {
     // perdue en D-W17 (une cellule multi-liens a toujours une frontière d'unité, elle).
     if (cell.length === 1) {
       const [ws0, we0] = linkWindow(cell[0]);
-      if (viableCutOffsetsIn(cell[0].target_text_raw ?? "", ws0, we0).length === 0) {
+      if (viableCutOffsetsIn(cell[0].target_text_norm ?? "", ws0, we0).length === 0) {
         this._cb.toast?.("✗ Un seul mot — rien à couper.", true);
         return;
       }
@@ -1023,7 +1023,7 @@ export class AlignMatrixView {
       const [ws, we] = linkWindow(cell[0]);
       const neighbor = ctx.hubRows[d === "up" ? row - 1 : row + 1];
       const off = suggestCutOffset(
-        cell[0].target_text_raw ?? "",
+        cell[0].target_text_norm ?? "",
         d === "up" ? (neighbor?.hubText ?? "") : rowCur.hubText,
         d === "up" ? rowCur.hubText : (neighbor?.hubText ?? ""),
         [ws, we],
@@ -1261,7 +1261,7 @@ export class AlignMatrixView {
       const r = d === "up" ? resUp : resDown;
       if (r.error !== undefined) return "";
       const neighbor = ctx.hubRows[r.neighborRow];
-      const text = r.link.target_text_raw ?? "";
+      const text = r.link.target_text_norm ?? "";
       const left = remainingOf(d);
       const fate = left === 0
         ? `Le segment ${neighbor.segment} perdra cette traduction (il deviendra ∅).`

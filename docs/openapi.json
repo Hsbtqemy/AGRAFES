@@ -4424,8 +4424,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.68",
-    "x-contract-version": "1.6.68"
+    "version": "1.6.69",
+    "x-contract-version": "1.6.69"
   },
   "openapi": "3.0.3",
   "paths": {

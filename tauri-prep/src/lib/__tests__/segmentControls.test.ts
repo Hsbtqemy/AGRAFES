@@ -6,6 +6,7 @@ import {
   segmentSummaryLine,
   needsAlignmentConfirm,
   alignmentLossNote,
+  cutDissolvedNote,
   surfaceHint,
   defaultAbbreviations,
   parseAbbreviations,
@@ -167,5 +168,24 @@ describe("alignmentLossNote — dire ce qui a été détruit, après, et exactem
 
   it("rappelle que l'annulation les rend — c'est vrai depuis la migration 035", () => {
     expect(alignmentLossNote(3)).toContain("« Annuler » les rend");
+  });
+});
+
+describe("cutDissolvedNote — une coupe ne doit pas disparaître en silence (D-1)", () => {
+  it("se tait quand aucune coupe n'était en jeu — le cas courant", () => {
+    expect(cutDissolvedNote(0)).toBe("");
+    expect(cutDissolvedNote(undefined)).toBe("");
+    expect(cutDissolvedNote(null)).toBe("");
+  });
+
+  it("annonce la dissolution d'une coupe simple", () => {
+    expect(cutDissolvedNote(1)).toContain("La coupe de cette phrase a été retirée");
+    expect(cutDissolvedNote(1)).not.toContain("segments la partageaient");
+  });
+
+  it("dit combien de segments se partageaient la phrase", () => {
+    // Une coupe répartit UNE phrase sur plusieurs lignes moyeu : effacer les bornes les
+    // rend toutes entières d'un coup, et l'utilisateur doit savoir que ça a bougé ailleurs.
+    expect(cutDissolvedNote(3)).toContain("3 segments la partageaient");
   });
 });

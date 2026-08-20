@@ -32,10 +32,14 @@ def _coerce_offset(name: str, value: Any) -> int:
 def set_target_span(
     conn: sqlite3.Connection, link_id: int, char_start: Any, char_end: Any
 ) -> None:
-    """Set the target sub-span ``text_raw[char_start:char_end]`` on ``link_id``.
+    """Set the target sub-span ``text_norm[char_start:char_end]`` on ``link_id``.
 
-    Offsets index the target unit's verbatim ``text_raw`` (immutable → stable). The
-    span must satisfy ``0 <= char_start <= char_end <= len(text_raw)``.
+    Offsets index the target unit's ``text_norm`` — the plane the matrix projects and
+    the aligner computes on (ALI-01 tranche 2). They used to index ``text_raw``, chosen
+    precisely because it is immutable; ``text_norm`` is NOT, since the stylo edits it.
+    The invariant is held from the other end instead: correcting a unit clears the cut
+    spans of every link targeting it (décision D-1, ``units_service.update_unit_text``).
+    The span must satisfy ``0 <= char_start <= char_end <= len(text_norm)``.
 
     Raises:
         ValidationError: malformed or out-of-range span.
@@ -46,7 +50,7 @@ def set_target_span(
     if cs < 0 or ce < cs:
         raise ValidationError("span must satisfy 0 <= char_start <= char_end")
     row = conn.execute(
-        "SELECT length(u.text_raw) FROM alignment_links al"
+        "SELECT length(u.text_norm) FROM alignment_links al"
         " JOIN units u ON u.unit_id = al.target_unit_id WHERE al.link_id = ?",
         (link_id,),
     ).fetchone()

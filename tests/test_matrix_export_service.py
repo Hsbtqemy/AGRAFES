@@ -48,9 +48,11 @@ def test_matrix_projection_cut_concat_and_omission(db_conn: sqlite3.Connection) 
     assert m["headers"] == ["paragraphe", "segment", "fr", "en", "ro"]
     assert m["languages"] == ["fr", "en", "ro"]
     # row 1: FR u1 → EN cut slice "morning" ; RO 1-2 concat "buna ziua"
-    assert m["rows"][0] == [1, 1, "Le matin.", "morning", "buna ziua"]
+    # ALI-01 tranche 2 : la grille projette ``text_norm`` (« le matin. »), le plan que
+    # l'aligneur, la FTS et la curation utilisent — plus ``text_raw`` (« Le matin. »).
+    assert m["rows"][0] == [1, 1, "le matin.", "morning", "buna ziua"]
     # row 2: FR u2 → EN cut slice "evening" ; RO omission = empty cell
-    assert m["rows"][1] == [1, 2, "Le soir.", "evening", ""]
+    assert m["rows"][1] == [1, 2, "le soir.", "evening", ""]
     # tranche 3a — identifiers for grid gestures: hub unit per row, doc per language column
     assert m["hub_unit_ids"] == [1, 2]
     assert m["language_doc_ids"] == [1, 2, 3]  # hub(1) + EN(2) + RO(3)
@@ -254,7 +256,7 @@ def test_matrix_addition_rows_woven_in_flux(db_conn: sqlite3.Connection) -> None
     db_conn.commit()
     m = build_alignment_matrix(db_conn, 1)
 
-    assert [r[2] for r in m["rows"]] == ["[ajout]", "Le matin.", "[ajout]", "Le soir."]
+    assert [r[2] for r in m["rows"]] == ["[ajout]", "le matin.", "[ajout]", "le soir."]
     assert m["rows"][0] == ["", "", "[ajout]", "intro", ""]
     assert m["rows"][2] == ["", "", "[ajout]", "", "extra"]
     assert m["hub_unit_ids"] == [None, 1, None, 2]
@@ -279,7 +281,7 @@ def test_matrix_linked_ajout_unit_is_not_woven_twice(db_conn: sqlite3.Connection
     m = build_alignment_matrix(db_conn, 1)
 
     assert m["addition_rows"] == []
-    assert [r[2] for r in m["rows"]] == ["Le matin.", "Le soir."]
+    assert [r[2] for r in m["rows"]] == ["le matin.", "le soir."]
     assert m["rows"][0][4] == "buna ziua"  # projected once, by its cell
     # Kill the link: the unit is no longer covered → it becomes a legitimate flux row.
     db_conn.execute("UPDATE alignment_links SET status='rejected' WHERE target_unit_id=5")
@@ -312,7 +314,7 @@ def test_matrix_addition_anchor_follows_row_order_not_max_n(db_conn: sqlite3.Con
     # The ajout (n=3) follows both covered units in reading order → it must land AFTER
     # the last row showing any of them (row 1), i.e. last. Anchoring on max(n)=2's row
     # (row 0) would insert it between the two hub rows.
-    assert [r[2] for r in m["rows"]] == ["Le matin.", "Le soir.", "[ajout]"]
+    assert [r[2] for r in m["rows"]] == ["le matin.", "le soir.", "[ajout]"]
     assert m["addition_rows"] == [{"row": 2, "doc_id": 3, "unit_id": 6, "n": 3}]
 
 
@@ -331,8 +333,8 @@ def test_matrix_uncovered_units_per_column(db_conn: sqlite3.Connection) -> None:
 
     assert m["uncovered"][0] == []  # EN fully covered
     assert m["uncovered"][1] == [
-        {"unit_id": 5, "n": 2, "text_raw": "ziua"},
-        {"unit_id": 6, "n": 3, "text_raw": "orphan"},
+        {"unit_id": 5, "n": 2, "text_raw": "ziua", "text_norm": "ziua"},
+        {"unit_id": 6, "n": 3, "text_raw": "orphan", "text_norm": "orphan"},
     ]
 
     db_conn.execute("UPDATE units SET unit_status='ajout' WHERE unit_id=6")
@@ -355,21 +357,22 @@ def test_matrix_anchor_status_parallel_to_languages(db_conn: sqlite3.Connection)
 
 
 def test_matrix_carries_both_text_planes(db_conn: sqlite3.Connection) -> None:
-    """1.6.67 — the payload carries the projection AND the stylo's edit space.
+    """1.6.69 — la grille projette le plan que le système utilise, et le dit deux fois.
 
-    ``rows[i][2]`` is ``text_raw`` (what the grid shows, what the cut offsets index)
-    and ``hub_text_norms[i]`` is ``text_norm`` (what the stylo writes). Sending only
-    the first made the matrix editor reopen the ORIGINAL text on every edit, so a
-    second correction silently reverted the first (audit §11.12).
+    Depuis la tranche 2, ``rows[i][2]`` EST ``text_norm`` : la surface de contrôle est
+    la surface de calcul (ALI-01). ``hub_text_norms`` reste néanmoins dans la charge
+    utile, et cette redondance est voulue — le stylo s'amorce sur un « espace d'édition »
+    explicite plutôt que sur « ce que la grille affiche ». C'est leur confusion qui avait
+    laissé une seconde correction écraser la première (§11.12) ; un champ dédié rend
+    l'invariant vérifiable même si la projection rebasculait un jour.
     """
     _setup_family(db_conn)
     m = build_alignment_matrix(db_conn, 1)
 
-    # The fixture's hub units already differ across the two planes ("Le matin." /
-    # "le matin.") — the test is worthless if they happen to be equal.
-    assert m["rows"][0][2] == "Le matin."
+    # La fixture fait diverger les deux plans ("Le matin." / "le matin.") : sans cela le
+    # test ne saurait pas distinguer les deux colonnes.
+    assert m["rows"][0][2] == "le matin."
     assert m["hub_text_norms"][0] == "le matin."
-    assert m["rows"][0][2] != m["hub_text_norms"][0]
     assert len(m["hub_text_norms"]) == len(m["rows"])
 
     # Same on the translation side, per link.
@@ -397,3 +400,44 @@ def test_matrix_hub_text_norm_is_none_on_addition_row(db_conn: sqlite3.Connectio
     # …and a real hub row still carries its norm.
     hub_rows = [i for i in range(len(m["rows"])) if m["hub_unit_ids"][i] is not None]
     assert all(m["hub_text_norms"][i] is not None for i in hub_rows)
+
+
+def test_matrix_cut_slice_comes_from_the_normalised_plane(db_conn: sqlite3.Connection) -> None:
+    """ALI-01 tranche 2 — la tranche de coupe est prélevée dans ``text_norm``.
+
+    Le cas est construit pour que les deux plans n'aient pas la même LONGUEUR : couper
+    aux mêmes offsets dans l'un ou dans l'autre donne alors deux textes différents, et
+    le test sait dire lequel a servi. Tant que les offsets indexaient ``text_raw``, la
+    grille affichait une tranche du texte que l'aligneur n'utilise pas.
+    """
+    _setup_family(db_conn)
+    # « ¤ » est un déchet d'import que la normalisation remplace par une espace ; ici on
+    # va plus loin (le raw est plus long de 4 signes) pour rendre l'écart visible.
+    db_conn.execute(
+        "UPDATE units SET text_raw='<hi>morning</hi> evening', text_norm='morning evening'"
+        " WHERE unit_id=3"
+    )
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    # Les liens coupent [0:8] et [8:15] — dans « morning evening » cela donne
+    # « morning » / « evening » ; dans le raw balisé, « <hi>morn » / « ing</hi> ».
+    assert m["rows"][0][3] == "morning"
+    assert m["rows"][1][3] == "evening"
+    assert "<hi>" not in m["rows"][0][3]
+
+
+def test_matrix_uncovered_carries_both_planes(db_conn: sqlite3.Connection) -> None:
+    """Le panneau « ＋ Ajout » doit montrer le plan de la grille où l'unité atterrira."""
+    _setup_family(db_conn)
+    db_conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm)"
+        " VALUES (3,'line',3,'ORPHAN brut','orphan normalisé')"
+    )
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+
+    orphan = [u for u in m["uncovered"][1] if u["n"] == 3]
+    assert orphan, m["uncovered"]
+    assert orphan[0]["text_norm"] == "orphan normalisé"
+    assert orphan[0]["text_raw"] == "ORPHAN brut"  # clé historique conservée

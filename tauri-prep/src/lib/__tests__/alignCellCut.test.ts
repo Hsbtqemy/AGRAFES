@@ -22,6 +22,11 @@ function lk(
     char_end: null,
     target_text_raw: "shared text",
     ...over,
+    // ALI-01 tranche 2 : le plan des offsets ET de l'affichage est `text_norm`.
+    // Les fixtures le refletent en le calquant sur le raw par defaut ; les tests qui
+    // veulent distinguer les deux plans passent explicitement `target_text_norm`.
+    target_text_norm:
+      over.target_text_norm ?? over.target_text_raw ?? "shared text",
   };
 }
 

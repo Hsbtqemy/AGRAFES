@@ -38,7 +38,7 @@ conclusions** des §8 et §10.
 
 | ID | Sév | Prio | Constat |
 |----|-----|------|---------|
-| ALI-01 | 🟠 | P1 | La matrice projette `text_raw` ; le stylo, l'aligneur, la FTS et la curation travaillent sur `text_norm`. **Tranche 1 livrée** (contrat 1.6.67) : l'éditeur repart de `text_norm`, la perte de correction mesurée au §11.12 est fermée. Reste la projection elle-même — juger un alignement sur une colonne que le système n'utilise pas — dont la bascule demande une arbitration (§11.12). |
+| ALI-01 | ✅ | ~~P0~~ | La matrice projetait `text_raw` ; le stylo, l'aligneur, la FTS et la curation travaillent sur `text_norm`. **Clos en deux tranches** : l'éditeur repart de `text_norm` (1.6.67, §11.13), puis la grille elle-même projette `text_norm` et les offsets de coupe suivent (1.6.69, décision D-1, §12.2). La surface de contrôle est la surface de calcul. |
 | ALI-02 | 🟠 | P1 | Stratégie `position` : la borne exclut le paratexte mais ne **rebase** pas la numérotation → n'est correcte que si les deux documents ont exactement le même nombre de lignes d'en-tête. |
 | ALI-03 | ✅ | ~~P1~~ | La fusion d'unités supprime les liens **sans confirmation**, et l'annulation ne les restaure **jamais**. Reliquat clos autrement que prévu : la confirmation demandée aurait annoncé la perte du document entier pour un geste qui n'en touche que deux liens — remplacée par un compte rendu exact après coup (`links_archived`, contrat 1.6.68, §11.16). |
 | ALI-04 | 🟠 | P1 | Gale–Church dépend entièrement du grain de paragraphes ; **rien ne compare les deux grains** (l'avertissement d'ALI-12 ne couvre que la présence d'une ancre) → grain dégénéré = alignement absurde présenté avec assurance. |
@@ -1870,3 +1870,40 @@ justesse) ne se présente pas sur ces données.
 avec la grille — il suivra donc. C'est voulu : la documentation présente les deux comme « la même
 projection », et les séparer créerait deux vérités pour un seul objet. Le CSV y gagne au passage la
 disparition des 236 `¤`.
+
+### 12.2 ALI-01 tranche 2 — livrée (2026-08-20)
+
+Contrat **1.6.69**. La matrice projette `text_norm` : `rows`, les cellules, les lignes d'ajout
+tissées et les tranches de coupe viennent toutes du plan que l'aligneur, la FTS et la curation
+utilisent. **La surface de contrôle est devenue la surface de calcul** — c'est l'énoncé même
+d'ALI-01, ouvert le 2026-08-18.
+
+Les offsets suivent : `set_target_span` valide contre `length(text_norm)` et
+`target_char_start/end` indexent ce plan. Ils indexaient `text_raw` *parce qu'il est immuable* ;
+l'invariant est désormais tenu par l'autre bout — **décision D-1**, `update_unit_text` efface
+toutes les fenêtres de coupe de l'unité corrigée et renvoie `cut_spans_cleared`.
+
+**Aucune migration**, comme l'instruction l'annonçait : 0 span existant invalidé. Vérifié après
+coup sur les trois familles du corpus — la projection est le plan normalisé sur 3 844 lignes, et
+les **33 « ¤ »** que la grille affichait (déchet d'import, toujours présents dans `text_raw`) ont
+disparu, BOM compris.
+
+**Le panneau Contrôle a suivi, et il n'a rien coûté** : `/align/audit` renvoyait déjà le plan
+normalisé sous `target_text`. Sans cela, `AlignPanel` aurait continué à calculer ses coupes dans le
+verbatim pendant que le moteur les valide dans le norm — deux surfaces coupant dans deux espaces.
+Une variable y portait le nom `cutTargetRaw` en tenant désormais le norm : renommée.
+
+**Une propriété heureuse, constatée en câblant** : le stylo de la **matrice** ne peut pas déclencher
+D-1. Il est fermé sur toute cellule dont le lien est coupé (`char_start == null` dans sa garde), et
+une unité coupée ne porte que des liens coupés. La règle ne se déclenche donc que depuis les
+surfaces qui éditent une unité sans rien savoir de l'alignement — Segment, Curation, Rôles,
+Annotation, inspecteur. C'est là que le message est posé.
+
+**Deux tests ont dû être *inversés*, pas rustinés.** `linkTargetDisplay` affirmait « returns the cut
+slice of text_raw » avec un `target_text` volontairement différent : il encodait l'ancien contrat.
+Il affirme maintenant l'inverse, et un second test vérifie qu'aucun balisage `<hi>` ne peut
+ressortir d'une tranche — le signe qu'on aurait repris l'ancien plan. Les fixtures des autres
+fichiers calquent le norm sur le raw par défaut, si bien qu'un test qui veut distinguer les deux
+plans doit le dire explicitement.
+
+`/export/matrix` suit, partageant `rows` — le CSV y gagne la disparition des mêmes « ¤ ».

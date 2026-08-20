@@ -299,3 +299,29 @@ def test_retarget_candidates_positional_orphan_pivot(db_conn: sqlite3.Connection
 def test_retarget_candidates_pivot_not_found(db_conn: sqlite3.Connection) -> None:
     with pytest.raises(NotFoundError):
         align_links_service.build_retarget_candidates(db_conn, 999, 2)
+
+
+def test_set_target_span_is_bounded_by_the_normalised_plane(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """ALI-01 tranche 2 — la borne est ``len(text_norm)``, pas ``len(text_raw)``.
+
+    Les deux plans peuvent avoir des longueurs différentes (balisage TEI retiré, BOM,
+    « ¤ »). Tant que la validation portait sur le raw, un span accepté pouvait déborder
+    du texte réellement affiché et coupé.
+    """
+    link_id, tgt = _setup_link(db_conn)
+    db_conn.execute(
+        "UPDATE units SET text_raw='<hi rend=\"bold\">court</hi>', text_norm='court'"
+        " WHERE unit_id=?",
+        (tgt,),
+    )
+    db_conn.commit()
+
+    # 5 = len('court') : la borne exacte du plan normalisé passe…
+    align_links_service.set_target_span(db_conn, link_id, 0, 5)
+    db_conn.commit()
+
+    # …et un offset qui ne tiendrait que dans le raw (26 signes) est refusé.
+    with pytest.raises(ValidationError):
+        align_links_service.set_target_span(db_conn, link_id, 0, 12)

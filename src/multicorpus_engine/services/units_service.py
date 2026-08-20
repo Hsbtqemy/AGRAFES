@@ -332,7 +332,10 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
       - flags ``alignment_links.source_changed_at`` for links pivoting on this unit
         (D-C2 — a source edit marks its translations stale; mirrors curation.py);
       - records an undoable ``update_text`` action with a before-snapshot (D-C7),
-        atomically with the mutation (single commit below).
+        atomically with the mutation (single commit below);
+      - clears the cut spans of every link **targeting** this unit (D-1, ALI-01 tranche 2)
+        and reports how many in ``cut_spans_cleared`` — the offsets index ``text_norm``,
+        which this edit just rewrote.
     """
     unit_id = validate(body, _UPDATE_TEXT_SCHEMA)["unit_id"]
 
@@ -389,6 +392,21 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
         " WHERE pivot_unit_id = ?",
         (unit_id,),
     )
+    # D-1 (ALI-01 tranche 2) — the cut offsets index ``text_norm``, which this edit just
+    # rewrote: every span on this unit now points into a string that no longer exists.
+    # Clearing them is the only coherent move — the two halves of a cut share the unit
+    # with complementary windows, so clearing one alone would make them OVERLAP, and
+    # rebasing by diff would guess (a correction can rewrite the cut zone itself).
+    # Scope is the UNIT, not one cell: a cut spreads ONE sentence over several hub rows.
+    cut_spans_cleared = 0
+    if text_norm is not None and text_norm != text_norm_before:
+        cut_spans_cleared = conn.execute(
+            "UPDATE alignment_links"
+            " SET target_char_start = NULL, target_char_end = NULL"
+            " WHERE target_unit_id = ?"
+            "   AND (target_char_start IS NOT NULL OR target_char_end IS NOT NULL)",
+            (unit_id,),
+        ).rowcount
     # D-C7 — make the edit undoable: record the action + before-snapshot in the
     # same tx as the mutation (both land or both roll back at the commit below).
     action_id = record_prep_action(
@@ -414,4 +432,8 @@ def update_unit_text(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     return {
         "unit_id": row[0], "doc_id": row[1], "n": row[2],
         "external_id": row[3], "text_raw": row[4], "text_norm": row[5],
+        # 1.6.69 — links whose cut this correction dissolved (D-1). The UI says so:
+        # a cut silently undone by an unrelated gesture would be the kind of surprise
+        # this audit keeps finding.
+        "cut_spans_cleared": cut_spans_cleared,
     }

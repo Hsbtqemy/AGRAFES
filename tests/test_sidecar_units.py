@@ -117,3 +117,82 @@ def test_update_text_missing_fields_400(units_env: dict) -> None:
         "POST", f"{base}/units/update_text", {"unit_id": unit_id}, token=token,
     )
     assert code == 400, body
+
+
+def test_update_text_dissolves_the_cut_of_the_corrected_sentence(tmp_path: Path) -> None:
+    """D-1 (ALI-01 tranche 2) — corriger une phrase coupée annule sa coupe, sur TOUTES
+    les lignes moyeu qui s'en partagent des morceaux.
+
+    Depuis la bascule, les offsets indexent ``text_norm`` : une correction réécrit la
+    chaîne sous les bornes. Les deux moitiés d'une coupe se partagent l'unité avec des
+    fenêtres complémentaires, donc n'en effacer qu'une créerait un RECOUVREMENT — c'est
+    pourquoi la portée est l'unité entière et non la cellule.
+    """
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.migrations import apply_migrations
+    from multicorpus_engine.sidecar import CorpusServer
+
+    db_path = tmp_path / "cut.db"
+    conn = get_connection(db_path)
+    apply_migrations(conn)
+    for title, lang, role in (("P", "fr", "original"), ("T", "en", "translation")):
+        conn.execute(
+            "INSERT INTO documents (title, language, doc_role, created_at)"
+            " VALUES (?,?,?,datetime('now'))", (title, lang, role),
+        )
+    # Deux segments pivot se partagent UNE phrase cible coupée en deux fenêtres.
+    for n in (1, 2):
+        conn.execute(
+            "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm)"
+            " VALUES (1,'line',?,?,?)", (n, f"Pivot {n}.", f"pivot {n}."),
+        )
+    conn.execute(
+        "INSERT INTO units (doc_id,unit_type,n,text_raw,text_norm)"
+        " VALUES (2,'line',1,'morning evening','morning evening')"
+    )
+    conn.commit()
+    tgt = conn.execute("SELECT unit_id FROM units WHERE doc_id=2").fetchone()[0]
+    pivots = [r[0] for r in conn.execute("SELECT unit_id FROM units WHERE doc_id=1 ORDER BY n")]
+    for piv, (cs, ce) in zip(pivots, ((0, 8), (8, 15))):
+        conn.execute(
+            "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+            " pivot_doc_id,target_doc_id,created_at,target_char_start,target_char_end)"
+            " VALUES ('r',?,?,1,1,2,datetime('now'),?,?)", (piv, tgt, cs, ce),
+        )
+    conn.commit()
+    conn.close()
+
+    server = CorpusServer(db_path=db_path, host="127.0.0.1", port=0, token="t")
+    server.start()
+    base = f"http://127.0.0.1:{server.actual_port}"
+    _wait_health(base)
+    try:
+        code, body = _http(
+            "POST", f"{base}/units/update_text",
+            {"unit_id": tgt, "text_norm": "morning, evening"}, token="t",
+        )
+        assert code == 200, body
+        # Les DEUX liens, portés par deux pivots différents, perdent leur fenêtre.
+        assert body["cut_spans_cleared"] == 2, body
+
+        c2 = get_connection(db_path)
+        spans = c2.execute(
+            "SELECT target_char_start, target_char_end FROM alignment_links"
+            " WHERE target_unit_id=?", (tgt,),
+        ).fetchall()
+        assert [tuple(r) for r in spans] == [(None, None), (None, None)]
+        c2.close()
+    finally:
+        server.shutdown()
+
+
+def test_update_text_without_a_cut_reports_zero(units_env: dict) -> None:
+    """Le cas courant : rien à dissoudre, et le compte le dit — c'est lui qui rend
+    le message silencieux côté interface."""
+    base, token, unit_id = units_env["base"], units_env["token"], units_env["unit_id"]
+    code, body = _http(
+        "POST", f"{base}/units/update_text",
+        {"unit_id": unit_id, "text_norm": "corrigé"}, token=token,
+    )
+    assert code == 200, body
+    assert body["cut_spans_cleared"] == 0, body

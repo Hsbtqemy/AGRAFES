@@ -870,9 +870,10 @@ export interface AlignLinkRecord {
   status: "accepted" | "rejected" | null;
   /** Groups the 1-1 links of one N-M bead (length_bounded strategy, R3.2); null for plain 1-1. */
   bead_id?: number | null;
-  /** Verbatim target text (units.text_raw) — the string the source-anchored cut offsets index. */
+  /** Verbatim target text (units.text_raw) — provenance plane. Since 1.6.69 the cut
+   *  offsets index `target_text` (the normalised plane) instead. */
   target_text_raw?: string;
-  /** Source-anchored cut (R3.3, D9): sub-span of target_text_raw; null/absent = whole target unit. */
+  /** Source-anchored cut (R3.3, D9): sub-span of `target_text`; null/absent = whole target unit. */
   target_char_start?: number | null;
   target_char_end?: number | null;
   /** Present when include_explain=true */
@@ -1658,14 +1659,14 @@ export async function alignAudit(
 export interface MatrixCellLink {
   link_id: number;
   target_unit_id: number;
-  /** Source-anchored cut (code points into target_text_raw); null = whole unit. */
+  /** Source-anchored cut (code points into target_text_norm since 1.6.69); null = whole unit. */
   char_start: number | null;
   char_end: number | null;
-  /** Verbatim target text — the string the cut offsets index. */
+  /** Verbatim import original (D-C1). Since 1.6.69 it is NO LONGER what the grid shows
+   *  nor what the cut offsets index — kept as the untouched provenance plane. */
   target_text_raw: string;
-  /** 1.6.67: the target's `text_norm` — what the stylo EDITS, and therefore what its
-   *  editor must be seeded from. Never index the cut offsets with it: those live in
-   *  `target_text_raw` space, which is immutable. Absent on an older sidecar. */
+  /** The target's `text_norm`: what the grid projects, what the stylo edits, and — since
+   *  1.6.69 — what the cut offsets index. Absent on a sidecar older than 1.6.67. */
   target_text_norm?: string | null;
   /** 1.6.55 (D-W13): pair number — a gesture-created link inherits its sibling's. */
   external_id?: number | null;
@@ -2537,7 +2538,11 @@ export async function updateUnitText(
   unitId: number,
   text_raw: string,
   text_norm?: string,
-): Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }> {
+): Promise<{
+  unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string;
+  /** 1.6.69 (D-1) — cut spans this correction dissolved (offsets index text_norm). */
+  cut_spans_cleared?: number;
+}> {
   const body: Record<string, unknown> = { unit_id: unitId, text_raw };
   if (text_norm !== undefined) body.text_norm = text_norm;
   return conn.post("/units/update_text", body) as Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }>;
@@ -2550,6 +2555,15 @@ export async function updateUnitTextNorm(
   conn: Conn,
   unitId: number,
   text_norm: string,
-): Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }> {
-  return conn.post("/units/update_text", { unit_id: unitId, text_norm }) as Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }>;
+): Promise<{
+  unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string;
+  /** 1.6.69 (D-1) — cut spans this correction dissolved (offsets index text_norm). */
+  cut_spans_cleared?: number;
+}> {
+  return conn.post("/units/update_text", { unit_id: unitId, text_norm }) as Promise<{
+    unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string;
+    /** 1.6.69 (D-1) — cut spans this correction dissolved; the offsets indexed the
+     *  very string it rewrote. 0 in the common case. */
+    cut_spans_cleared?: number;
+  }>;
 }

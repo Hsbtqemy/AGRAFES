@@ -1327,9 +1327,12 @@ export class AlignPanel {
       // no shared-side hoisting — each row shows its own slice of the target.
       const cut = beadIsCut(group);
       // B2 — a 2-1 target-shared bead with word boundaries is a "couper" candidate.
-      const cutTargetRaw = group.links[0]?.target_text_raw ?? null;
+      // ALI-01 tranche 2 — les offsets indexent ``text_norm``, que /align/audit renvoie
+      // déjà sous `target_text`. Couper d'après `target_text_raw` calculerait des bornes
+      // dans un plan que le moteur ne valide plus, et que la matrice n'affiche plus.
+      const cutTargetText = group.links[0]?.target_text ?? null;
       const cuttable = !cut && group.sharedSide === "target" && group.links.length === 2
-        && cutTargetRaw != null && cutOffsets(cutTargetRaw).length > 0;
+        && cutTargetText != null && cutOffsets(cutTargetText).length > 0;
       const pickerOpen = this._cutActive === group.links[0]?.link_id;
       group.links.forEach((lk, idx) => {
         const first = idx === 0;
@@ -1399,12 +1402,12 @@ export class AlignPanel {
         }
       });
       // B2 — the inline "couper" picker for this bead (tokenised verbatim target + gaps).
-      if (pickerOpen && cuttable && cutTargetRaw != null) {
+      if (pickerOpen && cuttable && cutTargetText != null) {
         const l = group.links;
         rows.push(`<div class="prep-align-cut-picker" role="row">
           <div class="prep-align-cut-picker-inner" role="cell">
             <span class="prep-align-cut-hint">Cliquez &#9986; o&#249; couper la cible &#8212; [§${_esc(String(l[0].external_id ?? "?"))}] puis [§${_esc(String(l[1].external_id ?? "?"))}] :</span>
-            ${buildCutPickerHtml(cutTargetRaw)}
+            ${buildCutPickerHtml(cutTargetText)}
             <button type="button" class="prep-align-cut-cancel" data-cut-cancel="1">Annuler</button>
           </div>
         </div>`);
@@ -1497,8 +1500,8 @@ export class AlignPanel {
     if (!conn) return;
     const group = this._findBeadByFirstLink(beadFirstLinkId);
     if (!group || group.links.length !== 2) return;
-    const raw = group.links[0].target_text_raw ?? "";
-    const textLen = codePointLength(raw);
+    const norm = group.links[0].target_text ?? ""; // plan des offsets (tranche 2)
+    const textLen = codePointLength(norm);
     const actions = buildCutActions(group.links, offset, textLen);
     if (actions.length === 0) return;
     try {

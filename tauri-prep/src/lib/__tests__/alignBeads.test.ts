@@ -103,16 +103,28 @@ describe("codePointSlice", () => {
 });
 
 describe("linkTargetDisplay", () => {
-  const withSpan = (raw: string, s: number | null, e: number | null) =>
-    ({ ...lk(1, 9, 17, 2), target_text: "NORMALISED", target_text_raw: raw, target_char_start: s, target_char_end: e });
+  // ALI-01 tranche 2 : les offsets indexent le plan NORMALISÉ (`target_text`). Ce test
+  // affirmait l'inverse — « returns the cut slice of text_raw » — et c'est précisément
+  // le contrat qui a changé : couper dans le verbatim revenait à trancher une chaîne que
+  // ni l'aligneur ni la grille n'utilisent. Les deux plans divergent ici EXPRÈS et n'ont
+  // pas la même longueur : un test où ils coïncident ne saurait pas dire lequel a servi.
+  const withSpan = (norm: string, s: number | null, e: number | null) =>
+    ({ ...lk(1, 9, 17, 2), target_text: norm,
+       target_text_raw: `<hi>${norm}</hi>`, target_char_start: s, target_char_end: e });
 
-  it("returns the cut slice of text_raw when offsets are set", () => {
+  it("renvoie la tranche du plan normalisé quand les bornes sont posées", () => {
     expect(linkTargetDisplay(withSpan("I can hear it: the sound.", 0, 13))).toBe("I can hear it");
     expect(linkTargetDisplay(withSpan("I can hear it: the sound.", 13, 25))).toBe(": the sound.");
   });
 
-  it("falls back to the normalised target_text when uncut (unchanged behaviour)", () => {
-    expect(linkTargetDisplay(withSpan("verbatim", null, null))).toBe("NORMALISED");
+  it("ne prélève JAMAIS dans le verbatim — le balisage ne doit pas ressortir", () => {
+    // Aux mêmes offsets, le raw balisé donnerait « <hi>I can he ». Le voir ici
+    // signifierait que la coupe a repris l'ancien plan.
+    expect(linkTargetDisplay(withSpan("I can hear it: the sound.", 0, 13))).not.toContain("<hi>");
+  });
+
+  it("retombe sur le texte entier quand le lien n'est pas coupé (inchangé)", () => {
+    expect(linkTargetDisplay(withSpan("verbatim normalisé", null, null))).toBe("verbatim normalisé");
   });
 });
 

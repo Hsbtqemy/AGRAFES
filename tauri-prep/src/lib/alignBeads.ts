@@ -97,15 +97,17 @@ export function codePointSlice(text: string, start: number, end: number): string
 
 /**
  * The target text to display for a link: the source-anchored **cut slice** of the
- * verbatim `target_text_raw` when the link carries a sub-span, otherwise the normal
+ * normalised `target_text` sliced when the link carries a sub-span, otherwise the normal
  * (normalised) `target_text`. Backward-compatible: an uncut link renders exactly as
  * before.
  */
 export function linkTargetDisplay(lk: AlignLinkRecord): string {
   const s = lk.target_char_start;
   const e = lk.target_char_end;
-  if (s != null && e != null && lk.target_text_raw != null) {
-    return codePointSlice(lk.target_text_raw, s, e);
+  // ALI-01 tranche 2 — les offsets indexent `text_norm`, que /align/audit renvoie sous
+  // `target_text`. `target_text_raw` reste la charge utile verbatim d'origine (D-C1).
+  if (s != null && e != null && lk.target_text != null) {
+    return codePointSlice(lk.target_text, s, e);
   }
   return lk.target_text ?? "";
 }
