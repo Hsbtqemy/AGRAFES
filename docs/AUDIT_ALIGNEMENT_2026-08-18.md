@@ -1620,6 +1620,11 @@ et c'est leur *journalisation* qui les sépare, pas leur ligne de code.
 | les deux | job async (`_run_async_job`) | ❌ aucune | idem |
 | `_handle_segment_apply_propagated` (`sidecar.py:4853`) | `POST /segment/apply_propagated` | ❌ aucune | tout le document |
 
+> **Ce tableau reflète le code au 2026-08-20 avant `36834f1`, et ce commit l'a partiellement
+> dépassé** : les quatre premiers sites passent désormais un recorder (§12.5), seul
+> `apply_propagated` reste muet. Il est laissé tel quel — c'est le diagnostic qui a
+> motivé la décision D-2, et le réécrire effacerait la raison de ce qui a suivi.
+
 Un seul appelant sur six passe `record_action`. Les autres suppriment
 `WHERE pivot_doc_id = ? OR target_doc_id = ?` et n'écrivent **rien** dans
 `prep_action_history` : il n'existe aucune action à laquelle rattacher une archive, donc pas

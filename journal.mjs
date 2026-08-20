@@ -7,7 +7,9 @@ import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, relative, basename, extname } from "node:path";
+import { join, relative, basename } from "node:path";
+// Contrat de parsing partage avec pilotage/verifier.mjs -- voir journal-contrat.mjs.
+import { RX, frontmatter, walk, estPasse } from "./journal-contrat.mjs";
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(`--${n}`); return i > -1 ? args[i + 1] : d; };
@@ -24,40 +26,6 @@ const git = (...a) => {
   catch { return ""; }
 };
 
-const RX = {
-  fm:      /^---\r?\n([\s\S]*?)\r?\n---/,
-  h1:      /^#\s+(.+)$/m,
-  arret:   /^\*\*Arrêté sur\*\*\s*[—–-]?\s*(.+)$/m,
-  box:     /^\s*[-*]\s+\[([ xX])\]\s+(.+)$/,
-  h2:      /^##\s+(.+)$/,
-  h3:      /^###\s+(.+)$/,
-  chantier:/\b(R[0-9](?:\.[0-9])?|[A-Z]{1,4}-[0-9]{1,3}[A-Za-z]?)\b/g,
-  decision:/\bD-[PWC][0-9]{1,2}\b/g,
-  adr:     /\bADR-[0-9]{3}\b/g,
-  docpath: /\b(docs\/[A-Za-z0-9_.\-]+\.md)\b/g
-};
-
-const walk = async (dir) => {
-  const out = [];
-  let items = []; try { items = await readdir(dir, { withFileTypes: true }); } catch { return out; }
-  for (const it of items) {
-    const p = join(dir, it.name);
-    if (it.isDirectory()) out.push(...await walk(p));
-    else if (extname(it.name) === ".md" && !it.name.startsWith("_")) out.push(p);
-  }
-  return out;
-};
-
-const frontmatter = (text) => {
-  const m = RX.fm.exec(text); if (!m) return {};
-  const o = {};
-  for (const l of m[1].split(/\r?\n/)) {
-    const k = /^([a-zA-Zé]+):\s*(.*)$/.exec(l);
-    if (k) o[k[1]] = k[2].trim();
-  }
-  return o;
-};
-
 // ---------- lecture de pilotage/ ----------
 async function pilotage() {
   const files = await walk(join(ROOT, DIR));
@@ -70,7 +38,7 @@ async function pilotage() {
     const lines = text.split(/\r?\n/);
     const titre = (RX.h1.exec(text) || [, basename(rel, ".md")])[1];
 
-    if (fm.passe !== undefined || rel.includes("/qa/")) {
+    if (estPasse(rel, fm)) {
       // --- passe de QA : cases regroupées par H3 ---
       const zones = []; let cur = null;
       lines.forEach((l, i) => {
