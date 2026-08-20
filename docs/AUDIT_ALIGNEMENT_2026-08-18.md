@@ -1580,3 +1580,29 @@ source modifiée, pas sur l'unité elle-même). Même arbitration que la bascule
 **Non traité, et assumé** : après enregistrement, la grille se recharge et affiche toujours
 `text_raw` — l'utilisateur corrige, le toast confirme, la cellule ne bouge pas. C'est le cœur
 d'ALI-01, et c'est la tranche 2.
+
+**Passe de vérification de la tranche 1.** Quatre points examinés, un seul appelle une suite.
+
+*Le coût du second plan est mesuré, pas supposé.* Envoyer les deux textes grossit la charge utile
+de **+32 %** sur Modiano (1 623 → 2 154 Ko) et **+43 %** sur le doc 416. En temps : `dumps`
+13,7 → 17,6 ms, `loads` 11,1 → 13,4 ms — **+6 ms** face aux ~2 s par geste qu'ALI-18 mesure sur
+cette même matrice, soit 0,3 %. Un envoi épars (seulement les divergences : 0 moyeu et 38 liens
+sur 5 770) économiserait 99 % de ces octets, mais au prix d'un `null` à double sens
+(« identique au raw » *et* « ligne d'ajout »). Le gain ne paie pas l'ambiguïté ; à revoir si la
+matrice devient limitée par la bande passante et non par le rendu.
+
+*Le message « sidecar trop ancien » ne peut pas se déclencher à tort.* `units.text_norm` est
+`NOT NULL` (migration 001) et le corpus n'en compte aucun vide ; une ligne d'ajout sort en
+`no-unit` avant d'atteindre le test du texte (l'ordre des gardes le garantit, un test le fixe).
+
+*L'amorçage verbatim ne change rien en pratique et davantage en droit.* L'éditeur repart désormais
+du `text_norm` non rogné, là où la projection est `.strip()`-ée : aucune ligne du corpus ne porte
+de blanc de bord, mais le stylo cesse de réécrire silencieusement les espaces — c'est cette
+différence-là qui produisait le va-et-vient `1.` / `1. ` de l'unité 251319.
+
+*L'export CSV n'est pas touché* : `/export/matrix` n'écrit que `headers` + `rows`.
+
+**Conséquence opérationnelle, elle, immédiate** : le binaire empaqueté du shell date du 2026-08-19
+et sert le contrat 1.6.66. Tant qu'il n'est pas reconstruit, le ✎ **ne s'affiche plus** dans la
+matrice — c'est la garde dure qui joue, exactement comme voulu, mais il faut le savoir avant la
+prochaine QA visuelle.
