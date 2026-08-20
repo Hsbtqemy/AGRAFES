@@ -1981,9 +1981,12 @@ Autrement dit le chantier se scinde en deux, dont la première moitié ne coûte
 
 ### 12.5 D-2 livrée — et l'ordre d'annulation, que le test a trouvé (2026-08-20)
 
-Les **six** appelants qui resegmentaient sans trace passent désormais un recorder :
+Les **six** appels qui resegmentaient sans trace passent désormais un recorder :
 `POST /families/{id}/segment`, le job asynchrone (deux branches), la voie *markers* (trois
-appels). Le recorder, jusque-là closure locale de `_handle_segment`, est devenu la fabrique
+appels). **`POST /segment/apply_propagated` n'y est pas** : il ne passe par aucune des deux
+fonctions de resegmentation — il reconstruit le document depuis une liste d'unités fournie, avec
+son propre `DELETE` (`sidecar.py`, §11.14 l'avait recensé comme cinquième site). Il reste donc
+irréversible, et c'est le seul des cinq à l'être encore. Le recorder, jusque-là closure locale de `_handle_segment`, est devenu la fabrique
 `make_resegment_recorder(conn, calibrate_to)`. `resegment_document_markers` a gagné son paramètre
 `record_action` et remonte enfin son `action_id` — le champ existait dans `SegmentationReport` et
 valait invariablement `null` sur ce chemin.
@@ -2006,3 +2009,30 @@ et son alignement disparaître, comme avant.
 **Reste ouvert, et à ne pas laisser filer** : rien n'*impose* le bon ordre. Une annulation de famille
 côté interface devra le faire d'elle-même, et `/prep/undo` gagnerait à dire *pourquoi* il a écarté
 des liens plutôt qu'à seulement les compter.
+
+### 12.6 Passe de vérification de D-2 (2026-08-20)
+
+**Un défaut, et il aurait cassé en production.** La voie *markers* construit ses lignes avec
+`SELECT unit_id, n, text_raw, text_norm, text_source` — or le recorder lit `external_id` et
+`meta_json`, absents de cette requête, et `sqlite3.Row` lève `IndexError` sur une colonne qu'il n'a
+pas. `POST /segment` avec une spec *markers* et la branche *markers* du job asynchrone auraient
+répondu 500 au premier appel réel.
+
+**La suite passait pourtant.** Le trou n'était pas dans le code mais dans la couverture : aucun test
+n'appelait cette voie **avec un recorder**. Instrumenter un chemin non testé, c'est écrire du code
+que rien ne regarde. Corrigé (les deux requêtes ramènent les colonnes), et surtout couvert — un test
+resegmente par *markers* avec recorder, annule, et vérifie que les unités **et** les liens reviennent
+à l'identique. Rouge prouvé en retirant les colonnes : `IndexError: No item with that key`.
+
+**Une affirmation de §12.5 était trop large.** Elle laissait entendre que les cinq sites recensés au
+§11.14 étaient couverts. `POST /segment/apply_propagated` ne l'est pas : il ne passe par aucune des
+deux fonctions de resegmentation, il reconstruit le document depuis une liste d'unités fournie avec
+son propre `DELETE`. C'est le dernier site destructeur muet, et il est porté au *Reste*.
+
+**Le coût est mesuré, pas supposé** : sur un document de 2 000 unités, une resegmentation passe de
+**62 ms à 80 ms** avec le recorder (+29 %). Pour la famille Modiano — 7 507 unités sur 4 documents —
+l'ordre de grandeur est de +70 ms sur une opération délibérée et rare. Le prix de la réversibilité
+est ici sans commune mesure avec ce qu'elle évite.
+
+**`calibrate_to` vérifié** : la fabrique le reçoit à `None` depuis les nouveaux appelants ; le champ
+ne sert qu'à l'aperçu de calibration côté handler, `undo.py` ne le lit jamais. Sans effet.

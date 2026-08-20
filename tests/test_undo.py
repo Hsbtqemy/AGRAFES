@@ -1414,3 +1414,74 @@ def test_resegment_without_recorder_archives_nothing(db_conn: sqlite3.Connection
     # Et surtout : l'utilisateur doit le LIRE. SegmentPane rend report.warnings tel
     # quel, c'est sa seule chance de savoir que l'alignement ne reviendra pas.
     assert report.warnings and "n'est pas annulable" in report.warnings[0], report.warnings
+
+
+def test_undo_resegment_markers_restores_units_and_links(db_conn: sqlite3.Connection) -> None:
+    """D-2 — la voie *markers* etait instrumentee sans qu'aucun test ne l'exerce.
+
+    Le recorder lit external_id et meta_json ; la requete de cette voie ne les
+    ramenait pas, et sqlite3.Row leve une IndexError sur une colonne absente. La
+    suite passait parce que rien n'appelait ce chemin AVEC un recorder : le trou
+    n'etait pas dans le code, il etait dans la couverture.
+    """
+    from multicorpus_engine.action_history import (
+        ACTION_RESEGMENT,
+        insert_unit_snapshots,
+        record_prep_action,
+    )
+    from multicorpus_engine.segmenter import resegment_document_markers
+    from multicorpus_engine.undo import execute_undo
+
+    _COLS = (
+        "SELECT link_id, run_id, pivot_unit_id, target_unit_id, external_id,"
+        " pivot_doc_id, target_doc_id, created_at, status, source_changed_at,"
+        " bead_id, bead_uid, target_char_start, target_char_end"
+        " FROM alignment_links ORDER BY link_id"
+    )
+    doc_id, [p1] = _seed_doc(db_conn, ["[1] Un. [2] Deux."])
+    tgt_doc, [t1] = _seed_doc(db_conn, ["One."])
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id, pivot_unit_id, target_unit_id, external_id,"
+        " pivot_doc_id, target_doc_id, created_at) VALUES ('r', ?, ?, 1, ?, ?, '2026-08-20')",
+        (p1, t1, doc_id, tgt_doc),
+    )
+    db_conn.commit()
+    before_units = _snapshot_units(db_conn, doc_id)
+    before_links = [tuple(r) for r in db_conn.execute(_COLS)]
+
+    def recorder(payload):
+        units_before = payload["units_before"]
+        if not units_before:
+            return None
+        action_id = record_prep_action(
+            db_conn, doc_id=payload["doc_id"], action_type=ACTION_RESEGMENT,
+            description="Markers",
+            context={
+                "pack": payload["pack"], "lang": payload["lang"],
+                "text_start_n": payload["text_start_n"],
+                "units_deleted_after_ids": [u["unit_id"] for u in units_before],
+                "units_created_after_json": [
+                    {"unit_id": uid, "n": n}
+                    for uid, n in zip(payload["created_unit_ids"], payload["new_units_n"])
+                ],
+                "units_before": units_before,
+            },
+        )
+        insert_unit_snapshots(
+            db_conn, action_id,
+            [{"unit_id": u["unit_id"], "text_raw_before": u["text_raw"],
+              "text_norm_before": u["text_norm"] or "",
+              "unit_role_before": u["unit_role"],
+              "meta_json_before": u["meta_json"]} for u in units_before],
+        )
+        return action_id
+
+    report = resegment_document_markers(db_conn, doc_id=doc_id, record_action=recorder)
+    assert report.action_id is not None, "l'action doit remonter dans le rapport"
+    assert db_conn.execute("SELECT COUNT(*) FROM alignment_links").fetchone()[0] == 0
+
+    execute_undo(db_conn, doc_id)
+    db_conn.commit()
+
+    assert _snapshot_units(db_conn, doc_id) == before_units
+    assert [tuple(r) for r in db_conn.execute(_COLS)] == before_links

@@ -414,13 +414,15 @@ def resegment_document_markers(
     text_start_n = _get_text_start_n(conn, doc_id)
     if text_start_n is not None:
         rows = conn.execute(
-            "SELECT unit_id, n, text_raw, text_norm, text_source FROM units"
+            "SELECT unit_id, n, text_raw, text_norm, text_source, external_id, meta_json"
+            " FROM units"
             " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
             (doc_id, text_start_n),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT unit_id, n, text_raw, text_norm, text_source FROM units"
+            "SELECT unit_id, n, text_raw, text_norm, text_source, external_id, meta_json"
+            " FROM units"
             " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
             (doc_id,),
         ).fetchall()
