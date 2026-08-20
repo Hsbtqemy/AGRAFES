@@ -596,3 +596,38 @@ describe("cellMergeReversalNoteHtml — dire comment revenir, et ce qui ne revie
     expect(html).toContain("deux");
   });
 });
+
+describe("le retour annoncé par la note est celui que le résolveur choisit", () => {
+  // La note du modal promet : « refaire un ⭙ depuis le segment voisin — il reprendra
+  // la phrase ». Une promesse affichée qui ne serait pas tenue par le code vaudrait
+  // le « réversible » qu'elle remplace. Les liens d'une cellule sont ordonnés par n
+  // de la cible (matrix_export_service), donc la phrase absorbée est TOUJOURS celle
+  // du bord tourné vers le voisin — c'est ce que ce test fixe.
+
+  it("voisin au-dessus : le ⭙ de retour reprend bien la phrase absorbée", () => {
+    // Après que la ligne 1 a absorbé la phrase de la ligne 0 (cible n=1 < n=2, donc
+    // en tête de la cellule), la ligne 0 est vide et refait un ⭙ vers le bas.
+    const after: CellLinkColumn = [[], [lk(1, 901), lk(2, 902)]];
+    const back = resolveCellMerge(after, 0, "down");
+    expect(back.error).toBeUndefined();
+    if (back.error !== undefined) return;
+    expect(back.link.link_id).toBe(1); // le lien absorbé, pas l'autre
+    expect(back.neighborRow).toBe(1);
+  });
+
+  it("voisin en dessous : idem, par l'autre bord", () => {
+    // La ligne 0 a absorbé la phrase de la ligne 1 (cible n=2 > n=1, donc en queue).
+    const after: CellLinkColumn = [[lk(1, 901), lk(2, 902)], []];
+    const back = resolveCellMerge(after, 1, "up");
+    expect(back.error).toBeUndefined();
+    if (back.error !== undefined) return;
+    expect(back.link.link_id).toBe(2);
+  });
+
+  it("le voisin vidé garde bien un ⭙ exploitable — sinon la note mentirait", () => {
+    // resolveCellMerge doit tolérer une cellule courante VIDE : c'est le cas normal
+    // du retour, le ⭙ ayant laissé le voisin à ∅.
+    const after: CellLinkColumn = [[], [lk(1, 901)]];
+    expect(resolveCellMerge(after, 0, "down").error).toBeUndefined();
+  });
+});

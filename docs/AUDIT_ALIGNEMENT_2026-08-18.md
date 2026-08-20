@@ -1762,3 +1762,28 @@ et s'arrêtait là. Vérifié au code : c'est vrai pour la phrase, faux pour sa 
 vérité affichée au moment de décider est de la même famille que les constats que cet audit poursuit.
 
 Reste (A), cadré comme chantier : l'annulation de l'espace Alignement.
+
+### 11.18 Passe de vérification des deux derniers lots (2026-08-20)
+
+**Le compte annoncé est exactement ce qui est détruit.** `snapshot_links_for_units` filtre
+`pivot_unit_id IN (…) OR target_unit_id IN (…)` — le prédicat **mot pour mot** du `DELETE` de la
+fusion. Et `insert_link_snapshots` renvoie le nombre de lignes *collectées*, non le nombre inséré :
+la nuance n'en est pas une ici (la clé primaire est `(action_id, link_id)`, aucun doublon possible
+dans une action), mais c'est bien le compte des liens détruits que l'utilisateur lit.
+
+**La promesse tient des deux côtés.** Le message dit « Annuler les rend » sur la fusion *et* sur la
+scission ; seule la fusion était sous test. La scission l'est désormais — `alignments_restored` de
+`/prep/undo` égale son `links_archived` — ainsi que son cas à zéro, celui qui rend le message
+silencieux.
+
+**Le retour annoncé par la note du ⭙ est celui que le code choisit.** La note promet « refaire un ⭙
+depuis le segment voisin — il reprendra la phrase ». Vérifié plutôt que raisonné : les liens d'une
+cellule sont ordonnés par `n` de la cible (`matrix_export_service`, `ORDER BY … tu.n …`), donc la
+phrase absorbée occupe **toujours** le bord tourné vers le voisin, et `resolveCellMerge` reprend ce
+bord-là. Trois tests le fixent, dans les deux sens, plus la tolérance à la cellule vide — sans
+laquelle la note mentirait dans son cas le plus courant. *Limite connue* : sur un alignement non
+monotone, le bord pourrait ne pas être la phrase absorbée ; l'aperçu du modal montre ce qui sera
+repris, ce qui suffit à ne pas tromper.
+
+**L'insertion HTML de la note est sûre** : `_openPickerShell` passe par `safeHtml` + `raw()`, et la
+note est entièrement statique — aucune donnée d'utilisateur ni de moteur n'y transite.

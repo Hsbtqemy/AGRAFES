@@ -235,3 +235,29 @@ class TestLinksArchivedReported:
         code, undone = _post(f"{base}/prep/undo", {"doc_id": 1}, token)
         assert code == 200, undone
         assert undone["alignments_restored"] == merged["links_archived"]
+
+    def test_the_promise_holds_for_the_split_too(self, ms_sidecar):
+        """La scission affiche le même message : elle doit tenir la même promesse."""
+        base, token, _ = ms_sidecar
+        _code, sp = _post(
+            f"{base}/units/split",
+            {"doc_id": 1, "unit_n": 3, "text_a": "Trois", "text_b": "bis."},
+            token,
+        )
+        code, undone = _post(f"{base}/prep/undo", {"doc_id": 1}, token)
+        assert code == 200, undone
+        assert undone["alignments_restored"] == sp["links_archived"] == 1
+
+    def test_split_reports_zero_on_an_unaligned_unit(self, ms_sidecar):
+        """Zéro doit rester zéro : c'est ce qui rend le message silencieux."""
+        base, token, _ = ms_sidecar
+        # La scission libère l'unité n=3 de son lien ; la moitié créée en n=4 n'en a aucun.
+        _post(f"{base}/units/split",
+              {"doc_id": 1, "unit_n": 3, "text_a": "Trois", "text_b": "bis."}, token)
+        code, body = _post(
+            f"{base}/units/split",
+            {"doc_id": 1, "unit_n": 4, "text_a": "bis", "text_b": "ter."},
+            token,
+        )
+        assert code == 200, body
+        assert body["links_archived"] == 0, body
