@@ -1743,7 +1743,12 @@ export interface MatrixAdditionRow {
 export interface MatrixUncoveredUnit {
   unit_id: number;
   n: number;
+  /** Plan verbatim d'origine (provenance). Ce n'est PAS ce que la grille affiche. */
   text_raw: string;
+  /** 1.6.69 — le plan que la grille projette : c'est celui qu'il faut montrer dans le
+   *  panneau « ＋ Ajout », sans quoi on choisit une phrase sur un texte et on la voit
+   *  atterrir sous un autre. Absent sur un sidecar antérieur. */
+  text_norm?: string;
 }
 
 export async function getAlignMatrix(conn: Conn, familyRootId: number): Promise<AlignMatrix> {

@@ -636,3 +636,27 @@ describe("le retour annoncé par la note est celui que le résolveur choisit", (
     expect(resolveCellMerge(after, 0, "down").error).toBeUndefined();
   });
 });
+
+describe("repli sur le plan verbatim quand le sidecar est antérieur à 1.6.67", () => {
+  // Un sidecar plus ancien n'envoie pas `target_text_norm` : il projette le verbatim et
+  // valide contre lui, il est donc parfaitement cohérent en espace `raw`. Sans repli,
+  // `?? ""` donnait une fenêtre de longueur NULLE et les gestes de coupe échouaient en
+  // silence au lieu de fonctionner contre le sidecar qu'ils ont en face.
+  const old = (raw: string): MatrixCellLink =>
+    ({ link_id: 1, target_unit_id: 90, char_start: null, char_end: null,
+       target_text_raw: raw });
+
+  it("la fenêtre d'un lien sans plan normalisé n'est pas [0, 0]", () => {
+    expect(linkWindow(old("ab cd"))).toEqual([0, 5]);
+  });
+
+  it("les points de coupe restent calculables", () => {
+    expect(viableCutOffsetsIn(old("un deux trois").target_text_raw, 0, 13).length)
+      .toBeGreaterThan(0);
+  });
+
+  it("mais le plan normalisé l'emporte dès qu'il est là", () => {
+    const both: MatrixCellLink = { ...old("<hi>ab</hi> cd"), target_text_norm: "ab cd" };
+    expect(linkWindow(both)).toEqual([0, 5]); // 5 = « ab cd », pas 14
+  });
+});

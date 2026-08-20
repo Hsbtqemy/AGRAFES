@@ -1907,3 +1907,33 @@ fichiers calquent le norm sur le raw par défaut, si bien qu'un test qui veut di
 plans doit le dire explicitement.
 
 `/export/matrix` suit, partageant `rows` — le CSV y gagne la disparition des mêmes « ¤ ».
+
+### 12.3 Passe de vérification de la tranche 2 (2026-08-20)
+
+**Deux défauts trouvés, tous deux introduits par la bascule elle-même.**
+
+*Le repli sur un sidecar antérieur avait disparu.* Dix sites de calcul de coupe lisaient
+`target_text_norm ?? ""`. Un sidecar antérieur à 1.6.67 n'envoie pas ce champ — et il est
+**entièrement cohérent en espace verbatim** : il projette `text_raw` et valide contre lui. Sans
+repli, les fenêtres tombaient à longueur nulle et les gestes de coupe auraient échoué **en silence**
+au lieu de fonctionner contre le sidecar qu'ils ont en face. Rétabli en
+`target_text_norm ?? target_text_raw ?? ""`, sur les dix sites, avec un test qui vérifie qu'une
+fenêtre sans plan normalisé n'est pas `[0, 0]` — et qu'à plans présents, le normalisé l'emporte.
+(La substitution de masse avait au passage produit un `r.link.target_text_norm ?? link.…` : attrapé
+par `tsc`, puis un contrôle systématique a vérifié que les dix récepteurs sont bien identiques des
+deux côtés du `??`.)
+
+*Le panneau « ＋ Ajout » listait encore le plan verbatim.* Le champ `text_norm` avait été ajouté à
+`uncovered` côté moteur et **jamais câblé** côté front : on choisissait une orpheline sur son texte
+brut — « ¤ » compris — pour la voir atterrir dans une grille qui affiche le normalisé. Corrigé.
+
+**Trois vérifications qui, elles, passent.**
+
+* Les **6 liens coupés** de la base projettent une tranche **identique** avant et après la bascule
+  (vérifié tranche par tranche : mêmes offsets, mêmes textes) — la promesse « aucune migration »
+  tient jusqu'au caractère près.
+* `linkTargetDisplay` et le panneau Contrôle lisent bien le plan normalisé, `/align/audit` le
+  fournissant déjà sous `target_text`.
+* Le sélecteur de coupe (`alignCutPicker`) rendait « the verbatim target text » d'après son
+  commentaire et son paramètre `targetRaw` : les deux nommaient un plan qu'il ne reçoit plus.
+  Renommés — un nom faux survit longtemps à la ligne qu'il décrit.

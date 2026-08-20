@@ -1002,7 +1002,7 @@ export class AlignMatrixView {
     // perdue en D-W17 (une cellule multi-liens a toujours une frontière d'unité, elle).
     if (cell.length === 1) {
       const [ws0, we0] = linkWindow(cell[0]);
-      if (viableCutOffsetsIn(cell[0].target_text_norm ?? "", ws0, we0).length === 0) {
+      if (viableCutOffsetsIn(cell[0].target_text_norm ?? cell[0].target_text_raw ?? "", ws0, we0).length === 0) {
         this._cb.toast?.("✗ Un seul mot — rien à couper.", true);
         return;
       }
@@ -1023,7 +1023,7 @@ export class AlignMatrixView {
       const [ws, we] = linkWindow(cell[0]);
       const neighbor = ctx.hubRows[d === "up" ? row - 1 : row + 1];
       const off = suggestCutOffset(
-        cell[0].target_text_norm ?? "",
+        cell[0].target_text_norm ?? cell[0].target_text_raw ?? "",
         d === "up" ? (neighbor?.hubText ?? "") : rowCur.hubText,
         d === "up" ? rowCur.hubText : (neighbor?.hubText ?? ""),
         [ws, we],
@@ -1261,7 +1261,7 @@ export class AlignMatrixView {
       const r = d === "up" ? resUp : resDown;
       if (r.error !== undefined) return "";
       const neighbor = ctx.hubRows[r.neighborRow];
-      const text = r.link.target_text_norm ?? "";
+      const text = r.link.target_text_norm ?? r.link.target_text_raw ?? "";
       const left = remainingOf(d);
       const fate = left === 0
         ? `Le segment ${neighbor.segment} perdra cette traduction (il deviendra ∅).`
@@ -1996,7 +1996,9 @@ export class AlignMatrixView {
     const items = units.map((u) =>
       `<li class="prep-matrix-orphan">`
       + `<span class="prep-matrix-orphan-n">[${u.n}]</span> `
-      + `<span class="prep-matrix-orphan-text">${_esc(shortenCp(u.text_raw, 120))}</span>`
+      // Le plan de la grille (tranche 2) : choisir une orpheline sur son texte brut
+      // puis la voir atterrir normalisée serait une incohérence de surface.
+      + `<span class="prep-matrix-orphan-text">${_esc(shortenCp(u.text_norm ?? u.text_raw, 120))}</span>`
       + (docId != null
         ? `<button type="button" class="prep-matrix-orphan-seg" data-seg-unit="${u.n}"`
           + ` title="Ouvrir cette unité dans la Segmentation (Brut) — la fusionner/couper pour recaler l'alignement">&#8599; Segmenter</button>`

@@ -1,7 +1,8 @@
 /**
  * alignCutPicker.ts — pure HTML for the inline "couper" picker (R3.3 §D9, B2).
  *
- * Renders the verbatim target text (`target_text_raw`) with a clickable "✂" marker at
+ * Renders the target text of the CUT PLANE (`target_text` = text_norm since 1.6.69,
+ * ALI-01 tranche 2) with a clickable "✂" marker at
  * each cut position (a whitespace word boundary, `cutOffsets`). Each marker carries its
  * **code-point** offset in `data-cut-offset`; clicking one cuts a 2-1 bead there
  * (`buildCutActions`). Pure builder — no DOM, no sidecar; the caller (AlignPanel) wraps
@@ -15,9 +16,9 @@ import { cutOffsets } from "./alignBeads.ts";
  * The tokenised target with a cut marker at each candidate boundary. The text is
  * escaped character-by-character; the markers are the only interactive elements.
  */
-export function buildCutPickerHtml(targetRaw: string): string {
-  const offsets = new Set(cutOffsets(targetRaw));
-  const cps = Array.from(targetRaw);
+export function buildCutPickerHtml(targetText: string): string {
+  const offsets = new Set(cutOffsets(targetText));
+  const cps = Array.from(targetText);
   const parts: string[] = [];
   for (let i = 0; i < cps.length; i++) {
     if (offsets.has(i)) {

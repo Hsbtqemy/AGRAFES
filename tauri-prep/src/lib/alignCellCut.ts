@@ -34,9 +34,16 @@ export type CellLinkColumn = ReadonlyArray<readonly MatrixCellLink[]>;
 
 // ─── Windows (D-W13) ─────────────────────────────────────────────────────────────
 
-/** The link's current slice of its target, numeric ([0, len] when uncut). */
+/** The link's current slice of its target, numeric ([0, len] when uncut).
+ *
+ *  Le plan est `text_norm` depuis la tranche 2 — c'est lui que la grille projette et que
+ *  le moteur valide. Le repli sur `target_text_raw` n'est pas de la coquetterie : un
+ *  sidecar antérieur à 1.6.67 n'envoie pas le norm, et il est ENTIÈREMENT cohérent en
+ *  espace verbatim (il projette le raw et valide contre lui). Sans ce repli, `?? ""`
+ *  donnerait des fenêtres de longueur nulle et les gestes de coupe échoueraient en
+ *  silence au lieu de fonctionner contre le sidecar qu'ils ont en face. */
 export function linkWindow(l: MatrixCellLink): [number, number] {
-  const len = codePointLength(l.target_text_norm ?? "");
+  const len = codePointLength(l.target_text_norm ?? l.target_text_raw ?? "");
   return [l.char_start ?? 0, l.char_end ?? len];
 }
 
@@ -125,7 +132,7 @@ export function resolveFusedCellLinks(column: CellLinkColumn, row: number): Fuse
   if (above.length === 0 || below.length === 0) {
     return { error: "Liens d'alignement introuvables pour cette cellule." };
   }
-  const raw = ref.target_text_norm ?? "";
+  const raw = ref.target_text_norm ?? ref.target_text_raw ?? "";
   if (viableCutOffsetsIn(raw, ws, we).length === 0) {
     return { error: "Aucun point de coupe possible dans cette tranche (un seul mot)." };
   }
@@ -168,7 +175,7 @@ export function resolveStraddleCut(
       : { error: "Le segment voisin porte déjà une part de cette traduction — annuler la coupe (↺) puis recouper." };
   }
   const [ws, we] = linkWindow(link);
-  if (viableCutOffsetsIn(link.target_text_norm ?? "", ws, we).length === 0) {
+  if (viableCutOffsetsIn(link.target_text_norm ?? link.target_text_raw ?? "", ws, we).length === 0) {
     return { error: "Aucun point de coupe possible dans cette tranche (un seul mot)." };
   }
   return { link, neighborRow, window: [ws, we] };
@@ -247,7 +254,7 @@ export function resolveCellSplit(
   }
 
   if (split) {
-    if (viableCutOffsetsIn(link.target_text_norm ?? "", ws, we).indexOf(offset) === -1) {
+    if (viableCutOffsetsIn(link.target_text_norm ?? link.target_text_raw ?? "", ws, we).indexOf(offset) === -1) {
       return { error: "Point de coupe invalide (tranche vide)." };
     }
   }
@@ -287,7 +294,7 @@ export function cellRemovableTranslations(
     return {
       link_id: l.link_id,
       target_unit_id: l.target_unit_id,
-      text: codePointSlice(l.target_text_norm ?? "", ws, we).trim(),
+      text: codePointSlice(l.target_text_norm ?? l.target_text_raw ?? "", ws, we).trim(),
       removable: l.char_start == null,
     };
   });
@@ -312,7 +319,7 @@ export function cellCutTargets(
     if (l.char_start == null || seen.has(l.target_unit_id)) continue;
     seen.add(l.target_unit_id);
     const [ws, we] = linkWindow(l);
-    out.push({ target_unit_id: l.target_unit_id, slice: codePointSlice(l.target_text_norm ?? "", ws, we).trim() });
+    out.push({ target_unit_id: l.target_unit_id, slice: codePointSlice(l.target_text_norm ?? l.target_text_raw ?? "", ws, we).trim() });
   }
   return out;
 }
@@ -574,7 +581,7 @@ export function buildCellSplitPanelsHtml(
   const words: W[] = [];
   const viableByLink: Set<number>[] = [];
   cell.forEach((lk, i) => {
-    const raw = lk.target_text_norm ?? "";
+    const raw = lk.target_text_norm ?? lk.target_text_raw ?? "";
     const [ws, we] = linkWindow(lk);
     viableByLink[i] = new Set(viableCutOffsetsIn(raw, ws, we));
     const starts = [ws, ...cutOffsets(raw).filter((o) => o > ws && o < we)];
