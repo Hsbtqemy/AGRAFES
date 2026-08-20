@@ -1831,3 +1831,42 @@ ALI-10 masse et ALI-22 (a) seraient des clients.
 
 Séquence retenue : **lot 2 = ALI-01 tranche 2** (décidé, court, même surface), puis **le chantier
 d'archive/annulation**, qui paie ALI-10 masse, ALI-22 (a), ALI-20 et une partie d'ALI-07.
+
+### 12.1 Instruction du lot 2 (ALI-01 tranche 2) — avant d'écrire
+
+**Aucune migration de données.** Basculer la projection change la *signification* des offsets de
+coupe (espace `raw` → espace `norm`), pas leur valeur. Requête sur la base de travail : **0** lien
+coupé serait invalidé — les 6 spans existants visent des unités où `text_raw == text_norm`,
+longueurs comprises. La règle D-1 suffit à tenir l'invariant *pour la suite*.
+
+**La bascule est visuellement quasi neutre, et plutôt plus propre.** 33 cellules cibles changeraient
+d'affichage. En quoi, exactement :
+
+| différence | occurrences |
+|---|---|
+| espace insécable → espace | 577 |
+| `¤` → espace | 236 |
+| BOM retiré | 5 |
+
+Les `¤` sont un déchet d'import que la grille affiche aujourd'hui. Autrement dit la colonne
+« correcte pour l'alignement » est aussi la plus lisible — l'arbitrage redouté (fidélité contre
+justesse) ne se présente pas sur ces données.
+
+**Surface de changement, mesurée.**
+
+* moteur — `matrix_export_service` : la tranche de cellule (`_cell`, l. 61), le texte de la ligne
+  moyeu (l. 301), les orphelines et `uncovered` (l. 219/239/241) ; `align_links_service.set_target_span`
+  valide contre `length(u.text_norm)` ;
+* front — 26 occurrences de `target_text_raw` / `char_*` dans les trois fichiers de coupe
+  (`alignCellCut`, `alignBeads`, `alignCutPicker`) ;
+* règle D-1 — `units_service.update_unit_text` efface les spans de **toutes** les cellules portant
+  l'unité corrigée : `WHERE target_unit_id = ?`, sans restriction de pivot. Une coupe répartit UNE
+  phrase sur plusieurs lignes moyeu ; n'en effacer qu'une partie recréerait le recouvrement que
+  D-1 écarte. Corriger un segment **moyeu** ne touche aucun span (ils vivent côté cible).
+
+**Aucun autre consommateur** : ni `qa_report`, ni `aligner` ne lisent les offsets.
+
+**Sous-décision soulevée par la surface, et tranchée ici** : `/export/matrix` (CSV) partage `rows`
+avec la grille — il suivra donc. C'est voulu : la documentation présente les deux comme « la même
+projection », et les séparer créerait deux vérités pour un seul objet. Le CSV y gagne au passage la
+disparition des 236 `¤`.
