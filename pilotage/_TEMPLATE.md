@@ -50,6 +50,13 @@ Collision connue : R5 partage 25 fichiers, dont sidecar.py et coarse_grain.py.
 La section `## QA` ne contient pas les points : elle **pointe** vers les passes. Un
 chantier peut en avoir plusieurs, et une même passe peut servir plusieurs chantiers.
 
+> **Attention — cette section est purement documentaire.** Le rattachement réel se fait
+> dans l'autre sens : `journal.mjs` construit `ch.passes` en filtrant les passes sur leur
+> propre `chantier:` (l. 269), et ne lit **jamais** `## QA`. Une passe est donc rattachée
+> même si son chantier ne la cite pas — c'est le cas de `shell-v040.md` pour R6. Écrire la
+> section reste utile à un lecteur humain ; l'omettre ne casse rien. Le tableau du contrat
+> affirmait le contraire, corrigé le 2026-08-20.
+
 ---
 
 ## Gabarit 2 — la passe de QA
@@ -119,7 +126,7 @@ Ce que l'outil lit, et rien d'autre.
 | `# Titre` | Premier H1 | Le code sert de titre |
 | `**Arrêté sur**` | La ligne entière après le tiret | Ligne omise à l'écran |
 | `## Reste` | Cases à cocher, une par ligne | Section absente de l'écran |
-| `## QA` | Chemins de passes, un par ligne | Aucune passe rattachée |
+| `## QA` | **Non lu par l'outil** — voir la note ci-dessous | Aucun effet |
 
 **Fichier de passe**
 
