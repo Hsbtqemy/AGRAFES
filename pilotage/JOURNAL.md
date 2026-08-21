@@ -10,15 +10,15 @@ statut: interrompu
 ## Reste
 
 - [ ] Indicateur de collision entre chantiers — retenu à la conception, jamais codé ; les données existent (`git log --name-only` par code), c'est la brique la plus proche du besoin d'origine
-- [ ] Seuil de dormance en jours actifs (dormant ≥ 10, fossile ≥ 25) — coupé à la relecture de la maquette, à reposer si le tri seul ne suffit pas
-- [ ] `pilotage/qa/smoke-u02.md` porte `chantier: U-02`, qui n'a pas de fiche — la passe n'est rattachée à rien à l'écran
+- [ ] Seuil de dormance sur le silence d'un chantier (dormant ≥ 10 jours actifs) — coupé à la relecture de la maquette, à reposer si le tri seul ne suffit pas. La moitié « fossile ≥ 25 » est morte : elle visait la dormance des **fichiers**, axe mesuré cassé le 19 août (voir `Contexte`)
+- [x] `pilotage/qa/smoke-u02.md` porte `chantier: U-02`, qui n'a pas de fiche — clos : `pilotage/U-02.md` existe, la passe est rattachée
 - [ ] Les 9 points de `smoke-u02` sous « À recadrer » visent des écrans supprimés en R6.5 — les recadrer vers le canvas ou les supprimer
 - [ ] Élaguer les notes du 16 août dans `pilotage/qa/shell-v040.md` : l'énoncé doit porter le protocole, la preuve va dans le rapport
 - [ ] Le contrôleur pourrait signaler mécaniquement l'écart entre le commit cité dans `Arrêté sur` et le dernier commit réel du chantier — la traînée le rend visible, elle ne le compte pas
 - [ ] La nappe `.cible::after` couvre la carte : le texte d'une carte n'est plus sélectionnable à la souris — compromis connu du motif, à trancher si la sélection sert
 - [x] `journal.mjs` : le compteur `commits` n'applique pas la garde `fourretout` alors que `dernierCommit` le fait — R2 et R4 comptent quelques commits de trop
-- [ ] `journal.mjs` : la section `## QA` d'une fiche n'est pas lue — le rattachement est dérivé du `chantier:` de la passe. Le contrat du gabarit décrit une section inerte
-- [ ] Aucune fiche pour les 14 findings `QA-01`…`QA-14` de la passe shell du 16 août — décider s'ils méritent des fiches ou un seul chantier de correction
+- [x] `journal.mjs` : la section `## QA` d'une fiche n'est pas lue — clos non par un correctif mais par le gabarit, qui l'écrit désormais en toutes lettres (« le journal ne lit **jamais** `## QA` »). Section inerte assumée, plus un défaut
+- [ ] **Treize** des quatorze findings `QA-01`…`QA-14` de la passe shell du 16 août n'ont ni fiche ni item — seul `QA-06` est suivi, dans le `Reste` de R6. Décider s'ils méritent des fiches ou un seul chantier de correction
 - [ ] Le front d'intégration contredit le vocabulaire de `statut:` : R6 affiche « livré » et « absent de origin/main, dev ». Décider si `livré` suppose un front, ou si les deux axes restent indépendants
 - [ ] L'onglet masses ne jalonne que les **retraits** : les plus gros ajouts sont tous des commits de bootstrap de mars (jusqu'à +146 951 lignes), inexploitables. À rouvrir quand février-mars sortira de toute fenêtre utile
 - [x] Remonter les codes de constat vers leur chantier et exclure du silence les commits qui ne touchent que `pilotage/` — fait le 21 août : `constatsAudit` remonté dans `journal-contrat.mjs`, sortie de `verifier.mjs` prouvée identique au caractère près
@@ -125,6 +125,20 @@ Un seuil reste arbitraire et le restera : une passe armée mais pas jouée sort 
 après **2 jours actifs** (`ARME` dans `journal.html`). Premier essai à 3 : la passe shell
 remise à zéro le 16 août remontait avec les passes du jour. Ce n'est pas dérivé, c'est un
 jugement.
+
+**La dérive se fabrique, elle ne s'hérite pas — mesuré le 22 août.** Les douze items
+ouverts de cette fiche confrontés au code, un par un : **quatre à corriger sur douze**.
+Un périmé (`U-02` a désormais sa fiche), un clos par le gabarit plutôt que par un
+correctif (`## QA`), un faux dans son quantificateur (« aucune fiche pour les 14 `QA-*` »
+alors que `QA-06` est suivi dans R6), et un qui **contredisait le `Contexte` de sa propre
+fiche** — il proposait de reposer un seuil « fossile » que le paragraphe d'en dessous
+déclare mort et mesuré comme tel.
+
+**33 % sur une fiche de cinq jours, contre 10 % mesurés sur les items migrés** qui
+traînaient depuis des mois. Le reliquat écrit en fin de session est une affirmation que
+personne ne rouvre : c'est le moment où l'on fabrique le plus de fiction, pas celui où
+l'on en hérite. La contradiction interne est le cas le plus instructif — deux passages du
+même fichier peuvent se démentir sans qu'aucun contrôle mécanique ne le voie.
 
 **`Arrêté sur` est une pile de profondeur un — mesuré le 22 août.** En comparant, pour
 chaque fiche, le commit cité dans la ligne de reprise avec le dernier commit réel du
