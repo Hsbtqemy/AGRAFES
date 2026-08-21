@@ -167,6 +167,41 @@ a{color:var(--outremer)}
 .cmts{display:flex;flex-direction:column;gap:.1875rem}
 .cmt{display:grid;grid-template-columns:5.5rem 1fr;gap:.9rem;background:var(--plat);
   border-radius:2px;padding:.6rem .95rem;align-items:baseline}
+/* ---------- en vol ---------- */
+.vols{display:flex;flex-direction:column;gap:.1875rem}
+.vol{display:grid;grid-template-columns:4.25rem 5.5rem 1fr auto;align-items:center;gap:1rem;
+  background:var(--plat);border-radius:2px;padding:.7rem 1rem;text-decoration:none;color:inherit}
+.vol:hover{background:var(--plat2)}
+.vol:focus-visible{outline:2.5px solid var(--outremer);outline-offset:2px}
+.v-n{font:400 1.125rem/1 var(--mo);font-variant-numeric:tabular-nums;text-align:right;color:var(--encre)}
+.v-n i{font:400 var(--t1)/1 var(--mo);font-style:normal;color:var(--encre3);margin-left:.1em}
+.v-j{height:.375rem;background:var(--verge);border-radius:1px;overflow:hidden}
+.v-j i{display:block;height:100%;width:var(--p);background:var(--minium)}
+.v-t{font:400 1.0625rem/1.35 var(--sr)}
+.v-c .tr{font:400 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.1em;color:var(--encre3)}
+
+/* ---------- tableau de bord ---------- */
+.bord{display:flex;flex-direction:column;gap:.1875rem}
+.b-l{display:grid;grid-template-columns:13rem 7rem 5.5rem 1fr;align-items:center;gap:1rem;
+  background:var(--plat);border-radius:2px;padding:.7rem 1rem}
+.b-k{font:400 var(--t2)/1.4 var(--mo);color:var(--encre2)}
+.b-k code{font:inherit;color:var(--encre)}
+.b-v{font:400 1.25rem/1 var(--mo);font-variant-numeric:tabular-nums;text-align:right;color:var(--encre)}
+.b-v i{font:400 var(--t1)/1 var(--mo);font-style:normal;color:var(--encre3)}
+.b-j{height:.375rem;background:var(--verge);border-radius:1px;overflow:hidden}
+.b-j i{display:block;height:100%;width:var(--p);background:var(--encre3)}
+.b-n{font:400 var(--t2)/1.4 var(--mo);color:var(--encre3)}
+.b-l.pres .b-v,.b-l.haut .b-v{color:var(--minium)}
+.b-l.pres .b-j i,.b-l.haut .b-j i{background:var(--minium)}
+.b-l.haut{box-shadow:inset 2.5px 0 0 var(--minium)}
+.avs{display:flex;flex-direction:column;gap:.125rem;margin-top:.5rem}
+.av{display:grid;grid-template-columns:13rem 2rem 1fr;gap:1rem;padding:.4rem 1rem;
+  font:400 var(--t2)/1.45 var(--mo);color:var(--encre3)}
+.av .a-f{color:var(--encre2)}
+.av .a-n{text-align:right;font-variant-numeric:tabular-nums;color:var(--encre)}
+.av a{color:var(--outremer);text-decoration:none;border-bottom:1px solid transparent}
+.av a:hover{border-bottom-color:currentColor}
+
 .masses{width:100%;border-collapse:collapse;font:400 var(--t2)/1.4 var(--mo)}
 .masses th{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.1em;
   color:var(--encre3);text-align:right;padding:0 0 .55rem;font-weight:500}
@@ -293,6 +328,84 @@ const plaque = c => `<div class="plaque" style="--sig:${taille(c.code.length)}re
   <span class="mesure">${c.silence ?? "—"}<i>j</i></span>
   <span class="mot">${esc(c.statut)}</span></div>`;
 
+/* ---------------- en vol + tableau de bord ---------------- */
+/* Une passe est « en vol » si elle est entamée, ou armée le dernier jour actif.
+   0/33 posée hier et 0/54 remise à zéro il y a cinq jours sont deux états
+   différents : le second dort. */
+const enVol = () => D.passes.filter(p =>
+  (p.faits > 0 && p.faits < p.total) || (p.faits === 0 && p.derniere && p.derniere === D.dernierJour));
+
+const rowVol = p => `<a class="vol" href="#/qa/${encodeURIComponent(p.file)}">
+    <span class="v-n">${p.faits}<i>/ ${p.total}</i></span>
+    <span class="v-j"><i style="--p:${p.total ? Math.round(p.faits / p.total * 100) : 0}%"></i></span>
+    <span class="v-t">${esc(p.nom)}</span>
+    <span class="v-c">${p.chantier
+      ? `<span class="pill i">${esc(p.chantier)}</span>`
+      : `<span class="tr">transversale</span>`}</span></a>`;
+
+function bandeVol(){
+  const l = enVol();
+  if (!l.length) return "";
+  const reste = l.reduce((n, p) => n + p.total - p.faits, 0);
+  return `<h2 class="sec"><span>En vol</span><span class="n">${reste} points à cocher</span></h2>
+    <div class="vols">${l.map(rowVol).join("")}</div>`;
+}
+
+/* Un chiffre n'entre ici que s'il peut être mauvais et que l'être change la suite.
+   Un seul a un seuil réel — la veille. Les autres ont une direction : pas de jauge
+   inventée pour faire joli. */
+function bandeBord(){
+  const v = D.veille, c = D.controle;
+  if (!v && !c) return "";
+  const l = [];
+
+  if (v) {
+    const pc = Math.round(v.net / v.seuil * 100);
+    l.push({ cle: `veille <code>${esc(v.fichier.split("/").pop())}</code>`,
+      val: `${v.net > 0 ? "+" : ""}${v.net.toLocaleString("fr-FR")} <i>/ ${v.seuil}</i>`,
+      etat: pc >= 100 ? "haut" : pc >= 75 ? "pres" : "",
+      note: `${pc} % du budget, ${v.jours} jours glissants`,
+      jauge: Math.min(100, Math.max(0, pc)) });
+  }
+
+  const vol = enVol(), file = vol.reduce((n, p) => n + p.total - p.faits, 0);
+  const dort = D.passes.filter(p => !vol.includes(p)).reduce((n, p) => n + p.total - p.faits, 0);
+  if (file || dort) l.push({ cle: "vérification en file", val: file.toLocaleString("fr-FR"),
+    note: `${vol.length} passe${vol.length > 1 ? "s" : ""} en vol · ${dort} points au repos` });
+
+  if (c?.nonCouvert) l.push({ cle: "items jamais confrontés", val: String(c.nonCouvert.items),
+    note: "au code — aucun contrôle mécanique ne peut le faire" });
+
+  const rec = Object.values(c?.audits || {}).filter(a => a.reconnu);
+  if (rec.length) {
+    const sev = {}; let tot = 0, sans = 0;
+    for (const a of rec) { tot += a.total; sans += a.sansItem;
+      for (const [s, n] of Object.entries(a.parSeverite || {})) sev[s] = (sev[s] || 0) + n; }
+    l.push({ cle: "constats d'audit ouverts", val: String(tot),
+      note: Object.entries(sev).map(([s, n]) => s + n).join(" ")
+          + (sans ? ` · ${sans} sans item dans un Reste` : "") });
+  }
+
+  const av = c?.avertissements || [];
+  return `<h2 class="sec"><span>En attente</span>${
+      av.length ? `<span class="n">${av.length} avertissements du contrôleur</span>` : ""}</h2>
+    <div class="bord">${l.map(x => `<div class="b-l${x.etat ? " " + x.etat : ""}">
+      <span class="b-k">${x.cle}</span>
+      <span class="b-v">${x.val}</span>
+      ${x.jauge !== undefined ? `<span class="b-j"><i style="--p:${x.jauge}%"></i></span>` : `<span></span>`}
+      <span class="b-n">${x.note}</span></div>`).join("")}</div>
+    ${!av.length ? "" : `<div class="avs">${
+      /* groupés par contrôle : les 12 lignes brutes répètent huit fois le même
+         message et enterrent les chantiers sous le pli. Le détail reste au CLI. */
+      Object.entries(av.reduce((g, a) => ((g[a.ctl] ||= []).push(a.file), g), {}))
+        .map(([ctl, files]) => `<div class="av">
+          <span class="a-f">${esc(ctl)}</span>
+          <span class="a-n">${files.length}</span>
+          <span>${files.map(f => { const c = f.replace(/^.*\//, "").replace(/\.md$/, "");
+            return `<a href="#/c/${encodeURIComponent(c)}">${esc(c)}</a>`; }).join(" ")}</span>
+        </div>`).join("")}</div>`}`;
+}
+
 /* ---------------- accueil ---------------- */
 function vueChantiers(){
   if (!D.chantiers.length) return vide(
@@ -325,7 +438,8 @@ function vueChantiers(){
     `<h2 class="sec"><span>${t}</span><span class="n">${l.length}</span></h2>
      <div class="pile">${l.map(carte).join("")}</div>`;
 
-  return bloc(int, "Interrompus — arrêtés en plein travail")
+  return bandeVol() + bandeBord()
+       + bloc(int, "Interrompus — arrêtés en plein travail")
        + bloc(dif, "Différés — fermés volontairement, reliquat connu")
        + (int.length || dif.length ? "" : vide(
            `<p>Aucun chantier ouvert — les ${D.chantiers.length} fiches sont closes ou livrées.</p>

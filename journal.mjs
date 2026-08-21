@@ -153,14 +153,7 @@ const AIRES = [
 // sur la taille ; sur 3 les reculs ressortent (screens, ui) et le tri dit qui bouge.
 // La passe --numstat coûte ~2,5 s sur 1 000 commits : mémorisée sur le hash de HEAD,
 // sinon chaque coche de case repayerait le parcours complet de l'historique.
-let memo = { tete: null, val: null };
-function masses(seuil = 1000, fenetre = 3) {
-  const tete = git("rev-parse", "HEAD");
-  if (tete && memo.tete === tete) return memo.val;
-  const val = calculMasses(seuil, fenetre);
-  memo = { tete, val };
-  return val;
-}
+const masses = (seuil = 1000, fenetre = 3) => surTete("masses", () => calculMasses(seuil, fenetre));
 
 function calculMasses(seuil, fenetre) {
   const aire = (p) => { for (const [n, pre] of AIRES) if (p === pre || p.startsWith(pre)) return n; return null; };
@@ -198,6 +191,50 @@ function calculMasses(seuil, fenetre) {
   }).filter(a => a.total > 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
   return { mois, fenetre, aires, jalons: jalons.sort((a, b) => a.delta - b.delta).slice(0, 8) };
+}
+
+// ---------- veille à seuil ----------
+// Le seul chiffre du tableau de bord qui ait une limite réelle. Mêmes paramètres que
+// .github/workflows/sidecar-growth-gate.yml — s'ils y changent, ils changent ici.
+const VEILLE = { fichier: "src/multicorpus_engine/sidecar.py", seuil: 500, jours: 90 };
+
+// Mémo sur le hash de HEAD : ce qui ne dépend que de l'historique se recalcule au
+// commit suivant, pas à chaque coche de case. (Le contrôleur, lui, lit les fichiers
+// de `pilotage/` — il doit rester vivant, il n'est pas mémorisé.)
+const memos = new Map();
+const surTete = (cle, fn) => {
+  const tete = git("rev-parse", "HEAD"), m = memos.get(cle);
+  if (tete && m && m.tete === tete) return m.val;
+  const val = fn();
+  memos.set(cle, { tete, val });
+  return val;
+};
+
+const gardeFou = () => surTete("veille", calculGardeFou);
+
+function calculGardeFou() {
+  const raw = git("log", `--since=${VEILLE.jours} days ago`, "--numstat", "--format=", "--", VEILLE.fichier);
+  if (!raw) return null;
+  let a = 0, d = 0;
+  for (const l of raw.split("\n")) {
+    const f = l.split("\t");
+    if (/^\d+$/.test(f[0])) { a += Number(f[0]); d += Number(f[1]); }
+  }
+  return { ...VEILLE, net: a - d };
+}
+
+// ---------- contrôleur du dossier ----------
+// `pilotage/verifier.mjs` s'exécute au chargement et sort par process.exit : on le
+// lance en processus fils plutôt que de l'importer. Code de retour non nul = il a
+// trouvé des erreurs, pas qu'il a planté — la sortie JSON reste bonne.
+function controleur() {
+  const p = join(ROOT, DIR, "verifier.mjs");
+  if (!existsSync(p)) return null;
+  const lire = (s) => { try { return JSON.parse(s || ""); } catch { return null; } };
+  try {
+    return lire(execFileSync(process.execPath, [p, "--json", "--dir", DIR],
+      { cwd: ROOT, encoding: "utf8", maxBuffer: 16e6, stdio: ["ignore", "pipe", "ignore"] }));
+  } catch (e) { return lire(e.stdout); }
 }
 
 // ---------- index de navigation ----------
@@ -250,6 +287,7 @@ async function build() {
     silenceCourant: jours.length
       ? Math.round((Date.now() - Date.parse(jours[jours.length - 1])) / 864e5) : null,
     chantiers, passes, liens, masses: masses(),
+    veille: gardeFou(), controle: controleur(),
     commits: commits.filter(c => c.date >= depuis)
   };
 }

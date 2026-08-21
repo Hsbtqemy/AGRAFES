@@ -5,7 +5,7 @@ statut: interrompu
 
 # JOURNAL — journal de bord local
 
-**Arrêté sur** — outillage porté sur `dev` (`bb0d030`) et réconcilié dans refonte (`96b0324`) ; CI verte sur les deux, PR #195 `MERGEABLE / CLEAN`, 20 août 2026.
+**Arrêté sur** — l'accueil s'ouvre sur deux bandes neuves : *en vol* (les passes entamées ou armées du jour, avec leur jauge) et *en attente* (quatre chiffres à conséquence + la sortie du contrôleur), 21 août 2026.
 
 ## Reste
 
@@ -20,6 +20,7 @@ statut: interrompu
 - [ ] Aucune fiche pour les 14 findings `QA-01`…`QA-14` de la passe shell du 16 août — décider s'ils méritent des fiches ou un seul chantier de correction
 - [ ] Le front d'intégration contredit le vocabulaire de `statut:` : R6 affiche « livré » et « absent de origin/main, dev ». Décider si `livré` suppose un front, ou si les deux axes restent indépendants
 - [ ] L'onglet masses ne jalonne que les **retraits** : les plus gros ajouts sont tous des commits de bootstrap de mars (jusqu'à +146 951 lignes), inexploitables. À rouvrir quand février-mars sortira de toute fenêtre utile
+- [ ] Remonter les codes de constat vers leur chantier (`ALI-*` → R3 via `audit:`) et exclure du silence les commits qui ne touchent que `pilotage/`. Les deux vont ensemble : l'exclusion seule ferait passer R3 pour dormant, puisque le travail réel cite `ALI-*` et non `R3`. Bloqué sur un choix qui n'est pas le mien — soit dupliquer le parseur de tableau d'audit dans `journal.mjs`, soit le remonter dans `journal-contrat.mjs` et adapter `verifier.mjs`
 - [ ] Le front n'est calculé que pour les fiches — ni le fil ni les passes ne le portent. Coupe volontaire, à rouvrir seulement si le fil devient illisible une fois plusieurs branches vivantes
 
 ## Contexte
@@ -99,6 +100,24 @@ Effet de bord à ne pas prendre pour un défaut : le front d'intégration de cet
 affiche toujours `refonte`. C'est exact — il suit le dernier commit **citant le code**, et
 le commit de portage n'en cite aucun. Les fichiers sont sur dev, l'historique de l'outil
 non.
+
+**Le test d'admission du tableau de bord.** Un chiffre n'entre que s'il peut être
+mauvais et qu'être mauvais change la suite. Admis : la veille `sidecar.py` (`+410 / 500`,
+seuil réel), les points de vérification en file (82), les items jamais confrontés au code
+(53), les constats d'audit ouverts (17). Recalés : le silence en jours actifs (on le sait
+faussé par la tenue du dossier — afficher en tête une mesure connue pour biaisée est pire
+que ne rien afficher), le nombre de fiches non intégrées (constant tant que refonte est
+ouverte), le total des restes ouverts (il ne fait que monter et mesure la rigueur
+d'enregistrement, pas l'avancement). Un seul de ces chiffres a un seuil, donc un seul
+porte une jauge : pas de seuil inventé pour faire joli.
+
+Deux choses apprises en construisant : les 12 avertissements du contrôleur affichés bruts
+répétaient huit fois le même message et enterraient les chantiers sous le pli — groupés par
+contrôle, ils tiennent en deux lignes. Et le contrôleur se lance en processus fils plutôt
+qu'en import, parce qu'il s'exécute au chargement et sort par `process.exit` ; sa sortie
+JSON reste bonne même quand il retourne 1. Coût total des deux bandes : 0,79 s par requête
+contre 0,60 s, la veille étant mémorisée sur HEAD et le contrôleur laissé vivant puisqu'il
+lit des fichiers que les cases modifient.
 
 **L'axe fossile est cassé, mesuré le 19 août — ne pas le rouvrir.** L'idée était de
 signaler le code que personne n'a touché depuis longtemps. Au niveau du module, l'échelle
