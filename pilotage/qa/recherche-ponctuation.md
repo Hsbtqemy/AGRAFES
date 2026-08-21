@@ -46,18 +46,34 @@ toute la deuxième section. Base : une WORKCOPY.
 
 - [x] `Mi - ar face plăcere.` rend des résultats au lieu d'une erreur
 - [x] Le panneau de facettes se remplit lui aussi (compteurs, top docs) — pas seulement la liste
-- [ ] Aucune erreur dans la console de l'inspecteur pendant ces recherches
+- [x] Aucune erreur dans la console de l'inspecteur pendant ces recherches
 
 ### La virgule et les parenthèses (correctif du 2026-08-21)
 
 Le point le plus important de la passe : **47,9 % des lignes du corpus portent une
 virgule**. Coller une ligne du concordancier échouait donc une fois sur deux.
 
-- [ ] `bonjour, le monde` ne fait pas tomber la recherche
-- [ ] Une ligne du corpus **contenant une virgule**, copiée-collée entière, se retrouve
-- [ ] `18,5` ne fait pas tomber la recherche
-- [ ] Une parenthèse en pleine phrase (`le chat (noir) dort`) ne fait pas tomber la recherche
-- [ ] Une parenthèse orpheline (`trois)`) non plus
+- [x] `bonjour, le monde` ne fait pas tomber la recherche
+- [x] Une ligne du corpus **contenant une virgule**, copiée-collée entière, se retrouve
+- [x] `18,5` ne fait pas tomber la recherche
+- [x] Une parenthèse en pleine phrase (`le chat (noir) dort`) ne fait pas tomber la recherche
+- [x] Une parenthèse orpheline — saisir `trois)` seul — non plus
+      *(l'item disait « (`trois)`) », dont le rendu colle un `(` au début : la saisie
+      copiée devenait `(trois))`. Reformulé le 2026-08-21.)*
+
+### La recherche grammaticale — boîtes « mot » et « lemme »
+
+Trouvé en jouant la passe, le 2026-08-21 : les prédicats CQL sont des expressions
+régulières côté moteur, et la boîte y injectait la saisie telle quelle. L'écran ne
+promet qu'un wildcard `.*` ; c'est désormais exactement ce qu'il tient, le reste
+étant pris au pied de la lettre. **À jouer en mode « mot ».**
+
+- [ ] `trois)` ne fait plus tomber la recherche — et trouve le token s'il existe
+- [ ] `(`, `?`, `[`, `*` seuls non plus
+- [ ] `liber.*` trouve toujours *liberté*, *libre* — le wildcard documenté survit
+- [ ] `chat|chien` cherche désormais la chaîne littérale, plus une alternance
+- [ ] En mode **CQL**, une regex fautive donne un message qui parle de la requête,
+      pas un `Invalid regex in predicate '…' at position 7`
 
 ### Le mode « proximité » du constructeur de requête
 
