@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.73"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.74"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -436,6 +436,44 @@ API_VERSION = CONTRACT_VERSION
 #         Les deux routes rendent desormais 400 « Requete de recherche invalide ». Les deux
 #         codes etaient deja declares, donc aucun schema ne bouge.
 
+# 1.6.74: le pivot KWIC retrouve ce que FTS a apparie, et non une chaine litterale.
+#         `POST /query` en mode kwic rend (left, match, right). Le pivot etait cherche en
+#         decoupant la requete ASSAINIE sur l'espace : il cherchait donc `dit-il` dans un
+#         texte qui porte `dit - il`, `libr\*` avec son asterisque, et prenait `AND`, `OR`,
+#         `NEAR(` et la distance pour des termes. Mesure sur 25 lignes trouvees par requete :
+#         `dit-il` 25 pivots vides sur 25, `peut-etre` 25/25, `c'est-a-dire` 18/18, `libr*`
+#         25/25, `NEAR(homme monde, 10)` 3/3 ; `homme AND monde` centrait sur « and » et
+#         `homme OR femme` sur le « or » francais. Seul le mot simple marchait -- soit
+#         TOUTES les capacites avancees de la recherche sans centre de concordance.
+#         Un pivot vide n'etait pas une colonne blanche : la fonction retournait
+#         (texte, "", ""), l'unite ENTIERE dans la colonne gauche. Le corpus de travail
+#         porte 12 documents stockes en une seule unite, dont un de 110 786 caracteres.
+#         Regle retenue : un terme est une SUITE ORDONNEE DE MOTS separes par du non-mot
+#         (dit\W+il), ce qui est la semantique meme d'une phrase FTS5, dont les tokens
+#         doivent etre adjacents. Le pivot couvre donc la locution entiere -- `dit - il` --
+#         ce qu'une concordance doit montrer. Un prefixe reste un prefixe (libr\w*).
+#         Effet de bord gratuit : l'apostrophe courbe cesse d'etre un cas a part, `’`
+#         n'etant qu'un separateur de plus (13 pivots vides sur 50 pour `l'homme` et
+#         `aujourd'hui`, tombes a 0).
+#         CORRIGE AUSSI le mode segment, par le meme mecanisme : `\w+` sur « l'homme »
+#         produit l'article elide comme terme d'UNE LETTRE, et sans borne de mot
+#         l'alternance (l|homme) surlignait TOUS les `l` du texte. L'elision est partout
+#         en francais (l', d', qu', n', s'). Le surlignage marque desormais la locution.
+#         CORRIGE ENFIN une disparition d'unite : `_all_kwic_windows` rendait une liste
+#         VIDE quand rien n'etait retrouve, et le constructeur de hits itere dessus --
+#         zero occurrence, zero hit, alors que FTS avait appariee la ligne et que le total
+#         la comptait. La variante regex avait ce repli, la variante FTS ne l'avait pas.
+#         Le repli est desormais BORNE des deux cotes, et par DEUX bornes : la largeur de
+#         contexte demandee et 500 caracteres. La seconde n'est pas redondante -- compter
+#         les tokens ne borne rien sur une ecriture sans espaces, ou `\S+` rend un seul
+#         token : le meme repli valait 47 caracteres en latin et 80 000 en chinois. Sur les
+#         46 648 unites du corpus de travail, la mediane est a 56 caracteres et 0,20 %
+#         depassent 500. La branche « requete sans aucun mot » est bornee de meme.
+#         CONSEQUENCE FRONT : le pivot pouvant desormais couvrir une locution, la mise en
+#         page KWIC de tauri-app le laisse se couper (white-space: nowrap la faisait
+#         deborder des 100 caracteres, mesure en mode « Expression exacte »).
+#         Aucune signature ne change : `match` cesse simplement d'etre vide.
+#
 # 1.6.73: la virgule, la parenthese et le mode « proximite ». CORRIGE UNE MESURE FAUSSE de
 #         1.6.72 : « sept caracteres ASCII cassent » avait ete mesure sur des tokens
 #         decoupes a l'espace, ce qui excluait par construction `,` `(` `)` -- justement les

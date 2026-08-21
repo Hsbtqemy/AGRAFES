@@ -192,7 +192,12 @@ def test_le_surlignage_suit_les_mots_et_non_les_tokens_bruts() -> None:
     assert "<<Mi>>" in marque and "<<plăcere>>" in marque
     # La recherche trouve la ligne via une phrase de deux tokens ; le surlignage doit
     # marquer ces deux mots-là plutôt que de ne rien marquer.
-    assert "<<Mi>>" in _highlight_segment(texte, "mi-ar")
+    #
+    # Depuis le 2026-08-21 (correctif du pivot KWIC), il marque la LOCUTION entière
+    # plutôt que chaque mot séparément : une phrase FTS5 exige des tokens adjacents,
+    # donc `mi-ar` désigne bien la suite « mi » puis « ar » et non deux mots
+    # indépendants. L'assertion disait `<<Mi>>` ; elle dit maintenant la portée.
+    assert _highlight_segment(texte, "mi-ar") == "<<Mi - ar>> face plăcere."
 
 
 def test_le_surlignage_ne_prend_aucune_ponctuation_pour_un_terme() -> None:

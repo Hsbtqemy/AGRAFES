@@ -265,6 +265,131 @@ def proximity_query(terms: list[str], distance: int = 5) -> str:
     return f"NEAR({joined}, {distance})"
 
 
+_FTS_MOT = re.compile(r"\w+", re.UNICODE)
+
+# Plafond du repli KWIC. Voir `_fenetre_de_repli` : 0,20 % des unités du corpus de
+# travail dépassent cette longueur, le 99e centile est à 331 caractères.
+_REPLI_MAX_CARACTERES = 500
+
+
+def _motifs_de_requete(query: str) -> list[str]:
+    r"""Traduire une requête FTS5 en motifs regex, un par terme cherché.
+
+    Le point de départ est une requête DÉJÀ assainie : la ponctuation ASCII y a été
+    mise entre guillemets, les opérateurs sont en capitales. Il faut en retirer la
+    syntaxe, puis retrouver dans le texte ce que FTS a réellement apparié — et FTS
+    apparie des TOKENS, pas des chaînes.
+
+    Trois règles, chacune tirée d'un cas mesuré le 2026-08-21 sur le corpus :
+
+    1. **Un terme est une suite ordonnée de mots.** `"dit-il"` cherchait la chaîne
+       littérale `dit-il` ; le corpus porte `dit - il` sur 48 documents, donc le pivot
+       KWIC revenait vide sur 25 lignes trouvées sur 25. Une locution devient
+       ``\bdit\W+il\b`` : les mots dans l'ordre, séparés par du non-mot. C'est très
+       exactement la sémantique d'une phrase FTS5, dont les tokens doivent être
+       adjacents. Bénéfice de bord : l'apostrophe courbe cesse d'être un cas à part,
+       `’` n'étant qu'un séparateur de plus.
+
+    2. **Les mots sont bornés.** Sans ``\b``, l'article élidé de `l'homme` — un terme
+       d'une seule lettre, `l` — surlignait TOUS les `l` du texte
+       (``<<l>>'<<homme>> <<l>>ibre par<<l>>e``). L'élision est partout en français
+       (`l'`, `d'`, `qu'`, `n'`, `s'`) ; la règle 1 la neutralise en exigeant
+       `l` **suivi** de `homme`, la borne fait le reste.
+
+    3. **Un préfixe reste un préfixe.** `libr*` était échappé en ``libr\*`` et cherché
+       avec son astérisque : 25 pivots vides sur 25. Il devient ``\blibr\w*``, ce qui
+       apparie le même ensemble de mots que FTS.
+
+    Les opérateurs ne sont jamais des termes : `homme AND monde` centrait la
+    concordance sur le mot « and », et `homme OR femme` sur le « or » français.
+
+    Les motifs sont rendus du plus long au plus court : l'alternance de `re` retient
+    la première branche qui tombe, et on veut la locution entière plutôt que son
+    premier mot.
+    """
+    sans_syntaxe = _FTS_NEAR.sub(
+        lambda m: _FTS_NEAR_DISTANCE.sub("", m.group(1)), query
+    )
+    sans_syntaxe = _FTS_BOOLEENS.sub(" ", sans_syntaxe)
+
+    motifs: list[tuple[int, str]] = []
+    for brut in _FTS_BALAYAGE_PLAT.findall(sans_syntaxe):
+        terme = brut.strip('"')
+        prefixe = terme.endswith("*")
+        mots = _FTS_MOT.findall(terme)
+        if not mots:
+            continue
+        corps = r"\W+".join(re.escape(mot) for mot in mots)
+        fin = r"\w*" if prefixe else r"\b"
+        motifs.append((len(mots), rf"\b{corps}{fin}"))
+
+    motifs.sort(key=lambda paire: paire[0], reverse=True)
+    return [motif for _, motif in motifs]
+
+
+def _motif_unique(query: str) -> "Optional[re.Pattern[str]]":
+    """Compiler les motifs d'une requête en une alternance unique, ou None si vide."""
+    motifs = _motifs_de_requete(query)
+    if not motifs:
+        return None
+    return re.compile("|".join(motifs), re.IGNORECASE | re.UNICODE)
+
+
+def _fenetre_de_repli(text: str, window: int) -> tuple[str, str, str]:
+    r"""Repli borné quand aucun terme n'est retrouvé dans le texte.
+
+    Le repli historique renvoyait ``(text, "", "")`` — le texte ENTIER dans la colonne
+    gauche d'une concordance. Le corpus porte 12 documents stockés en une seule unité,
+    dont un de 110 786 caractères : la ligne de KWIC devenait un pavé. Un appariement
+    peut encore échouer légitimement (FTS replie les diacritiques à l'indexation, pas
+    nous), donc le repli reste — borné à la largeur du contexte demandé.
+
+    **Deux bornes, pas une.** Compter les tokens ne borne rien sur une écriture sans
+    espaces : ``\S+`` rend UN token sur du chinois, donc « douze tokens » y valait
+    80 000 caractères là où le même texte latin en valait 47. La borne en caractères
+    rattrape ce cas — et elle ne coupe presque jamais un texte réel : mesuré sur les
+    46 648 unités du corpus de travail, la médiane est à 56 caractères, le 99e centile
+    à 331, et 93 unités seulement (0,20 %) dépassent 500.
+    """
+    tokens = re.findall(r"\S+", text)
+    return (" ".join(tokens[: window * 2])[:_REPLI_MAX_CARACTERES], "", "")
+
+
+def _decoupe_autour(
+    text: str, m: "re.Match[str]", window: int
+) -> tuple[str, str, str]:
+    """Découper (gauche, pivot, droite) autour d'un appariement.
+
+    Le pivot peut couvrir PLUSIEURS tokens — `dit - il` en fait trois. L'ancienne
+    découpe prenait le token de début et repartait à `pivot + 1`, ce qui aurait
+    répété la fin de la locution dans le contexte droit.
+    """
+    tokens = [(t.start(), t.end(), t.group(0)) for t in re.finditer(r"\S+", text)]
+    if not tokens:
+        return ("", m.group(0), "")
+
+    debut = fin = 0
+    for i, (ts, te, _) in enumerate(tokens):
+        if ts <= m.start() < te:
+            debut = i
+        if ts < m.end() <= te:
+            fin = i
+            break
+    else:
+        # Inatteignable en pratique — un motif se termine sur un caractere de mot, donc
+        # sa fin tombe dans un token. Se rabattre sur le token de DEBUT plutot que sur le
+        # dernier du texte, qui viderait le contexte droit.
+        fin = debut
+
+    gauche = tokens[max(0, debut - window): debut]
+    droite = tokens[fin + 1: fin + 1 + window]
+    return (
+        " ".join(t for _, _, t in gauche),
+        m.group(0),
+        " ".join(t for _, _, t in droite),
+    )
+
+
 def _highlight_segment(text: str, query: str) -> str:
     r"""Wrap occurrences of query terms with << >> markers.
 
@@ -288,18 +413,9 @@ def _highlight_segment(text: str, query: str) -> str:
     termes, sa distance écartée, et les booléens retirés. La reconnaissance se fait en
     CAPITALES uniquement, comme dans FTS5 : le « and » d'une phrase reste un mot.
     """
-    sans_syntaxe = _FTS_NEAR.sub(
-        lambda m: _FTS_NEAR_DISTANCE.sub("", m.group(1)), query
-    )
-    sans_syntaxe = _FTS_BOOLEENS.sub(" ", sans_syntaxe)
-    mots = [w for t in sans_syntaxe.split() for w in re.findall(r"\w+", t.strip('"'))]
-    terms = [re.escape(w) for w in mots]
-    if not terms:
+    pattern = _motif_unique(query)
+    if pattern is None:
         return text
-    pattern = re.compile(
-        r"(" + "|".join(terms) + r")",
-        re.IGNORECASE | re.UNICODE,
-    )
     return pattern.sub(
         lambda m: f"{_HIGHLIGHT_OPEN}{m.group(0)}{_HIGHLIGHT_CLOSE}", text
     )
@@ -318,39 +434,20 @@ def _kwic_windows(text: str, query: str, window: int) -> tuple[str, str, str]:
     Tokenizes on whitespace. Returns (left, match, right) strings.
     Per ADR-006: only the first match per unit is returned in Increment 1.
     """
-    terms = [t.strip('"') for t in query.split() if t.strip('"')]
-    if not terms:
-        return ("", text, "")
+    pattern = _motif_unique(query)
+    if pattern is None:
+        # Requete sans aucun mot (que des operateurs, que de la ponctuation). Branche
+        # INATTEIGNABLE par /query — sans mot, FTS n'apparie rien non plus : il refuse la
+        # syntaxe ou rend zero ligne, et KWIC n'est alors jamais appele. Elle rendait le
+        # texte ENTIER dans le pivot ; bornee comme l'autre repli, pour que la fonction
+        # ne porte aucun chemin a 110 000 caracteres.
+        return _fenetre_de_repli(text, window)
 
-    pattern = re.compile("|".join(re.escape(t) for t in terms), re.IGNORECASE)
     m = pattern.search(text)
     if not m:
-        return (text, "", "")
+        return _fenetre_de_repli(text, window)
 
-    match_str = m.group(0)
-    match_start = m.start()
-
-    tokens: list[tuple[int, int, str]] = []
-    for tok_m in re.finditer(r"\S+", text):
-        tokens.append((tok_m.start(), tok_m.end(), tok_m.group(0)))
-
-    if not tokens:
-        return ("", match_str, "")
-
-    pivot_idx = 0
-    for i, (ts, te, _) in enumerate(tokens):
-        if ts <= match_start < te:
-            pivot_idx = i
-            break
-
-    left_tokens = tokens[max(0, pivot_idx - window): pivot_idx]
-    right_tokens = tokens[pivot_idx + 1: pivot_idx + 1 + window]
-
-    return (
-        " ".join(t for _, _, t in left_tokens),
-        match_str,
-        " ".join(t for _, _, t in right_tokens),
-    )
+    return _decoupe_autour(text, m, window)
 
 
 def _kwic_windows_regex(
@@ -419,36 +516,16 @@ def _all_kwic_windows(
     Returns a list of (left, match, right) tuples — one per occurrence.
     Used when all_occurrences=True (ADR-006 extension in V2.0).
     """
-    terms = [t.strip('"') for t in query.split() if t.strip('"')]
-    if not terms:
-        return [("", text, "")]
+    pattern = _motif_unique(query)
+    if pattern is None:
+        return [_fenetre_de_repli(text, window)]
 
-    pattern = re.compile("|".join(re.escape(t) for t in terms), re.IGNORECASE)
-    tokens: list[tuple[int, int, str]] = [
-        (m.start(), m.end(), m.group(0)) for m in re.finditer(r"\S+", text)
-    ]
+    results = [_decoupe_autour(text, m, window) for m in pattern.finditer(text)]
 
-    results: list[tuple[str, str, str]] = []
-    for match in pattern.finditer(text):
-        match_str = match.group(0)
-        match_start = match.start()
-
-        pivot_idx = 0
-        for i, (ts, te, _) in enumerate(tokens):
-            if ts <= match_start < te:
-                pivot_idx = i
-                break
-
-        left_tokens = tokens[max(0, pivot_idx - window): pivot_idx]
-        right_tokens = tokens[pivot_idx + 1: pivot_idx + 1 + window]
-
-        results.append((
-            " ".join(t for _, _, t in left_tokens),
-            match_str,
-            " ".join(t for _, _, t in right_tokens),
-        ))
-
-    return results
+    # Une liste VIDE faisait disparaître l'unité : `_build_hits_core` itère dessus, donc
+    # aucun hit n'était ajouté alors que FTS avait bien apparié la ligne et que le total
+    # la comptait. La variante regex avait déjà ce repli ; celle-ci ne l'avait pas.
+    return results or [_fenetre_de_repli(text, window)]
 
 
 def _fetch_aligned_units(

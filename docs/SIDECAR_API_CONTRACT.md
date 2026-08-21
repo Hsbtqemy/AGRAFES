@@ -994,6 +994,36 @@ contrat. Schémas req/resp détaillés dans `docs/openapi.json` ; résumé ici.
 **Statistiques lexicales & facettes** (lecture, sans token)
 - `POST /query/facets` — résumé de facettes d'une requête (compteurs + top docs, sans contenu des hits).
 
+> **Le pivot KWIC (1.6.74).** En mode `kwic`, `POST /query` rend `left` / `match` / `right`.
+> `match` était cherché en découpant la requête **assainie** sur l'espace, donc comme une chaîne
+> littérale : il cherchait `dit-il` dans un texte qui porte `dit - il`, `libr\*` avec son
+> astérisque, et prenait `AND`, `OR`, `NEAR(` et la distance de proximité pour des termes.
+> Mesuré sur 25 lignes trouvées par requête : `dit-il` **25 pivots vides sur 25**, `peut-être`
+> 25/25, `c'est-à-dire` 18/18, `libr*` 25/25, `NEAR(homme monde, 10)` 3/3 — et `homme OR femme`
+> centrait la concordance sur le « or » français. Seul le mot simple fonctionnait.
+>
+> Un pivot vide n'était pas une colonne blanche : la fonction retournait `(texte, "", "")`,
+> soit l'unité **entière** dans la colonne gauche. Le corpus de travail porte 12 documents
+> stockés en une seule unité, dont un de 110 786 caractères.
+>
+> **Un terme est désormais une suite ordonnée de mots** séparés par du non-mot — `dit\W+il` —
+> ce qui est la sémantique même d'une phrase FTS5, dont les tokens doivent être adjacents. Le
+> pivot couvre donc la **locution entière** (`dit - il`), ce qu'une concordance doit montrer, et
+> le contexte droit reprend après elle. Un préfixe reste un préfixe (`libr\w*`). L'apostrophe
+> courbe cesse d'être un cas à part, `’` n'étant qu'un séparateur de plus.
+>
+> Le même mécanisme corrige le **mode segment**, où `\w+` faisait de l'article élidé de `l'homme`
+> un terme d'une seule lettre : sans borne de mot, tous les `l` du texte étaient surlignés.
+>
+> Enfin, `all_occurrences=true` pouvait faire **disparaître une unité** des résultats — aucune
+> occurrence retrouvée, aucun hit ajouté, alors que le total la comptait. Le repli existe des deux
+> côtés, y compris pour une requête sans aucun mot, et il porte **deux bornes** : la largeur de
+> contexte demandée, et 500 caractères. La seconde n'est pas redondante — compter les tokens ne
+> borne rien sur une écriture sans espaces, où `\S+` rend un seul token : le même repli valait
+> 47 caractères en latin et 80 000 en chinois. Sur les 46 648 unités du corpus de travail, la
+> médiane est à 56 caractères et 0,20 % dépassent 500. Aucune signature ne change : `match` cesse
+> d'être vide.
+
 > **Assainissement de la requête FTS5 (1.6.72, complété en 1.6.73).** `POST /query` et
 > `POST /query/facets` reçoivent la saisie de l'utilisateur, dont une partie de la ponctuation est
 > de la **syntaxe** pour FTS5. Chaque mot nu contenant de la ponctuation **ASCII** est donc mis
@@ -1009,9 +1039,12 @@ contrat. Schémas req/resp détaillés dans `docs/openapi.json` ; résumé ici.
 > levait une erreur et rend désormais une recherche littérale.
 >
 > Dans un `NEAR(…)`, la **structure** est préservée à l'octet près, mais les **termes** sont
-> assainis comme partout ailleurs. C'est ce qui fait marcher le mode « proximité » du
-> concordancier, qui construit `NEAR(<mots collés à l'espace>, N)` sans rien assainir : il tombait
-> sur `peut-être` et `l'homme`.
+> assainis comme partout ailleurs. C'est ce qui fait marcher le mode NEAR du concordancier, qui
+> construit `NEAR(<mots collés à l'espace>, N)` sans rien assainir. *(Cette note disait « il
+> tombait sur `peut-être` et `l'homme` » : **faux**, vérifié en 1.6.74 en rejouant l'assainisseur
+> de 1.6.72 sur le corpus — ces deux-là rendaient déjà 3 et 10 lignes. Le seul cas réellement
+> cassé était la **virgule** : `NEAR(dit, puis, 5)` levait `fts5: syntax error near ","`. Traiter
+> le groupe en bloc opaque, lui, les aurait cassés — c'est ce constat-là qui était juste.)*
 >
 > **Ampleur, mesurée sur des requêtes entières.** 47,9 % des lignes du corpus de travail portent une
 > virgule, 48,3 % une virgule ou une parenthèse : coller une ligne du concordancier échouait une

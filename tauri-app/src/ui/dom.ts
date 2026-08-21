@@ -355,16 +355,23 @@ body {
 .highlight { background: var(--match-bg); color: var(--match-color); border-radius: 2px; padding: 0 1px; }
 
 /* KWIC layout */
+/* La colonne centrale est en minmax(0, auto) et non auto : depuis que le pivot
+   couvre la locution entière (contrat 1.6.74), une recherche en « Expression exacte »
+   peut le porter à une centaine de caractères — mesuré 100 sur une saisie de 103. En
+   auto, cette colonne prend toute la largeur du contenu et écrase les deux contextes. */
 .kwic-row {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
   gap: 6px;
   align-items: center;
   font-size: 14px;
   line-height: 1.5;
 }
 .kwic-left  { text-align: right; color: var(--text-muted); }
-.kwic-match { font-weight: 700; background: var(--match-bg); color: var(--match-color); padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+/* white-space: nowrap était sans danger tant que le pivot valait un mot ; il fait
+   déborder la ligne dès qu'il couvre une locution. Un pivot court ne se coupe pas
+   pour autant — il tient sur sa ligne sans qu'on ait à l'interdire. */
+.kwic-match { font-weight: 700; background: var(--match-bg); color: var(--match-color); padding: 1px 6px; border-radius: 4px; overflow-wrap: break-word; }
 .kwic-right { text-align: left; color: var(--text-muted); }
 
 .aligned-toggle {
@@ -1052,7 +1059,10 @@ body {
   line-height: 1.55;
 }
 .parallel-kwic-left  { color: var(--text-muted); text-align: right; flex: 1 1 35%; min-width: 0; overflow-wrap: break-word; }
-.parallel-kwic-match { font-weight: 700; background: var(--match-bg); color: var(--match-color); padding: 0 4px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+/* Même raison, et flex-shrink: 0 aggravait le cas : la base de l'élément vaut sa
+   largeur de contenu sur une ligne, donc un pivot de locution débordait sans pouvoir
+   se réduire. min-width: 0 autorise la réduction, la coupure fait le reste. */
+.parallel-kwic-match { font-weight: 700; background: var(--match-bg); color: var(--match-color); padding: 0 4px; border-radius: 3px; overflow-wrap: break-word; min-width: 0; }
 .parallel-kwic-right { color: var(--text-muted); flex: 1 1 35%; min-width: 0; overflow-wrap: break-word; }
 
 .parallel-aligned-header {
