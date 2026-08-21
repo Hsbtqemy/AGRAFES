@@ -164,10 +164,25 @@ export function validateCqlSyntax(raw: string): string | null {
           // Distinguer « attribut inconnu » de « prédicat mal formé ». Sans ça, le
           // message conseillait des crochets à quelqu'un qui en avait mis : la faute
           // la plus probable en français est `[mot="chat"]`, où seul le NOM est faux.
-          const attrRe = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(p.trim());
-          if (attrRe) {
-            return `Attribut inconnu « ${attrRe[1]} ». `
+          //
+          // Mais il faut VÉRIFIER le nom avant de le déclarer inconnu : une première
+          // version disait « Attribut inconnu « word » » sur `[word=chat]` et sur
+          // `[word="chat" %x]`, où l'attribut est parfaitement valide et où le fautif
+          // est la valeur, puis le drapeau. Un message faux est pire que le message
+          // générique qu'il remplace.
+          const nom = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(p.trim())?.[1];
+          const connu = nom !== undefined
+            && ["word", "lemma", "pos", "upos", "xpos", "feats"].includes(nom.toLowerCase());
+          if (nom !== undefined && !connu) {
+            return `Attribut inconnu « ${nom} ». `
               + "Attributs acceptés : word, lemma, pos, upos, xpos, feats.";
+          }
+          if (connu && !/"/.test(p)) {
+            return `La valeur de « ${nom} » doit être entre guillemets — par exemple [${nom} = "chat"].`;
+          }
+          if (connu) {
+            return `Fin de prédicat non reconnue après « ${nom} = "…" ». `
+              + "Seul le drapeau %c (insensible à la casse) est accepté.";
           }
           return `Prédicat invalide: ${p}`;
         }

@@ -4,7 +4,7 @@
 
 import type { DocumentRecord, FamilyRecord, DocTag } from "../lib/sidecarClient";
 import { listDocuments, listFamilies, listTags } from "../lib/sidecarClient";
-import { compareDocsByTitle } from "../../../shared/docSort.ts";
+import { compareDocsByTitle, compareLocale } from "../../../shared/docSort.ts";
 import { state } from "../state";
 import { elt } from "../ui/dom";
 import {
@@ -91,9 +91,11 @@ function _setLargeCorpusNotice(count: number): void {
 }
 
 export function populateFilterDropdowns(): void {
-  const langs = [...new Set(state.docs.map(d => d.language).filter(Boolean))].sort();
-  const roles = [...new Set(state.docs.map(d => d.doc_role).filter((r): r is string => r != null))].sort();
-  const resTypes = [...new Set(state.docs.map(d => d.resource_type).filter((r): r is string => r != null))].sort();
+  // `sort()` nu classe par point de code : « Œuvre » passerait après « Zone », et les
+  // libellés de type de ressource sont saisis en français. Même collator que les titres.
+  const langs = [...new Set(state.docs.map(d => d.language).filter(Boolean))].sort(compareLocale);
+  const roles = [...new Set(state.docs.map(d => d.doc_role).filter((r): r is string => r != null))].sort(compareLocale);
+  const resTypes = [...new Set(state.docs.map(d => d.resource_type).filter((r): r is string => r != null))].sort(compareLocale);
 
   populateLangCheckboxes(langs);
   fillSelect("filter-role-sel", roles, state.filterRole);
@@ -144,7 +146,7 @@ export function unitStatusLabel(status: string): string {
 export function populateLangCheckboxes(langs?: string[]): void {
   const container = document.getElementById("filter-lang-checkboxes");
   if (!container) return;
-  const available = langs ?? [...new Set(state.docs.map(d => d.language).filter(Boolean))].sort();
+  const available = langs ?? [...new Set(state.docs.map(d => d.language).filter(Boolean))].sort(compareLocale);
   container.innerHTML = "";
   for (const lang of available) {
     const id = `filter-lang-cb-${lang}`;

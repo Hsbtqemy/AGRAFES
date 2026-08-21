@@ -208,6 +208,12 @@ export async function mount(container: HTMLElement, ctx: ShellContext): Promise<
     _collLoading = false;
     _collGeneration++;
     _alignedLangFilter = null;
+    // La portée annotée appartient à la base qu'on quitte : la laisser derrière ferait
+    // dire à l'écran qu'une sélection est atteignable alors qu'elle relève d'un autre
+    // corpus. `_connect` la reconstruit, mais seulement s'il y a une base à ouvrir.
+    _tokensParDoc = new Map();
+    _langueParDoc = new Map();
+    _docsTotal = 0;
     if (path) await _connect(path, root);
     else _setStatus(root, "Aucune base de données sélectionnée.", true);
   });
@@ -513,7 +519,10 @@ export function _messageLisible(msg: string): string {
   const m = /Invalid regex in predicate '([^']*)': (.+?)(?: at position (\d+))?$/.exec(msg);
   if (m) {
     const detail = m[2].trim();
-    const ou = m[3] ? ` (caractère n° ${Number(m[3]) + 1})` : "";
+    // La position rendue par le moteur compte dans le MOTIF (la valeur entre
+    // guillemets), pas dans le prédicat entier. L'afficher à côté du prédicat la
+    // faisait pointer un caractère qui n'est pas le bon.
+    const ou = m[3] ? ` (caractère n° ${Number(m[3]) + 1} du motif)` : "";
     return `Expression régulière invalide dans « ${m[1]} »${ou} : ${detail}. `
       + "Échappez le caractère spécial d'un antislash — par exemple « trois\\) » — "
       + "ou utilisez une boîte rapide, qui prend la saisie au pied de la lettre.";

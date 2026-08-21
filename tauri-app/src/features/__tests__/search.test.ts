@@ -107,4 +107,30 @@ describe("validateCqlSyntax — nommer le vrai problème", () => {
     // `"chat"` seul n'est pas un `attr = valeur` : rien à nommer.
     expect(validateCqlSyntax('["chat"]')).toContain("Prédicat invalide");
   });
+
+  it("ne déclare PAS inconnu un attribut valide — le piège de la première version", () => {
+    // Elle disait « Attribut inconnu « word » » sur ces deux-là, où l'attribut est
+    // parfaitement valide. Un message faux est pire que le message générique.
+    for (const q of ['[word=chat]', '[word="chat" %x]']) {
+      const err = validateCqlSyntax(q);
+      expect(err).not.toBeNull();
+      expect(err).not.toContain("Attribut inconnu");
+    }
+  });
+
+  it("nomme le vrai fautif : les guillemets manquants", () => {
+    expect(validateCqlSyntax('[word=chat]')).toContain("entre guillemets");
+  });
+
+  it("nomme le vrai fautif : le drapeau", () => {
+    const err = validateCqlSyntax('[word="chat" %x]');
+    expect(err).toContain("%c");
+  });
+
+  it("l'attribut inconnu est reconnu quelle que soit sa casse", () => {
+    // Le moteur accepte `[Word="chat"]` (vérifié sur cql_parser) : le client aussi,
+    // donc la comparaison doit être insensible à la casse des DEUX côtés.
+    expect(validateCqlSyntax('[Word="chat"]')).toBeNull();
+    expect(validateCqlSyntax('[Mot="chat"]')).toContain("Attribut inconnu");
+  });
 });
