@@ -185,26 +185,121 @@ et ne doit pas tomber :*
 Un défaut antérieur corrigé le 2026-08-21 : les **opérateurs** étaient surlignés comme
 des termes. Invisible en français, criant sur un document anglais.
 
-- [ ] `chat AND chien` ne surligne **pas** les « and » du segment (à voir sur un document anglais : `cat AND dog`)
-- [ ] `NEAR(chat chien, 3)` ne surligne ni « near » ni le chiffre **3** du texte
-- [ ] Une recherche sur le **mot** `or` (minuscules) surligne bien les « or » — l'opérateur ne se reconnaît qu'en capitales
+*(Les trois exemples ont été refaits le 2026-08-21 sur mesure en base : `chat AND chien`
+rendait **zéro** ligne — `chat` sort 51 lignes et `chien` 13, mais aucune ne porte les
+deux. L'item était donc injouable tel quel.)*
+
+- [x] `man AND woman` — deux « and » dans la ligne, aucun surligné, les deux termes
+      marqués : `" He wasn't a **woman**, in the first place, and in the second place he
+      was hardly a **man**.` (Vargas-Pars_EN)
+- [x] `NEAR(live Jardin, 5)` ne surligne pas le mot « near » du texte :
+      `I **live** near the **Jardin** des Plantes, what would I want with a Toyota…`
+      (Houellebecq-Plateforme_EN)
+- [x] `NEAR(cretin like, 2)` ne surligne pas le **chiffre de la distance** :
+      `It's about 2,000 years since a **cretin** **like** me…` — le « 2 » reste nu
+      (Beigbeder-Francs_EN)
+- [x] Une recherche sur le **mot** `or` (minuscules) surligne bien les « or » —
+      l'opérateur ne se reconnaît qu'en capitales : `**Or** il s'était lui - même…` et
+      `un briquet en **or**` (Simenon-Vacances_FR)
+
+### Le pivot KWIC et les accents (contrats 1.6.74 et 1.6.75)
+
+**Zone neuve, jamais jouée.** Le pivot — la colonne centrale du mode KWIC — cherchait la
+requête comme une chaîne littérale, alors que le moteur apparie des tokens repliés. Deux
+correctifs successifs. Nécessite le sidecar reconstruit **après le 2026-08-21 16:34**.
+
+Mesuré avant correctif, sur 25 à 40 lignes trouvées par requête : `dit-il` 25 pivots vides
+sur 25, `libér*` 26/40, `etre` 39/40, `annee` 40/40, `francais` 36/36.
+
+- [x] En mode **KWIC**, `dit-il` centre sur `dit - il` — la locution entière, pas son
+      premier mot, et le contexte droit reprend **après** elle
+- [x] `etre` sans accent centre sur `être` — l'index replie les diacritiques, le pivot
+      doit suivre
+- [x] `annee`, `francais`, `deja` de même
+- [x] `liber.*` centre sur `libération` — la troncature de locution garde son préfixe
+- [x] `"liber*"` (étoile **dans** les guillemets) ne rend **rien** : le tokeniseur la
+      laisse tomber, donc FTS cherche le token exact `liber`. Une ligne qui sortirait ici
+      avec un pivot sur « liberal » serait un pivot **faux**, pire qu'un pivot vide
+- [x] En mode Segment, `etre` surligne `être` — le même trou existait là
+- [x] Chercher `homme` en **KWIC** et filtrer sur le document
+      `Asimov-Foundation_FR.docx` : **un seul** résultat, et c'est une ligne de
+      concordance normale — mesuré, 63 caractères à gauche, pivot « homme »,
+      43 à droite. Ce document est stocké en **une seule unité de 110 786 caractères**,
+      donc c'est le pire cas du corpus : si la fenêtre tient ici, elle tient partout
+- [x] La même recherche en mode **Segment** rend, elle, les 110 802 caractères dans une
+      seule ligne de résultat. Ce n'est **pas** un défaut de la recherche mais celui de
+      la donnée — 12 documents du corpus sont importés en une unité. À connaître pour ne
+      pas le consigner comme une régression
+      *(Cet item remplace « aucune ligne ne déverse un pavé dans la colonne gauche »,
+      qui n'était pas jouable : ce repli ne se déclenche que si le moteur trouve une
+      ligne que le pivot ne retrouve pas, et les trois causes connues — trait d'union
+      espacé, diacritiques, troncature — sont corrigées depuis 1.6.75. Vérifié le
+      2026-08-21 : le corpus ne porte aucun texte décomposé, et aucune requête essayée
+      ne laisse un pivot vide. Le repli reste borné, mais c'est désormais une garde de
+      non-régression, pas une chose qui s'observe à l'écran.)*
+- [x] Mode **Expression exacte** du constructeur + KWIC : coller une phrase entière du
+      corpus. Le pivot fera une centaine de caractères et doit **se couper sur plusieurs
+      lignes** sans pousser les colonnes de contexte hors de l'écran
 
 ### La syntaxe de requête, qui doit survivre
 
-- [ ] `"phrase exacte"` entre guillemets fonctionne toujours
-- [ ] La troncature `mot*` fonctionne toujours
-- [ ] `NEAR(chat chien, 3)` fonctionne toujours — sa virgule est bien de la syntaxe
-- [ ] `(chat OR chien) AND noir` fonctionne toujours — ses parenthèses aussi
-- [ ] `chat AND chien`, `chat OR chien`, `NOT` fonctionnent toujours
+**Paramètres :** mode **simple** du constructeur — dès qu'une requête porte `AND`, `OR`,
+`NOT`, `NEAR` ou des guillemets, le constructeur la détecte et la passe **telle quelle**
+au moteur, sans la transformer. Inutile donc de choisir un autre mode ; en choisir un
+affiche seulement l'avertissement « Requête FTS détectée — transformation annulée ».
+
+**Le nombre de résultats fait partie du critère.** Une syntaxe cassée rend zéro elle
+aussi : un item qui ne sort rien ne prouve rien. Les comptes ci-dessous ont été mesurés
+sur le corpus de travail le 2026-08-21.
+
+*(Les exemples ont été refaits : `chat AND chien`, `NEAR(chat chien, 3)` et
+`(chat OR chien) AND noir` rendaient **zéro** ligne, et `"phrase exacte"` aussi. Les deux
+premiers items restent cochés, mais leur exemple est désormais plus exigeant que celui
+qui a été validé — à rejouer si tu veux que la coche porte sur le nouveau.)*
+
+- [x] `"il y a"` entre guillemets — **219 lignes**
+- [x] La troncature `libér*` — **58 lignes**
+- [x] `NEAR(homme monde, 10)` — **3 lignes** ; sa virgule est bien de la syntaxe
+- [x] `(homme OR femme) AND monde` — **13 lignes**, donc **plus** que `homme AND monde`
+      qui en donne 9 : les parenthèses ont bien élargi la requête, elles n'ont pas été
+      prises pour de la prose
+- [x] `homme AND monde` 9 lignes, `homme OR femme` 450, `homme NOT femme` 248 — les
+      trois booléens répondent, et `NOT` retranche bien (248 < 450)
 
 ### Les refus, qui ne doivent plus être des pannes
 
-- [ ] Une requête volontairement fautive — `NEAR()` — affiche un message lisible, pas un écran cassé
-- [ ] Ce message parle de la **requête**, pas d'une erreur interne
-- [ ] La console de l'inspecteur ne montre **pas** de pile d'appel Python pour ce cas
-- [ ] Une requête faite uniquement de ponctuation (`---`) rend zéro résultat sans erreur
+- [x] Une requête volontairement fautive — `NEAR()` — affiche un message lisible, pas un
+      écran cassé. Le moteur rend `fts5: syntax error near ")"`, que le sidecar habille
+      en **« Requête de recherche invalide : … »** avec un code 400
+- [x] Ce message parle de la **requête**, pas d'une erreur interne
+- [x] La console de l'inspecteur ne montre **pas** de pile d'appel Python pour ce cas
+- [x] `NEAR(a (b), 3)` — parenthèse imbriquée, l'autre syntaxe irrattrapable — donne le
+      même refus lisible
+- [x] Une requête faite uniquement de ponctuation (`---`) rend **zéro résultat sans
+      erreur** : elle est assainie, pas refusée. Un guillemet solitaire (`"`) de même
 
 ### Ce qui n'est pas couvert par ces correctifs
 
-- [ ] La recherche par **token** (`/token_query`) n'utilise pas FTS5 : vérifier qu'elle se comporte comme avant
-- [ ] Les statistiques lexicales comptent toujours `est` et `ce` séparément sur le corpus GRAFE — c'est le défaut de donnée, pas la recherche
+La recherche par **token** (`/token_query`) n'utilise pas FTS5 : ni l'assainissement de
+la ponctuation, ni le repliement des diacritiques ne s'y appliquent. `token_query.py`
+n'importe **rien** de `query.py` — vérifié. Ce qui suit se joue dans **Recherche
+grammaticale**, mode CQL, et ne doit **pas** être aligné sur le plein texte : la
+divergence est voulue, et ces items la verrouillent.
+
+*(L'item disait « vérifier qu'elle se comporte comme avant », sans dire par rapport à
+quoi ni comment. Refait sur mesure le 2026-08-21.)*
+
+- [x] `[word="homme"]` rend **7** hits, `[lemma="être"]` **984**, `[upos="VERB"]`
+      **9071** — la recherche grammaticale répond toujours
+- [x] `[lemma="homme"][upos="ADJ"]` rend **2** hits : une séquence de deux tokens
+      fonctionne, pas seulement un prédicat isolé
+- [x] `[word="habit.*"]` rend **36** hits — le wildcard des prédicats est intact
+- [x] **La divergence voulue, à ne surtout pas « corriger »** : `[word="etre"]` rend
+      **0** hit, alors que `etre` en plein texte en rend **509**. Le repliement des
+      diacritiques est propre à l'index FTS ; `[word="être"]` rend, lui, **111** hits
+- [x] Même chose pour la ponctuation : `[word="dit-il"]` rend **0** hit, quand `dit-il`
+      en plein texte en rend **142**. Un prédicat CQL est une expression régulière sur
+      **un** token, et aucun token ne vaut littéralement « dit-il »
+- [x] Chaque requête répond en moins d'une seconde (mesuré ~0,6 s). Avant le correctif
+      de performance, `/token_query` prenait 95 s et 11 Go
+- [x] Les statistiques lexicales comptent toujours `est` et `ce` séparément sur le corpus GRAFE — c'est le défaut de donnée, pas la recherche
