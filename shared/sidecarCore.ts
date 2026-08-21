@@ -726,6 +726,15 @@ async function _ensureRunning(dbPath: string): Promise<Conn> {
                 tokenPresent: token !== null,
                 tokenLength: token?.length ?? 0,
               });
+              // Un verrou orphelin ne serait jamais balayé si le portfile reste sain :
+              // l'étape 3, seule à appliquer la règle d'âge, n'est alors jamais
+              // atteinte. On ne retire QUE ce qui est périmé au-delà du délai de
+              // démarrage — un spawn plus jeune est peut-être légitimement en vol.
+              const orphelin = await readSpawnLock(dbPath);
+              if (orphelin.present && Date.now() - (orphelin.started_at_ms ?? 0) > SIDECAR_STARTUP_JSON_TIMEOUT_MS) {
+                sidecarLog("info", `verrou de spawn orphelin retiré (pid=${orphelin.pid ?? "?"})`);
+                await writeSpawnLock(dbPath, 0);
+              }
               _conn = makeConn(baseUrl, token, typeof pfData.pid === "number" ? pfData.pid : null);
               _connDbPath = dbPath;
               _persistSidecarPort(port);
@@ -787,6 +796,12 @@ async function _attendrePortfile(dbPath: string, budgetMs: number): Promise<Conn
       const token = parseToken(data.token);
       if (token === null && json.token_required === true) return null;
       sidecarLog("info", `sidecar en vol adopte (${baseUrl})`);
+      // C'est l'ADOPTANT qui lève le verrou, pas le spawneur. Observé en session
+      // réelle le 2026-08-21 : le contexte qui spawne est précisément celui qui
+      // meurt — c'est toute la raison d'être du verrou — donc il n'atteint jamais sa
+      // propre levée, et le verrou restait derrière lui. Celui qui adopte, lui, sait
+      // que le démarrage attendu a abouti.
+      await writeSpawnLock(dbPath, 0);
       _conn = makeConn(baseUrl, token, typeof data.pid === "number" ? data.pid : null);
       _connDbPath = dbPath;
       _persistSidecarPort(port);

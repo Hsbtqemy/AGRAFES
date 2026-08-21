@@ -537,6 +537,35 @@ describe("verrou de spawn — un rechargement ne doit plus empiler les sidecars"
     expect(spawn).not.toHaveBeenCalled();   // ← RED sans le verrou : il spawnait
   });
 
+  it("l'adoptant lève le verrou, parce que le spawneur ne le fera pas", async () => {
+    // Observé en session réelle le 2026-08-21 : le contexte qui spawne est
+    // précisément celui qui meurt — c'est toute la raison d'être du verrou — donc il
+    // n'atteint jamais sa propre levée. Le verrou restait derrière, indéfiniment tant
+    // que le portfile demeurait sain.
+    const poses: unknown[] = [];
+    let lectures = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "read_spawn_lock") {
+        return JSON.stringify({ present: true, pid: 1234, alive: true, started_at_ms: Date.now() - 2000 });
+      }
+      if (cmd === "write_spawn_lock") { poses.push(args); return undefined; }
+      if (cmd === "read_sidecar_portfile") {
+        lectures += 1;
+        if (lectures <= 1) throw new Error("no portfile");
+        return JSON.stringify(PORTFILE);
+      }
+      if (cmd === "sidecar_fetch_loopback") {
+        return { status: 200, ok: true, body: JSON.stringify({ ok: true, token_required: false }) };
+      }
+      return undefined;
+    });
+    vi.mocked(Command).sidecar = vi.fn(() => ({ spawn: vi.fn() })) as never;
+
+    await ensureRunning("/data/corpus.db");
+
+    expect(poses.map((a) => (a as { pid: number }).pid)).toContain(0);
+  });
+
   it("ignore un verrou dont le processus est mort", async () => {
     // Le spawneur a été tué : le verrou survit sur le disque et bloquerait à jamais.
     const { spawnLockWrites } = wireAvecVerrou(
