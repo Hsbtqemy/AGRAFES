@@ -110,11 +110,25 @@ couche.
 « Brut » **disparaît** — il ne devient pas le texte de base, il est remplacé par ce
 qu'il était déjà sans le dire :
 
-    État        : [ Segmentation actuelle ]  [ Tours ]
-    Re-découper : [ Phrases ]  [ Balises [N] ]  [ Personnalisé ]
+    [ Segmentation actuelle ]  [ Tours ]  │  Segmenter :  [ Phrases ]  [ Balises [N] ]  [ Personnalisé ]
 
-Deux groupes visuellement distincts, avec un intitulé pour le second. Tours reste avec
-l'état : c'est un autre **grain** sur les mêmes unités réelles, pas un autre découpage.
+Deux groupes visuellement distincts. Tours reste avec l'état : c'est un autre **grain**
+sur les mêmes unités réelles, pas un autre découpage.
+
+**Une seule étiquette, et c'est un verbe.** « Segmenter », et non « Re-découper » : le
+préfixe présuppose une segmentation antérieure, alors que c'est souvent le **premier**
+geste sur un document qui vient d'être importé — l'étiquette mentirait dès la première
+utilisation.
+
+Le mot doit aussi rester **léger**, parce qu'à cet endroit on ne fait que regarder : les
+trois onglets n'écrivent rien. Le poids appartient au bouton « Appliquer la
+segmentation », qui prévient déjà quand il y a quelque chose à perdre (« Ce document a N
+liens d'alignement. Resegmenter les effacera. »). L'étiquette décrit une exploration,
+l'avertissement tombe au moment de l'écriture — meilleure répartition qu'aujourd'hui, où
+l'exploration est muette et la conséquence invisible jusqu'au clic.
+
+Le premier groupe, lui, **n'a pas besoin d'étiquette** : son onglet la porte déjà. Un
+verbe d'un côté, un état de l'autre — la frontière se lit sans meuble supplémentaire.
 
 ### 3.2 L'onglet par défaut devient l'état
 
@@ -138,3 +152,10 @@ Le libellé exact de l'onglet d'état. « Segmentation actuelle » est retenu ic
 « Segments » ou « Courant » diraient la même chose plus court. Le critère : le mot doit
 opposer *ce document, maintenant* à *une découpe possible* — c'est le cœur du
 malentendu, et c'est tout ce que le nom doit porter.
+
+*(Le libellé du second groupe, lui, est tranché : « Segmenter ». Voir §3.1.)*
+
+**Navigation au clavier.** Les cinq boutons forment aujourd'hui un seul groupe d'onglets,
+donc les flèches les parcourent tous. Séparés, ils deviennent **deux groupes
+indépendants** : si la frontière mérite d'être vue, elle mérite d'être franchie exprès.
+Décidé le 2026-08-21, à revoir seulement si l'usage montre le contraire.
