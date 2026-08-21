@@ -136,7 +136,44 @@ verbe d'un côté, un état de l'autre — la frontière se lit sans meuble supp
 plus sur une hypothèse avec un bouton destructeur sous la main, on arrive sur son
 document. C'est la moitié « sûreté » du lot, et elle vaut à elle seule le changement.
 
-### 3.3 Coût
+### 3.3 Rendre l'aperçu jugeable — les anomalies avant l'application
+
+L'aperçu n'est pas figé : les règles de l'onglet **Personnalisé** sont vivantes, et le
+découpage se recalcule à chaque réglage. Ce qu'on ne peut pas faire, c'est intervenir sur
+**une coupure précise** — le moteur ne connaît que des règles générales
+(`kind`, `terminators`, `require_uppercase_after`, `protect_abbreviations`).
+`protect_abbreviations` est bien un mécanisme d'exception, mais de **classe** : on protège
+« cap. » partout, jamais cette occurrence-ci.
+
+La réponse actuelle du produit est explicite — appliquer, puis rattraper à la main dans
+l'onglet d'état (fusionner / couper), guidé par la détection d'anomalies.
+
+**Cette réponse tient**, pour une raison qui n'est pas évidente : appliquer détruit les
+liens d'alignement **quelle que soit la qualité du découpage**. Affiner l'aperçu ne
+sauverait donc rien de ce qui coûte cher, et les rattrapages manuels sont peu coûteux et
+annulables.
+
+**Elle ne tient pas sur un point :** on juge un candidat à l'aveugle. `segmentAnomalies.ts`
+détecte les deux signatures d'un mauvais découpage — segment de ≤ 5 caractères, et
+ponctuation fermante orpheline en tête de segment, avec un jeu de fermantes qui dépend de
+la langue. Mais cette détection ne tourne que sur la **vue d'état**, c'est-à-dire
+seulement **après** l'application. Rien ne dit ce qu'un découpage coûtera avant qu'on s'y
+engage.
+
+**Retenu :** afficher ces compteurs sur l'aperçu. `computeAnomalyView` prend une liste de
+`{ text, isLine }` — pure, sans DOM — et les segments d'aperçu portent déjà leur texte.
+C'est du branchement : aucun changement moteur, aucun concept nouveau. Pendant qu'on règle
+les terminateurs, on lit « 3 segments courts, 1 ponctuation orpheline » ; on ajoute
+l'abréviation qui manque, le compte tombe, on applique en connaissance de cause. La boucle
+*essayer une règle → voir ce qu'elle coûte → ajuster* se referme.
+
+**Écarté pour l'instant — les exceptions au cas par cas.** « Pas ici » / « ici aussi » sur
+une coupure donnée viendrait après, si la boucle des règles se montrait insuffisante. Le
+coût n'est pas du même ordre : une liste d'exceptions doit être stockée, survivre à une
+resegmentation, s'annuler. C'est un modèle de données, pas un branchement — et rien ne
+prouve encore qu'il soit nécessaire.
+
+### 3.4 Coût
 
 `SegSurface` (`"brut" | "phrases" | "balises" | "custom" | "tours"`) ne vit que dans
 `segmentControls.ts` et `SegmentPane.ts`. **Aucun écran externe ne cible la surface par
