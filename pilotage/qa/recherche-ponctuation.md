@@ -76,9 +76,9 @@ promet qu'un wildcard `.*` ; c'est désormais exactement ce qu'il tient, le rest
       liber-, `libertad`. Le constat coché reste valable, seul l'exemple était mauvais.
       Corrigé le 2026-08-21 sur mesure en base.)*
 - [x] `chat|chien` cherche désormais la chaîne littérale, plus une alternance
-- [ ] En mode **CQL** (sélecteur de mode), saisir `[word="trois)"]` : le message parle
+- [x] En mode **CQL** (sélecteur de mode), saisir `[word="trois)"]` : le message parle
       de la requête, pas d'un `Invalid regex in predicate '…' at position 5`
-- [ ] Toujours en mode CQL, `[mot="chat"]` — la faute la plus probable en français —
+- [x] Toujours en mode CQL, `[mot="chat"]` — la faute la plus probable en français —
       nomme les six attributs acceptés
 
 **Un piège de lecture, mesuré le 2026-08-21** : seuls **6 documents sur 54** sont
@@ -92,37 +92,55 @@ Un résultat vide ne dit donc pas « ce mot est absent du corpus » : il dit peu
 *(Ces deux points décrivaient le défaut ; ils décrivent maintenant le correctif —
 `603e158`.)*
 
-- [ ] Dans le filtre de documents, `Rankin-Naming_FR.docx` porte « — non annoté » et
+- [x] Dans le filtre de documents, `Rankin-Naming_FR.docx` porte « — non annoté » et
       n'est **pas** sélectionnable ; `Asimov-Foundation_FR.docx` porte son nombre de
       tokens (24902)
-- [ ] Une ligne sous les filtres annonce la portée : « … ne porte que sur les documents
+- [x] Une ligne sous les filtres annonce la portée : « … ne porte que sur les documents
       annotés : 6 sur 54 »
-- [ ] Le filtre de langue grise `ro` — seule langue du corpus sans aucun token annoté
+- [x] Le filtre de langue grise `ro` — seule langue du corpus sans aucun token annoté
       *(l'item disait « ro, de… » : `de` n'existe pas dans ce corpus. Les cinq langues
       présentes sont fr, es, al, en, ro, et seule `ro` est à zéro token. Corrigé le
       2026-08-21 sur mesure en base.)*
-- [ ] Croiser une portée vide — document `Lodge-Small_ES.docx` **et** langue `fr` —
+- [x] Croiser une portée vide — document `Lodge-Small_ES.docx` **et** langue `fr` —
       donne « Aucun document annoté dans cette sélection » au lieu d'un écran vide
 
-### Le mode « proximité » du constructeur de requête
+### Le mode NEAR du constructeur de requête
 
-Le constructeur fabrique `NEAR(<tes mots>, N)` à partir de ta saisie, sans l'assainir.
-Il tombait donc sur deux des mots français les plus courants. À jouer **avec le
-sélecteur de mode sur « proximité »**, pas en mode simple.
+**Où :** écran **Explorer** (le concordancier), pas Recherche grammaticale. Bouton
+**« ✏ Requête »** dans la barre d'outils pour déplier le constructeur, puis le bouton
+radio **NEAR**. Un champ **`N =`** apparaît alors à côté (nombre, 1 à 50, défaut 5).
 
-- [ ] `peut-être bien` en mode proximité rend un résultat ou zéro, mais **pas** une erreur
-- [ ] `l'homme libre` en mode proximité non plus
-- [ ] `dit, puis` en mode proximité non plus
-- [ ] Le curseur de distance (`N`) agit toujours sur le nombre de résultats
-- [ ] Les modes **et** / **ou** / **phrase** se comportent comme avant
+*(L'item disait « sélecteur de mode sur proximité » : ce libellé n'existe nulle part
+dans l'interface, qui affiche `NEAR`. Corrigé le 2026-08-21.)*
+
+Le constructeur fabrique `NEAR(<tes mots>, N)` à partir de ta saisie sans l'assainir,
+et c'est l'assainisseur du moteur qui rattrape. Le piège réel était la **virgule** —
+mesuré le 2026-08-21 en rejouant l'ancien assainisseur (`1675310^`) sur le corpus :
+
+| saisie | avant | après |
+|---|---|---|
+| `peut-être bien` | 3 lignes | 3 lignes |
+| `l'homme femme` | 10 lignes | 10 lignes |
+| `dit, puis` | **`fts5: syntax error near ","`** | 7 lignes |
+
+*(L'intro disait « il tombait sur deux des mots français les plus courants » : faux, le
+trait d'union et l'apostrophe passaient déjà. Corrigé le 2026-08-21.)*
+
+- [x] `dit, puis` en NEAR rend des lignes — c'est le cas qui plantait
+- [x] `peut-être bien` en NEAR rend des lignes (non-régression du trait d'union)
+- [x] `qu'il dit` en NEAR rend des lignes (non-régression de l'apostrophe)
+- [x] Le champ `N =` agit sur le nombre de résultats : `peut-être bien` passe de 3 à 11
+      lignes entre `N = 5` et `N = 20`
+- [x] Un seul mot en NEAR affiche « NEAR requiert au moins 2 mots » et cherche quand même
+- [x] Les modes **ET** / **OU** / **Expression exacte** se comportent comme avant
 
 ### La ponctuation ASCII, une par une
 
-- [ ] `peut - être` trouve des lignes
-- [ ] `dit-il` — la forme **correcte** — trouve le texte fautif `dit - il` du corpus
-- [ ] `l'homme` (apostrophe droite) ne fait pas tomber la recherche
-- [ ] `18:30` ne fait pas tomber la recherche
-- [ ] Une ligne copiée-collée du concordancier, avec sa ponctuation finale, se retrouve
+- [x] `peut - être` trouve des lignes
+- [x] `dit-il` — la forme **correcte** — trouve le texte fautif `dit - il` du corpus
+- [x] `l'homme` (apostrophe droite) ne fait pas tomber la recherche
+- [x] `18:30` ne fait pas tomber la recherche
+- [x] Une ligne copiée-collée du concordancier, avec sa ponctuation finale, se retrouve
 
 ### Les écritures non latines
 
@@ -130,25 +148,44 @@ sélecteur de mode sur « proximité »**, pas en mode simple.
 d'erreur, pas la présence de résultats. Il suffit de taper dans le champ de recherche —
 zéro résultat est un succès.
 
-- [ ] Une recherche en arabe ne déclenche pas d'erreur
-- [ ] Idem en chinois, ponctuation `，。` comprise (zéro résultat attendu, cf. piège 2)
-- [ ] Idem en grec, en cyrillique, en hébreu
-- [ ] Un mot grec suivi d'une **virgule ASCII** (`κόσμε,`) ne déclenche pas d'erreur —
-      c'est ce cas précis qui a révélé le trou du 2026-08-21
-- [ ] Un mot hébreu avec maqaf (`בת־שבע`) ne déclenche pas d'erreur — le maqaf n'est pas un trait d'union ASCII
-- [ ] L'apostrophe **courbe** (`l’homme`) se comporte comme avant le correctif
+**Deux familles à distinguer**, mesurées le 2026-08-21 : la ponctuation *propre* à
+chaque écriture (`،` `؟` `，` `。` `、` `—` `־` `’`) ressort **intacte** du sanitiseur,
+alors que la ponctuation **ASCII** glissée dans un mot non latin est mise entre
+guillemets. C'est le partage voulu — l'ASCII seul est ambigu pour FTS5.
+
+*Ponctuation propre à l'écriture — la requête doit sortir intacte :*
+
+- [x] Arabe, virgule arabe `،` : `مرحبا، بالعالم`
+- [x] Arabe, point d'interrogation `؟` : `كيف حالك؟`
+- [x] Chinois, `，。` : `你好，世界。` (zéro résultat attendu, cf. piège 2)
+- [x] Japonais, `、。` : `こんにちは、世界。` (idem)
+- [x] Grec sans ponctuation : `καλημέρα κόσμε`
+- [x] Cyrillique avec tiret cadratin : `здравствуй — мир`
+- [x] Hébreu avec maqaf : `בת־שבע` — le maqaf n'est pas un trait d'union ASCII
+- [x] L'apostrophe **courbe** : `l’homme` — seul item de la section à devoir rendre des
+      résultats (72 lignes mesurées), le corpus en contient
+
+*Ponctuation ASCII dans une écriture non latine — la requête est mise entre guillemets,
+et ne doit pas tomber :*
+
+- [x] Grec + **virgule ASCII** : `κόσμε, φίλε` — c'est ce cas précis qui a révélé le
+      trou du 2026-08-21
+- [x] Grec + **point-virgule ASCII** (l'érotimatiko grec) : `Τι κάνεις;`
+- [x] Cyrillique + virgule ASCII : `Привет, мир`
+- [x] Hébreu + virgule ASCII : `שלום, עולם`
+- [x] Arabe entre **parenthèses ASCII** : `(مرحبا)`
 
 ### Le surlignage
 
-- [ ] Sur `Mi - ar face plăcere.`, le tiret isolé n'est **pas** surligné comme un résultat
-- [ ] Les mots de la requête, eux, sont bien surlignés
-- [ ] `dit-il` surligne quelque chose dans les lignes trouvées (un résultat sans surlignage se lit comme un faux positif)
-- [ ] En mode KWIC, la fenêtre est centrée sur une occurrence réelle
+- [x] Sur `Mi - ar face plăcere.`, le tiret isolé n'est **pas** surligné comme un résultat
+- [x] Les mots de la requête, eux, sont bien surlignés
+- [x] `dit-il` surligne quelque chose dans les lignes trouvées (un résultat sans surlignage se lit comme un faux positif)
+- [x] En mode KWIC, la fenêtre est centrée sur une occurrence réelle
 
 Un défaut antérieur corrigé le 2026-08-21 : les **opérateurs** étaient surlignés comme
 des termes. Invisible en français, criant sur un document anglais.
 
-- [ ] `chat AND chien` ne surligne **pas** les « and » du segment (à voir sur un document anglais : `cat AND dog`)
+- [x] `chat AND chien` ne surligne **pas** les « and » du segment (à voir sur un document anglais : `cat AND dog`)
 - [ ] `NEAR(chat chien, 3)` ne surligne ni « near » ni le chiffre **3** du texte
 - [ ] Une recherche sur le **mot** `or` (minuscules) surligne bien les « or » — l'opérateur ne se reconnaît qu'en capitales
 
