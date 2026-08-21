@@ -133,3 +133,124 @@ def test_le_mot_simple_ne_regresse_pas() -> None:
     assert _pivot("monde") == "monde"
     gauche, pivot, droite = _kwic_windows(_TEXTE, sanitize_fts_query("monde"), 2)
     assert (gauche, pivot, droite) == ("il, le", "monde", "est peut")
+
+# ── Repliement des diacritiques ──────────────────────────────────────────────
+#
+# L'index replie les diacritiques à la tokenisation : « libération » y est rangé sous
+# `liberation`, donc `etre` trouve « être ». Le pivot, lui, travaillait sur le texte
+# accentué. Mesuré sur le corpus de travail, 40 lignes par requête : `etre` 39 pivots
+# vides sur 40, `annee` 40/40, `francais` 36/36, `deja` 38/40 — 44,4 % au total. Taper
+# sans accent n'est pas une faute : c'est ce que le repliement de FTS autorise.
+
+_ACCENTUE = "il est peut - être là, déjà en février, la libération"
+
+
+def test_la_saisie_sans_accent_retrouve_le_mot_accentue() -> None:
+    assert _pivot("etre", _ACCENTUE) == "être"
+    assert _pivot("deja", _ACCENTUE) == "déjà"
+    assert _pivot("fevrier", _ACCENTUE) == "février"
+
+
+def test_le_repliement_est_symetrique() -> None:
+    """La saisie accentuée doit retrouver le texte sans accent, et réciproquement."""
+    assert _pivot("être", "il est peut - etre la") == "etre"
+    assert _pivot("etre", _ACCENTUE) == "être"
+
+
+def test_le_prefixe_traverse_laccent() -> None:
+    """`liber` n'est pas un préfixe de « libération » — mais il l'est de sa forme repliée."""
+    assert _pivot("liber*", _ACCENTUE) == "libération"
+
+
+def test_la_troncature_de_locution_garde_son_prefixe() -> None:
+    """`liber.*` est assaini en `"liber."*`, où l'astérisque est un jeton séparé.
+
+    Ne pas reconnaître cette forme perdait la troncature et donnait un motif exact :
+    40 pivots vides sur 40, mesurés le 2026-08-21 sur le corpus.
+    """
+    from multicorpus_engine.query import _motifs_de_requete
+
+    assert sanitize_fts_query("liber.*") == '"liber."*'
+    assert _motifs_de_requete('"liber."*')[0].endswith(r"\w*")
+    assert _pivot("liber.*", _ACCENTUE) == "libération"
+
+
+def test_le_surlignage_suit_le_meme_repliement() -> None:
+    """Le mode Segment portait le même trou : `etre` ne surlignait rien."""
+    marque = _highlight_segment(_ACCENTUE, sanitize_fts_query("etre"))
+    assert "<<être>>" in marque
+
+
+def test_les_deux_corrections_se_combinent() -> None:
+    """Sans accent ET sans le tiret espacé du corpus."""
+    assert _pivot("peut-etre", _ACCENTUE) == "peut - être"
+
+
+def test_la_table_vient_du_tokeniseur_et_non_de_la_decomposition() -> None:
+    """`remove_diacritics=1` laisse passer ce que NFD décomposerait.
+
+    Le vietnamien `ế` et l'accent grec `έ` ne sont PAS repliés par unicode61. Une table
+    fondée sur NFD les aurait inclus, et le pivot se serait posé sur un mot que le
+    moteur n'apparie pas — pire qu'un pivot vide. Ce test verrouille l'accord avec le
+    tokeniseur, pas avec Unicode.
+    """
+    from multicorpus_engine.query import _classe_caractere, _table_repliement
+
+    vers_base, classes = _table_repliement()
+    if not vers_base:  # pragma: no cover — FTS5 absent
+        return
+    classe_e = _classe_caractere("e")
+    assert "é" in classe_e and "ê" in classe_e
+    assert "\u1ebf" not in classe_e  # ế, vietnamien
+    assert "\u03ad" not in _classe_caractere("\u03b5")  # έ, grec
+    # Aucun repli ne produit plus d'un caractère : une classe ne saurait l'exprimer.
+    assert all(len(base) == 1 for base in classes)
+
+
+def test_le_repliement_ne_deborde_pas_sur_les_lettres_non_repliees() -> None:
+    """unicode61 ne replie ni ø ni ł ni ß : nous non plus."""
+    assert _pivot("ost", "il vient de øst") == ""
+    assert _pivot("Lodz", "la ville de Łódź") == ""
+
+def test_letoile_dans_les_guillemets_nest_pas_une_troncature() -> None:
+    """Trouvé en passe adverse : `"liber*"` ne tronque pas, `"liber."*` si.
+
+    Le tokeniseur laisse tomber l'astérisque à l'intérieur des guillemets, donc FTS
+    cherche le token exact `liber` et ne trouve PAS « liberal ». Traiter cette forme
+    comme un préfixe posait le pivot sur un mot que le moteur n'apparie pas. Le cas est
+    atteignable : le mode « Expression exacte » met toute la saisie entre guillemets.
+    """
+    from multicorpus_engine.query import _motifs_de_requete
+
+    assert _motifs_de_requete('"liber*"')[0].endswith(r"\b")
+    assert _motifs_de_requete('"liber."*')[0].endswith(r"\w*")
+    assert _motifs_de_requete("liber*")[0].endswith(r"\w*")
+    assert _kwic_windows("un discours liberal", '"liber*"', 4)[1] == ""
+
+
+def test_letoile_apres_un_mot_nu_tronque_bien() -> None:
+    """`chat * chien` est valide en FTS5 : l'astérisque préfixe le token précédent."""
+    from multicorpus_engine.query import _motifs_de_requete
+
+    motifs = _motifs_de_requete("chat * chien")
+    assert any(m.endswith(r"\w*") for m in motifs)
+
+
+def test_le_seul_sur_appariement_connu_est_li_turc() -> None:
+    """Résidu mesuré, verrouillé pour qu'il ne grandisse pas en silence.
+
+    `re.IGNORECASE` tient le « i sans point » turc (U+0131) pour équivalent de `i`,
+    alors qu'`unicode61` ne le replie pas. Balayage de toute la plage 0x20–0x3000 le
+    2026-08-21 : **un seul** caractère dans ce cas. Le neutraliser supposerait
+    d'abandonner l'insensibilité à la casse et de gérer chaque caractère à la main, ce
+    qui ouvrirait plus de divergences que ça n'en ferme.
+    """
+    import re as _re
+
+    from multicorpus_engine.query import _classe_caractere, _table_repliement
+
+    vers_base, classes = _table_repliement()
+    if not classes:  # pragma: no cover — FTS5 absent
+        return
+    assert _re.fullmatch(_classe_caractere("i"), "\u0131", _re.I)
+    assert "\u0131" not in _classe_caractere("i")

@@ -994,6 +994,34 @@ contrat. Schémas req/resp détaillés dans `docs/openapi.json` ; résumé ici.
 **Statistiques lexicales & facettes** (lecture, sans token)
 - `POST /query/facets` — résumé de facettes d'une requête (compteurs + top docs, sans contenu des hits).
 
+> **Le repliement des diacritiques (1.6.75).** Complète 1.6.74. L'index replie les
+> diacritiques à la tokenisation, donc `etre` **trouve** « être » et `liber*` trouve
+> « libération ». Le pivot, lui, travaillait sur le texte accentué, où `liber` n'est pas
+> un préfixe de « libération ». Mesuré sur 40 lignes par requête : `etre` **39 pivots
+> vides sur 40**, `annee` 40/40, `francais` 36/36, `deja` 38/40 — **44,4 %** au total.
+> Taper sans accent n'est pas une faute d'utilisateur : c'est ce que le repliement
+> autorise. *(1.6.74 qualifiait ce cas de « résidu acceptable ». À 44 % ce n'en est pas
+> un ; la phrase est corrigée ci-dessous.)*
+>
+> **La table est dérivée du tokeniseur, pas de la décomposition Unicode.**
+> `remove_diacritics=1` — la valeur par défaut — laisse passer des caractères que NFD
+> décompose, dont le vietnamien `ế` et l'accent grec `έ`. Une table NFD aurait
+> sur-apparié : pivot posé sur un mot que le moteur n'apparie pas, ce qui est pire qu'un
+> pivot vide. La table est donc demandée à SQLite (index `unicode61` en mémoire,
+> `fts5vocab` en mode `instance`), construite à la première utilisation et mémoïsée —
+> 6 ms, 376 caractères repliés sous 25 bases. Accord vérifié **sans divergence** sur neuf
+> langues : ni `œ`, ni `ø`, ni `ł`, ni `ß` ne sont repliés, par FTS comme par nous.
+>
+> Le repliement porte sur le **terme**, jamais sur le texte : chaque caractère devient sa
+> classe de variantes, ce qui préserve les positions. Replier le texte aurait décalé les
+> offsets et ruiné le découpage gauche/pivot/droite.
+>
+> Corrige aussi la **troncature de locution** : FTS5 accepte `mot*` mais aussi
+> `"locution"*`, où l'astérisque préfixe le dernier token. Cette seconde forme ressort du
+> balayage en deux jetons ; ne pas la reconnaître perdait la troncature — `liber.*`,
+> assaini en `"liber."*`, donnait 40 pivots vides sur 40. Le mode segment portait le même
+> trou : `etre` ne surlignait rien.
+
 > **Le pivot KWIC (1.6.74).** En mode `kwic`, `POST /query` rend `left` / `match` / `right`.
 > `match` était cherché en découpant la requête **assainie** sur l'espace, donc comme une chaîne
 > littérale : il cherchait `dit-il` dans un texte qui porte `dit - il`, `libr\*` avec son

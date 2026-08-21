@@ -15,9 +15,11 @@ Advanced FTS5 query helpers:
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 import sqlite3
+import unicodedata
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -272,6 +274,89 @@ _FTS_MOT = re.compile(r"\w+", re.UNICODE)
 _REPLI_MAX_CARACTERES = 500
 
 
+# Bornes du balayage qui sert à dériver la table de repliement. Couvre le latin (et
+# son extension additionnelle, donc le vietnamien), le grec, le cyrillique, l'hébreu et
+# l'arabe. Au-delà, plus de décomposition canonique qui nous concerne.
+_REPLIEMENT_BORNES = (0x20, 0x3000)
+
+
+@functools.lru_cache(maxsize=1)
+def _table_repliement() -> tuple[dict[str, str], dict[str, str]]:
+    r"""Rendre (caractère → base, base → classe regex), tels qu'``unicode61`` les replie.
+
+    L'index replie les diacritiques à la tokenisation : « libération » y est rangé sous
+    ``liberation``. Chercher ``liber*`` trouve donc la ligne — mais le pivot, lui,
+    travaille sur le texte accentué, où ``liber`` n'est pas un préfixe de « libération ».
+    Mesuré sur le corpus de travail : ``etre`` rendait 39 pivots vides sur 40, ``annee``
+    40 sur 40, ``francais`` 36 sur 36. Taper sans accent n'est pas une faute — c'est
+    précisément ce que le repliement de FTS autorise.
+
+    **La table est dérivée du tokeniseur, pas de la décomposition Unicode.** Replier par
+    NFD aurait sur-apparié : ``remove_diacritics=1`` — la valeur par défaut, celle de
+    ``migrations/002_fts5_index.sql`` — laisse passer des caractères que NFD décompose,
+    dont le vietnamien ``ế`` et l'accent grec ``έ``. Le pivot se serait alors posé sur un
+    mot que le moteur n'a jamais apparié, ce qui est pire qu'un pivot vide. On demande
+    donc sa table à SQLite : un index en mémoire et un ``fts5vocab`` en mode ``instance``,
+    qui rend le couple (token, ligne) et donc la correspondance cherchée. Vérifié sans
+    aucune divergence sur neuf langues.
+
+    Construite à la PREMIÈRE UTILISATION et mémoïsée : 6 ms qu'un ``--help`` n'a pas à
+    payer. En cas d'échec — FTS5 absent de l'environnement — on rend des tables vides,
+    ce qui ramène au comportement d'avant plutôt qu'à une erreur d'import.
+    """
+    debut, fin = _REPLIEMENT_BORNES
+    candidats = []
+    for point in range(debut, fin):
+        ch = chr(point)
+        decomposition = unicodedata.normalize("NFD", ch)
+        if (
+            len(decomposition) > 1
+            and unicodedata.combining(decomposition[-1])
+            and decomposition[0].isalpha()
+        ):
+            candidats.append(ch)
+
+    vers_base: dict[str, str] = {}
+    variantes: dict[str, set[str]] = {}
+    try:
+        memoire = sqlite3.connect(":memory:")
+        try:
+            memoire.execute(
+                "CREATE VIRTUAL TABLE t USING fts5(w, tokenize='unicode61')"
+            )
+            memoire.executemany(
+                "INSERT INTO t(rowid, w) VALUES (?, ?)", list(enumerate(candidats, 1))
+            )
+            memoire.execute("CREATE VIRTUAL TABLE v USING fts5vocab(t, 'instance')")
+            for token, ligne in memoire.execute("SELECT term, doc FROM v"):
+                ch = candidats[ligne - 1]
+                # Un token de plus d'un caractère ne s'exprime pas en classe : aucun
+                # n'existe dans cette plage, mais la garde évite une classe fautive si
+                # une version future de SQLite en introduisait un.
+                if token == ch.lower() or len(token) != 1:
+                    continue
+                vers_base[ch] = token
+                variantes.setdefault(token, set()).add(ch)
+        finally:
+            memoire.close()
+    except sqlite3.Error:  # pragma: no cover — FTS5 absent de l'environnement
+        logger.warning("Repliement des diacritiques indisponible : FTS5 injoignable")
+        return ({}, {})
+
+    classes = {
+        base: "[" + "".join(re.escape(c) for c in sorted({base} | membres)) + "]"
+        for base, membres in variantes.items()
+    }
+    return (vers_base, classes)
+
+
+def _classe_caractere(ch: str) -> str:
+    """Rendre le motif d'un caractère : sa classe de variantes, ou lui-même échappé."""
+    vers_base, classes = _table_repliement()
+    base = vers_base.get(ch, ch.lower())
+    return classes.get(base) or re.escape(ch)
+
+
 def _motifs_de_requete(query: str) -> list[str]:
     r"""Traduire une requête FTS5 en motifs regex, un par terme cherché.
 
@@ -313,13 +398,33 @@ def _motifs_de_requete(query: str) -> list[str]:
     sans_syntaxe = _FTS_BOOLEENS.sub(" ", sans_syntaxe)
 
     motifs: list[tuple[int, str]] = []
-    for brut in _FTS_BALAYAGE_PLAT.findall(sans_syntaxe):
+    jetons = _FTS_BALAYAGE_PLAT.findall(sans_syntaxe)
+    for rang, brut in enumerate(jetons):
         terme = brut.strip('"')
-        prefixe = terme.endswith("*")
+        # FTS5 accepte deux formes de troncature : `mot*`, et `"locution"*` ou
+        # l'asterisque prefixe le dernier token de la phrase. La seconde ressort du
+        # balayage en DEUX jetons, et ne pas la reconnaitre perdait la troncature :
+        # `liber.*` — assaini en `"liber."*` — donnait \bliber\b au lieu de
+        # \bliber\w*, soit 40 pivots vides sur 40 mesures sur le corpus.
+        #
+        # Mais une etoile A L'INTERIEUR des guillemets n'est PAS une troncature : le
+        # tokeniseur la laisse tomber, donc `"liber*"` cherche le token exact `liber`
+        # et FTS ne trouve pas « liberal ». La traiter comme un prefixe aurait pose le
+        # pivot sur un mot que le moteur n'apparie pas -- pire qu'un pivot vide, et
+        # atteignable depuis le mode « Expression exacte », qui met toute la saisie
+        # entre guillemets.
+        quote = len(brut) >= 2 and brut.startswith('"') and brut.endswith('"')
+        prefixe = (not quote and terme.endswith("*")) or (
+            rang + 1 < len(jetons) and jetons[rang + 1] == "*"
+        )
         mots = _FTS_MOT.findall(terme)
         if not mots:
             continue
-        corps = r"\W+".join(re.escape(mot) for mot in mots)
+        # Chaque caractere devient sa classe de variantes : replier le TEXTE decalerait
+        # les positions et ruinerait le decoupage, replier le TERME les preserve.
+        corps = r"\W+".join(
+            "".join(_classe_caractere(ch) for ch in mot) for mot in mots
+        )
         fin = r"\w*" if prefixe else r"\b"
         motifs.append((len(mots), rf"\b{corps}{fin}"))
 
@@ -341,8 +446,10 @@ def _fenetre_de_repli(text: str, window: int) -> tuple[str, str, str]:
     Le repli historique renvoyait ``(text, "", "")`` — le texte ENTIER dans la colonne
     gauche d'une concordance. Le corpus porte 12 documents stockés en une seule unité,
     dont un de 110 786 caractères : la ligne de KWIC devenait un pavé. Un appariement
-    peut encore échouer légitimement (FTS replie les diacritiques à l'indexation, pas
-    nous), donc le repli reste — borné à la largeur du contexte demandé.
+    peut encore échouer légitimement — l'index apparie des tokens quand nous apparions
+    du texte, et les deux ne coïncideront jamais tout à fait —, donc le repli reste,
+    borné à la largeur du contexte demandé. (Les diacritiques étaient la cause
+    principale jusqu'à 1.6.75, qui les traite ; ce n'est plus l'exemple à citer.)
 
     **Deux bornes, pas une.** Compter les tokens ne borne rien sur une écriture sans
     espaces : ``\S+`` rend UN token sur du chinois, donc « douze tokens » y valait

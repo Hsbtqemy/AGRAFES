@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.74"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.75"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -436,6 +436,40 @@ API_VERSION = CONTRACT_VERSION
 #         Les deux routes rendent desormais 400 « Requete de recherche invalide ». Les deux
 #         codes etaient deja declares, donc aucun schema ne bouge.
 
+# 1.6.75: le pivot suit le repliement des diacritiques de l'index, et la troncature de
+#         locution garde son prefixe. Reliquat de 1.6.74, mesure apres coup : l'index
+#         replie les diacritiques a la tokenisation (unicode61), donc « liberation »
+#         y range « liberation » et `etre` TROUVE « etre ». Le pivot, lui, travaillait
+#         sur le texte accentue. Mesure sur 40 lignes par requete, corpus de travail :
+#         `etre` 39 pivots vides sur 40, `annee` 40/40, `francais` 36/36, `deja` 38/40,
+#         `elev*` 23/40 -- 245 sur 552, soit 44,4 %. Taper sans accent n'est pas une
+#         faute d'utilisateur : c'est precisement ce que le repliement autorise. La note
+#         de 1.6.74 qualifiait ce cas de « residu acceptable » ; a 44 % ce n'en est pas
+#         un, et cette phrase est corrigee.
+#         La table de repliement est DERIVEE DU TOKENISEUR, pas de la decomposition
+#         Unicode. `remove_diacritics=1` -- la valeur par defaut, celle de la migration
+#         002 -- laisse passer des caracteres que NFD decompose, dont le vietnamien
+#         `e-accent-circonflexe-aigu` (U+1EBF) et l'accent grec (U+03AD). Une table NFD
+#         aurait donc SUR-APPARIE : pivot pose sur un mot que le moteur n'apparie pas,
+#         ce qui est pire qu'un pivot vide. On demande sa table a SQLite -- index
+#         unicode61 en memoire, fts5vocab en mode `instance`, qui rend le couple
+#         (token, ligne) -- construite a la premiere utilisation et memoisee, 6 ms.
+#         819 candidats decomposables dans 0x20-0x3000, 376 reellement replies sous
+#         25 bases. Accord verifie sans divergence sur neuf langues (vietnamien, grec,
+#         polonais, allemand, espagnol, tcheque, turc compris) : ni la ligature, ni le
+#         `o` barre, ni le `l` barre, ni l'eszett ne sont replies -- par FTS comme par
+#         nous. FTS5 absent de l'environnement = tables vides, donc comportement
+#         d'avant, pas d'erreur d'import.
+#         Le repliement porte sur le TERME et non sur le TEXTE : chaque caractere
+#         devient sa classe de variantes, ce qui preserve les positions -- replier le
+#         texte aurait decale les offsets et ruine le decoupage gauche/pivot/droite.
+#         CORRIGE AUSSI la troncature de locution : FTS5 accepte `mot*` mais aussi
+#         `"locution"*`, ou l'asterisque prefixe le dernier token. La seconde ressort du
+#         balayage en DEUX jetons, et ne pas la reconnaitre perdait la troncature --
+#         `liber.*`, assaini en `"liber."*`, donnait un motif exact et 40 pivots vides
+#         sur 40. Le mode segment portait le meme trou : `etre` ne surlignait rien.
+#         Aucune signature ne change.
+#
 # 1.6.74: le pivot KWIC retrouve ce que FTS a apparie, et non une chaine litterale.
 #         `POST /query` en mode kwic rend (left, match, right). Le pivot etait cherche en
 #         decoupant la requete ASSAINIE sur l'espace : il cherchait donc `dit-il` dans un
