@@ -6,6 +6,11 @@ derniere: 2026-08-16
 
 # QA shell v0.4.0 — stylo inline, ¶ manuels, retrait legacy, purge CSS
 
+> **L'onglet « Brut » de la couche Segmentation a été renommé le 2026-08-21**
+> en « Segmentation actuelle », et les cinq onglets sont désormais deux groupes
+> (l'état à gauche, « Segmenter : » à droite). Les items ci-dessous ont été mis à
+> jour ; ils visent la même vue.
+
 Passe de QA visuelle du shell couvrant le lot de juillet. Jouée une première fois le
 **2026-08-16** (52 / 54 vérifiés) ; les findings de cette exécution sont dans
 docs/REVIEW_QA_SHELL_2026-08-16.md et le détail coché de la passe dans
@@ -46,18 +51,18 @@ Base servie : une WORKCOPY, jamais le corpus réel.
 - [ ] 3.4 Re-poser la borne sur l'unité 4 — **obligatoire avant le bloc 5**
 - [ ] 3.5 **Mécanisme OK, accès KO — QA-03**. 🔎 vérifié en base : action `#114` (« Rôle de ``` convention à 2 unités ») `reverted=1`, `reverted_by_id → #115` (`undo`, « Annulation : Rôle de convention à 2 unités »). La migration 033 fonctionne de bout en bout. Mais la couche Rôles n'a **aucun bouton d'annulation** : il faut basculer sur Curation, dont le bouton s'annonce « curation appliquée ou édition » sans mentionner les rôles. ```
 
-### Bloc 4 — Segmentation / Brut (`⌥ Segmentation`)
+### Bloc 4 — Segmentation / « Segmentation actuelle » (`⌥ Segmentation`)
 
-- [ ] 4.1 Vue Brut : ✎ sur les lignes uniquement, **jamais** sur une unité `unit_type="structure"`. ``` ⚠️ **À tester sur le doc 417 `Coe-House-AL_FR`, unité n=1** (en-tête bibliographique) : c'est l'une des **4 seules** unités `structure` du corpus (docs 408/409/417/418, une chacun). **416 et 364 n'en ont aucune** → l'item y est intestable. Ne pas confondre avec les lignes à **rôle** structurel (« intertitre », « titre ») : ce sont des `line`, elles gardent le ✎ (416 n=2 et n=3 en portent). ```
+- [ ] 4.1 Vue « Segmentation actuelle » : ✎ sur les lignes uniquement, **jamais** sur une unité `unit_type="structure"`. ``` ⚠️ **À tester sur le doc 417 `Coe-House-AL_FR`, unité n=1** (en-tête bibliographique) : c'est l'une des **4 seules** unités `structure` du corpus (docs 408/409/417/418, une chacun). **416 et 364 n'en ont aucune** → l'item y est intestable. Ne pas confondre avec les lignes à **rôle** structurel (« intertitre », « titre ») : ce sont des `line`, elles gardent le ✎ (416 n=2 et n=3 en portent). ```
 - [ ] 4.2 Éditeur de coupe ✂ + ✎ → un seul éditeur ouvert à la fois
-- [ ] 4.3 **Test clé — l'édition vise-t-elle la bonne unité ?** (piège `unit_id` corrigé pendant le ``` lot : le modèle local ne transportait que `n`, le rang dans le document, au lieu de `unit_id`, la clé globale). Sur **416**, vue Brut : éditer la ligne **n=8** (« On croit qu'on a le temps. ») au ✎, ajouter ` ##QA43`, Ctrl+Entrée. À l'écran : ligne corrigée, voisines n=7 et n=9 inchangées. ⚠️ **L'écran ne prouve rien** : après sauvegarde la pane patche son état **localement**, sans recharger — l'affichage serait identique même si le moteur n'avait rien écrit. 🔎 **vérif base obligatoire** : le marqueur doit être porté par `unit_id = 251323` (= n=8 du doc 416) et par aucune autre unité. ```
+- [ ] 4.3 **Test clé — l'édition vise-t-elle la bonne unité ?** (piège `unit_id` corrigé pendant le ``` lot : le modèle local ne transportait que `n`, le rang dans le document, au lieu de `unit_id`, la clé globale). Sur **416**, vue « Segmentation actuelle » : éditer la ligne **n=8** (« On croit qu'on a le temps. ») au ✎, ajouter ` ##QA43`, Ctrl+Entrée. À l'écran : ligne corrigée, voisines n=7 et n=9 inchangées. ⚠️ **L'écran ne prouve rien** : après sauvegarde la pane patche son état **localement**, sans recharger — l'affichage serait identique même si le moteur n'avait rien écrit. 🔎 **vérif base obligatoire** : le marqueur doit être porté par `unit_id = 251323` (= n=8 du doc 416) et par aucune autre unité. ```
 - [ ] 4.4 Onglet Tours : liste `¶ | seg | texte` + aide
 - [ ] 4.5 Clic n° ¶ → toast « ✓ Nouveau paragraphe » + renumérotation séquentielle
 - [ ] 4.6 Re-clic sur un début de ¶ → « ✓ Frontière de paragraphe retirée »
 - [ ] 4.7 Paratexte (avant borne) et unités `structure` → ni n° ¶ ni bouton
 - [ ] 4.8 Sur 364 : ¶ sur une ligne à rôle structurel → refus propre du moteur, pas de plantage
 - [ ] 4.9 « Pré-remplir » (tiret/regex) → frontières en masse, ajustables ensuite
-- [ ] 4.10 « Annuler » → dernier ¶ défait. 🔎 vérifié en base : action `#166` passée `reverted=1`, ``` `reverted_by_id → #167` (type `undo`, « Annulation : Paragraphe à 219 segments regroupés »). Bouton d'undo absent de l'onglet Tours (rendu dans la barre Brut) → noté dans QA-06. ```
+- [ ] 4.10 « Annuler » → dernier ¶ défait. 🔎 vérifié en base : action `#166` passée `reverted=1`, ``` `reverted_by_id → #167` (type `undo`, « Annulation : Paragraphe à 219 segments regroupés »). Bouton d'undo absent de l'onglet Tours (rendu dans la barre de la vue « Segmentation actuelle ») → noté dans QA-06. ```
 
 ### Bloc 5 — Alignement / matrice (`⇄ Alignement`)
 
@@ -67,7 +72,7 @@ Base servie : une WORKCOPY, jamais le corpus réel.
 - [ ] 5.4 **ABANDONNÉ — même cause (QA-09)**. La présence du ✎ sur une cellule traduction simple
 - [ ] 5.5 ✎ **absent** sur vide / non traduit / ajout / fusionnée / coupée (voulu)
 - [ ] 5.6 Clic n° ¶ → toast + renumérotation
-- [ ] 5.7 ↗ en-tête de langue → ouvre la couche Segmentation/Brut
+- [ ] 5.7 ↗ en-tête de langue → ouvre la couche Segmentation, onglet « Segmentation actuelle »
 - [ ] 5.8 Orphelines « hors matrice » → « ↗ Segmenter » → deep-link sur l'unité exacte
 - [ ] 5.9 Export CSV → fonctionnel. Chemin : ⌘ **Exporter** → carte « Matrice multilingue » (famille + séparateur CSV/TSV). A ouvert **S-04** : l'export ne porte **aucune référence** bibliographique, et le TEI lit `meta_json` là où l'application écrit des colonnes dédiées.
 - [ ] 5.10 Modiano-Rue_FR (3766 liens) → scroll fluide, pas de gel

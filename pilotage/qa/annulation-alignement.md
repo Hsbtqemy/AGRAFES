@@ -7,6 +7,11 @@ derniere: 2026-08-20
 
 # QA — le bandeau ↶ et ce qu'il défait
 
+> **L'onglet « Brut » de la couche Segmentation a été renommé le 2026-08-21**
+> en « Segmentation actuelle », et les cinq onglets sont désormais deux groupes
+> (l'état à gauche, « Segmenter : » à droite). Les items ci-dessous ont été mis à
+> jour ; ils visent la même vue.
+
 Passe de la journée du 20 août : les quatre lots qui rendent les gestes de l'espace
 Alignement annulables. Elle ne rejoue pas `alignement-2026-08.md` (campagne d'audit,
 toujours valable) ni `shell-v040.md`. Les trois se jouent séparément.
@@ -77,7 +82,7 @@ défaut — le message doit dire lequel des deux.
 
 ### Segmentation et propagation — la trace du dernier site
 
-- [ ] Une propagation de segmentation laisse une action annulable (bouton ↶ dans la couche Brut)
+- [ ] Une propagation de segmentation laisse une action annulable (bouton ↶ dans la couche Segmentation, onglet « Segmentation actuelle » — nommé « Brut » avant le 2026-08-21)
 - [ ] Après cette annulation, un intertitre revient bien comme **intertitre**, pas comme ligne
 - [ ] Le repli « voir l'original d'import » fonctionne encore sur une unité restaurée
 

@@ -50,7 +50,7 @@ conserve (sessionStorage), un redémarrage non — c'est voulu.
 - [x] Le ✎ **n'apparaît pas** sur une cellule coupée ni sur une cellule à plusieurs liens
 - [x] Corriger une cellule, rouvrir le ✎ sur la même : la zone de saisie montre **la correction**, pas le texte d'origine
 - [x] Après enregistrement, la cellule affiche le texte corrigé
-- [ ] Corriger le segment source signale ses traductions comme périmées
+- [x] Corriger le segment source signale ses traductions comme périmées
       *(La matrice ne peint pas ce drapeau — constat ouvert dans `pilotage/R3.md`,
       posé le 2026-08-21. Le moteur, lui, fait sa part : vérifiable dans
       MetadataScreen, famille du document, bouton 📋 Curation, qui liste les
