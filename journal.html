@@ -218,6 +218,7 @@ a{color:var(--outremer)}
 .av .a-l{text-align:right}
 .av a{color:var(--outremer);text-decoration:none;border-bottom:1px solid transparent}
 .av a:hover{border-bottom-color:currentColor}
+.av a i{font-style:normal;color:var(--encre3);margin-left:.25em}
 
 .masses{width:100%;border-collapse:collapse;font:400 var(--t2)/1.4 var(--mo)}
 .masses th{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.1em;
@@ -267,6 +268,10 @@ a{color:var(--outremer)}
 @media (max-width:900px){
   .b-l{grid-template-columns:1fr auto;gap:.3rem .8rem}
   .b-l .b-j,.b-l .b-n{grid-column:1/-1}
+  /* Même mesure pour les avertissements : à 602 px la colonne de liens garde
+     11rem en fixe et le message s'empile sur quatre lignes dans 282 px. */
+  .av{grid-template-columns:2rem 1fr;gap:.25rem .8rem}
+  .av .a-l{grid-column:2;text-align:left}
 }
 @media (max-width:760px){
   .folio{grid-template-columns:1fr;gap:1.5rem}
@@ -289,8 +294,6 @@ a{color:var(--outremer)}
   .vol{grid-template-columns:4.25rem 1fr;gap:.45rem .8rem}
   .vol .v-j{grid-column:1/-1;order:3}
   .vol .v-c{grid-column:1/-1;order:4}
-  .av{grid-template-columns:2rem 1fr;gap:.3rem .8rem}
-  .av .a-l{grid-column:2;text-align:left}
   .trainee li{grid-template-columns:5rem 1fr;gap:.2rem .8rem;padding:.5rem .95rem}
   .trainee .t-s{grid-column:1/-1}
   .masses td.c{display:none}
@@ -451,18 +454,21 @@ function bandeBord(){
          de règle, jamais ce qu'elle reproche. On normalise les nombres et les
          chemins, ce qui reste est la phrase commune. */
       Object.values(av.reduce((g, a) => {
-        // Seuls le compte de tête et le chemin d'audit varient d'une fiche à l'autre.
-        // Normaliser tous les chiffres écrasait `CODE-00` en `CODE-N` et « n'est pas
-        // 0 » en « n'est pas N » — la phrase perdait son sens en devenant générique.
-        const forme = a.msg.replace(/^\d+/, "N").replace(/`?docs\/[^\s`:]+`?/g, "l'audit");
-        (g[forme] ||= { forme, files: [] }).files.push(a.file);
+        // Le compte de tête et le chemin d'audit varient d'une fiche à l'autre. Le
+        // compte part sur sa fiche plutôt que dans la phrase : « N item(s) ouvert(s) »
+        // se lisait comme un gabarit, et l'information par fiche était perdue.
+        const n = (a.msg.match(/^(\d+)/) || [])[1] || null;
+        const forme = a.msg.replace(/^\d+\s*/, "").replace(/`?docs\/[^\s`:]+`?/g, "l'audit");
+        (g[forme] ||= { forme, files: [] }).files.push({ file: a.file, n });
         return g;
       }, {})).sort((x, y) => y.files.length - x.files.length)
         .map(({ forme, files }) => `<div class="av">
           <span class="a-n">${files.length}</span>
           <span class="a-m">${ligne(forme)}</span>
-          <span class="a-l">${files.map(f => { const c = f.replace(/^.*\//, "").replace(/\.md$/, "");
-            return `<a href="#/c/${encodeURIComponent(c)}">${esc(c)}</a>`; }).join(" ")}</span>
+          <span class="a-l">${files.map(({ file, n }) => {
+            const c = file.replace(/^.*\//, "").replace(/\.md$/, "");
+            return `<a href="#/c/${encodeURIComponent(c)}">${esc(c)}${n ? `<i>${n}</i>` : ""}</a>`;
+          }).join(" ")}</span>
         </div>`).join("")}</div>`}`;
 }
 
@@ -800,6 +806,7 @@ charger().catch(() => {
      <p>Lance <code>node journal.mjs</code> à la racine du dépôt, puis recharge.</p>`);
 });
 </script>
+
 
 
 </body>
