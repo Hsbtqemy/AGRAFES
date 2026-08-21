@@ -31,8 +31,8 @@ résultat inattendu peut donc venir de la donnée, pas de la requête.
 
 ### La requête qui a tout déclenché
 
-- [ ] `Mi - ar face plăcere.` rend des résultats au lieu d'une erreur
-- [ ] Le panneau de facettes se remplit lui aussi (compteurs, top docs) — pas seulement la liste
+- [x] `Mi - ar face plăcere.` rend des résultats au lieu d'une erreur
+- [x] Le panneau de facettes se remplit lui aussi (compteurs, top docs) — pas seulement la liste
 - [ ] Aucune erreur dans la console de l'inspecteur pendant ces recherches
 
 ### La ponctuation ASCII, une par une
