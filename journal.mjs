@@ -9,7 +9,7 @@ import { readFile, writeFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative, basename } from "node:path";
 // Contrat de parsing partage avec pilotage/verifier.mjs -- voir journal-contrat.mjs.
-import { RX, frontmatter, walk, estPasse } from "./journal-contrat.mjs";
+import { RX, frontmatter, walk, estPasse, constatsAudit } from "./journal-contrat.mjs";
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(`--${n}`); return i > -1 ? args[i + 1] : d; };
@@ -111,12 +111,49 @@ function historique() {
 
 const joursActifs = (jours, depuis) => jours.filter(j => j > depuis).length;
 
-// Un commit citant 3 codes ou plus est un fourre-tout : il ne date aucun chantier.
-const fourretout = (sujet) => new Set(sujet.match(RX.chantier) || []).size >= 3;
+// Remontée des codes de constat vers leur chantier. Le travail réel cite `ALI-10`,
+// jamais `R3` : sans ça, R3 n'est daté que par les notes qu'on écrit SUR lui.
+// Trois gardes, parce que les audits se citent entre eux :
+//   — le code doit venir du TABLEAU de constats, pas de la prose (AUDIT_ALIGNEMENT
+//     mentionne T-05 en renvoi ; son tableau, non) ;
+//   — l'audit doit n'être possédé que par une fiche (AUDIT_2026-06-12 est cité par
+//     quatre : A-01, T-03, T-05, U-03 — ses orphelins iraient aux quatre) ;
+//   — le code ne doit pas avoir de fiche à lui.
+// Les constats clos comptent aussi : un commit citant ALI-10 est du R3 que le
+// constat soit soldé ou non.
+async function remontee(chantiers) {
+  const fiches = new Set(chantiers.map(c => c.code));
+  const proprio = {};
+  for (const c of chantiers) if (c.audit) (proprio[c.audit] ||= []).push(c.code);
+  const out = {};
+  for (const c of chantiers) {
+    if (!c.audit || proprio[c.audit].length !== 1) continue;
+    const texte = await readFile(join(ROOT, c.audit), "utf8").catch(() => "");
+    const { reconnu, constats } = constatsAudit(texte);
+    if (!reconnu) continue;
+    const codes = [...new Set(constats.map(x => x.code))].filter(x => !fiches.has(x));
+    if (codes.length) out[c.code] = codes;
+  }
+  return out;
+}
 
-function dernierCommit(commits, code) {
-  const rx = new RegExp(`(^|[^A-Za-z0-9-])${code.replace(/[.]/g, "\\.")}([^A-Za-z0-9-]|$)`);
-  for (const c of commits) if (rx.test(c.sujet) && !fourretout(c.sujet)) return c;
+const echappe = (c) => c.replace(/[.]/g, "\\.");
+const rxCodes = (codes) =>
+  new RegExp(`(^|[^A-Za-z0-9-])(${codes.map(echappe).join("|")})([^A-Za-z0-9-]|$)`);
+
+// Un commit qui touche 3 CHANTIERS ou plus est un fourre-tout : il ne date rien.
+// Compter les codes bruts serait faux depuis la remontée — un commit citant
+// ALI-01, ALI-10 et ALI-22 est du R3 pur, pas un fourre-tout.
+const fourretout = (sujet, proprietaire) =>
+  new Set((sujet.match(RX.chantier) || []).map(c => proprietaire[c] || c)).size >= 3;
+
+// `tenue` = les commits qui ne touchent que `pilotage/`. Tenir le dossier n'est pas
+// travailler sur le chantier dont on parle : sans cette garde, une note « recompter
+// l'item de R3 » remettait le silence de R3 à zéro.
+function dernierCommit(commits, codes, proprietaire, tenue) {
+  const rx = rxCodes(codes);
+  for (const c of commits)
+    if (rx.test(c.sujet) && !fourretout(c.sujet, proprietaire) && !tenue.has(c.hash)) return c;
   return null;
 }
 
@@ -161,10 +198,15 @@ function calculMasses(seuil, fenetre) {
                   "--format=@%h\x1f%ad\x1f%s", "--date=short");
   if (!raw) return null;
 
-  const cum = {}, serie = {}, mois = [], jalons = [];
+  const cum = {}, serie = {}, mois = [], jalons = [], tenue = [];
   for (const [n] of AIRES) { cum[n] = 0; serie[n] = []; }
-  let m = null, c = null, net = 0;
-  const clore = () => { if (c && net <= -seuil) jalons.push({ ...c, delta: net }); };
+  let m = null, c = null, net = 0, nf = 0, npil = 0;
+  const clore = () => {
+    if (!c) return;
+    if (net <= -seuil) jalons.push({ ...c, delta: net });
+    // Ne touche que `pilotage/` : de la tenue de dossier, pas du travail daté.
+    if (nf > 0 && nf === npil) tenue.push(c.hash);
+  };
   const graver = () => { mois.push(m); for (const [n] of AIRES) serie[n].push(cum[n]); };
 
   for (const l of raw.split("\n")) {
@@ -173,13 +215,13 @@ function calculMasses(seuil, fenetre) {
       const [hash, date, sujet] = l.slice(1).split("\x1f");
       const mm = date.slice(0, 7);
       if (m && m !== mm) graver();
-      m = mm; c = { hash, date, sujet }; net = 0;
+      m = mm; c = { hash, date, sujet }; net = 0; nf = 0; npil = 0;
       continue;
     }
     const f = l.split("\t");
     if (f.length < 3 || !/^\d+$/.test(f[0])) continue;   // binaire (`-`) ou ligne vide
     const n = Number(f[0]) - Number(f[1]);
-    net += n;
+    net += n; nf++; if (f[2].startsWith(DIR + "/")) npil++;
     const a = aire(f[2]); if (a) cum[a] += n;
   }
   clore();
@@ -190,7 +232,8 @@ function calculMasses(seuil, fenetre) {
     return { nom, valeurs: v, total: tot, delta: tot - (v[Math.max(0, v.length - 1 - fenetre)] ?? 0) };
   }).filter(a => a.total > 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
-  return { mois, fenetre, aires, jalons: jalons.sort((a, b) => a.delta - b.delta).slice(0, 8) };
+  return { mois, fenetre, aires, tenue,
+           jalons: jalons.sort((a, b) => a.delta - b.delta).slice(0, 8) };
 }
 
 // ---------- veille à seuil ----------
@@ -262,19 +305,34 @@ async function build() {
   const { chantiers, passes } = await pilotage();
   const liens = await index();
   const fr = fronts();
+  const mss = masses();
+  // La passe des masses suit HEAD, pas `--all` : un commit de tenue posé sur une
+  // autre branche ne sera pas reconnu comme tel. Sans conséquence en pratique.
+  const tenue = new Set(mss?.tenue || []);
+  const rem = await remontee(chantiers);
+  const proprietaire = {};
+  for (const [ch, codes] of Object.entries(rem)) for (const c of codes) proprietaire[c] = ch;
 
   for (const ch of chantiers) {
-    const last = dernierCommit(commits, ch.code);
+    const codes = [ch.code, ...(rem[ch.code] || [])];
+    ch.remontee = rem[ch.code] || null;
+    const last = dernierCommit(commits, codes, proprietaire, tenue);
     ch.dernier = last ? { hash: last.hash, date: last.date, sujet: last.sujet } : null;
     ch.silence = last ? joursActifs(jours, last.date) : null;
     const f = last ? fr.find(x => x.hashes.has(last.full)) : null;
     ch.front = f ? { ref: f.nom, integre: f.integre } : null;
-    const rxc = new RegExp(`(^|[^A-Za-z0-9-])${ch.code.replace(/[.]/g, "\\.")}([^A-Za-z0-9-]|$)`);
-    ch.commits = commits.filter(c => rxc.test(c.sujet) && !fourretout(c.sujet)).length;
+    const rxc = rxCodes(codes);
+    ch.commits = commits.filter(c =>
+      rxc.test(c.sujet) && !fourretout(c.sujet, proprietaire) && !tenue.has(c.hash)).length;
     ch.passes = passes.filter(p => p.chantier === ch.code).map(p => p.file);
     liens[ch.code] = `#/c/${encodeURIComponent(ch.code)}`;
   }
-  for (const p of passes) liens[p.nom] ||= `#/qa/${encodeURIComponent(p.file)}`;
+  // Une passe vieillit comme un chantier : en jours actifs. Sans ça, « armée mais pas
+  // encore jouée » ne durait qu'une journée et sortait de l'écran le lendemain.
+  for (const p of passes) {
+    p.silence = p.derniere ? joursActifs(jours, p.derniere) : null;
+    liens[p.nom] ||= `#/qa/${encodeURIComponent(p.file)}`;
+  }
 
   const depuis = new Date(Date.now() - DAYS * 864e5).toISOString().slice(0, 10);
   return {
@@ -286,7 +344,7 @@ async function build() {
     dernierJour: jours[jours.length - 1] || null,
     silenceCourant: jours.length
       ? Math.round((Date.now() - Date.parse(jours[jours.length - 1])) / 864e5) : null,
-    chantiers, passes, liens, masses: masses(),
+    chantiers, passes, liens, masses: mss,
     veille: gardeFou(), controle: controleur(),
     commits: commits.filter(c => c.date >= depuis)
   };

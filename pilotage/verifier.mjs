@@ -23,7 +23,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { RX, frontmatter, walk, estPasse, STATUTS } from "../journal-contrat.mjs";
+import { RX, frontmatter, walk, estPasse, STATUTS, constatsAudit } from "../journal-contrat.mjs";
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(`--${n}`); return i > -1 ? args[i + 1] : d; };
@@ -117,7 +117,6 @@ for (const c of chantiers) {
 // depuis le journal : il ne vit que dans `docs/`. Le 2026-08-20, douze constats de
 // l'audit alignement étaient dans ce cas, dont cinq oranges.
 const C4 = "constats sans item";
-const OUVERT = ["🔴", "🟠", "🟡", "🟢"];
 const audits = {};   // exploitable par l'écran : compte par audit et par sévérité
 for (const c of chantiers) {
   if (!c.fm.audit) continue;
@@ -127,21 +126,21 @@ for (const c of chantiers) {
   const reste = c.cases.filter(b => (b.h2 || "").toLowerCase() === "reste")
                        .map(b => b.brut).join("\n");
 
+  // La lecture du tableau vient de `journal-contrat.mjs` : le serveur remonte les
+  // mêmes codes vers le chantier, et deux copies de cette règle donneraient des
+  // chiffres plausibles et contradictoires. `reconnu` distingue « aucun constat
+  // ouvert » de « je ne sais pas lire ce document » — un vert qui ne mesure rien,
+  // et le premier défaut que ce script a trouvé chez lui-même le 2026-08-20
+  // (AUDIT_2026-06-12 et trois autres).
+  const { reconnu, constats } = constatsAudit(texte);
   const parSeverite = {}, sansItem = [];
-  let total = 0, lignesCode = 0;
-  for (const m of texte.matchAll(/^\|\s*([A-Z]{2,5}-\d+)\s*\|\s*([^|]*?)\s*\|/gm)) {
-    const [, code, sev] = m;
-    lignesCode++;
-    if (!OUVERT.some(s => sev.includes(s))) continue;  // ✅ ou barré : clos
+  let total = 0;
+  for (const { code, sev, ouvert } of constats) {
+    if (!ouvert) continue;                            // ✅ ou barré : clos
     total++;
     parSeverite[sev] = (parSeverite[sev] || 0) + 1;
     if (!reste.includes(code)) sansItem.push({ code, sev });
   }
-  // Distinguer « aucun constat ouvert » de « je ne sais pas lire ce document ».
-  // Sans cette garde, un audit dont le tableau a une autre forme afficherait « 0
-  // ouvert » — un vert qui ne mesure rien, et le premier défaut que ce script a
-  // trouvé chez lui-même le 2026-08-20 (AUDIT_2026-06-12 et trois autres).
-  const reconnu = lignesCode > 0;
   audits[c.fm.audit] = { chantier: c.fm.chantier, reconnu, total, parSeverite, sansItem: sansItem.length, sansItemCodes: sansItem.map(f => f.code) };
   if (!reconnu) {
     warn(C4, c.rel,

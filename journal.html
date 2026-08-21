@@ -329,11 +329,13 @@ const plaque = c => `<div class="plaque" style="--sig:${taille(c.code.length)}re
   <span class="mot">${esc(c.statut)}</span></div>`;
 
 /* ---------------- en vol + tableau de bord ---------------- */
-/* Une passe est « en vol » si elle est entamée, ou armée le dernier jour actif.
-   0/33 posée hier et 0/54 remise à zéro il y a cinq jours sont deux états
-   différents : le second dort. */
+/* Une passe est « en vol » si elle est entamée, ou armée depuis moins de deux jours
+   actifs. 0/33 posée hier et 0/54 remise à zéro il y a cinq jours sont deux états
+   différents : le second dort. Le seuil est en jours ACTIFS, comme le silence d'un
+   chantier — en jours calendaires, une passe armée un vendredi mourait le lundi. */
+const ARME = 2;
 const enVol = () => D.passes.filter(p =>
-  (p.faits > 0 && p.faits < p.total) || (p.faits === 0 && p.derniere && p.derniere === D.dernierJour));
+  (p.faits > 0 && p.faits < p.total) || (p.faits === 0 && p.silence !== null && p.silence <= ARME));
 
 const rowVol = p => `<a class="vol" href="#/qa/${encodeURIComponent(p.file)}">
     <span class="v-n">${p.faits}<i>/ ${p.total}</i></span>
@@ -468,6 +470,10 @@ function vueFiche(code){
       : `${esc(c.front.ref)} — absent de ${(D.refs || []).map(esc).join(", ")}`],
     ["silence", `${c.silence ?? "—"} jours actifs`],
     ["commits", String(c.commits)],
+    /* dire d'où vient le compte : sans ça, « 71 commits » pour un chantier dont le
+       code n'apparaît que 12 fois dans l'historique ressemble à un bug. */
+    c.remontee && ["remontée", `${c.remontee.length} codes de constat comptés comme
+      <code>${esc(c.code)}</code> — ${c.remontee.slice(0, 2).map(esc).join(", ")}…`],
     c.audit && ["source", pastilles(esc(c.audit))],
     ["fiche", `<a href="${vsc(c.file)}">${esc(c.file)}</a>`]
   ].filter(Boolean);

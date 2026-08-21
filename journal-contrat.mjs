@@ -1,4 +1,12 @@
-// journal-contrat.mjs — le contrat de parsing de `pilotage/`, en un seul endroit.
+// journal-contrat.mjs — les règles de lecture partagées par les deux outils.
+//
+// Le gros du fichier est le contrat de `pilotage/`. S'y ajoute la lecture du tableau
+// de constats d'un audit (`constatsAudit`), qui vit dans `docs/` et non dans
+// `pilotage/` : le périmètre est élargi sciemment le 2026-08-21, parce que ce tableau
+// est l'autre bout d'une relation que le contrat définit déjà — le `audit:` du
+// front-matter d'une fiche. Le contrôleur en tire ses constats ouverts, le serveur
+// en tire les codes à remonter vers le chantier. Deux copies de cette lecture
+// produiraient des chiffres plausibles et contradictoires.
 //
 // Extrait de journal.mjs le 2026-08-20. Raison d'être unique : `journal.mjs` (le
 // serveur) et `pilotage/verifier.mjs` (le contrôleur) doivent lire EXACTEMENT les
@@ -55,3 +63,16 @@ export const estPasse = (rel, fm) => fm.passe !== undefined || rel.includes("/qa
 
 /** Statuts admis pour un chantier. Absent ⇒ `interrompu` (journal.mjs). */
 export const STATUTS = ["interrompu", "clos", "livré"];
+
+// Un constat est OUVERT si sa colonne sévérité porte une de ces pastilles ; ✅ ou
+// barré valent clos. `reconnu` distingue « aucun constat ouvert » de « je ne sais pas
+// lire ce document » — sans cette garde, un audit d'une autre forme afficherait « 0
+// ouvert », un vert qui ne mesure rien.
+export const SEVERITES_OUVERTES = ["🔴", "🟠", "🟡", "🟢"];
+
+export const constatsAudit = (texte) => {
+  const constats = [];
+  for (const [, code, sev] of texte.matchAll(/^\|\s*([A-Z]{2,5}-\d+)\s*\|\s*([^|]*?)\s*\|/gm))
+    constats.push({ code, sev, ouvert: SEVERITES_OUVERTES.some(s => sev.includes(s)) });
+  return { reconnu: constats.length > 0, constats };
+};

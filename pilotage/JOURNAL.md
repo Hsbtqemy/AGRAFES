@@ -20,7 +20,7 @@ statut: interrompu
 - [ ] Aucune fiche pour les 14 findings `QA-01`…`QA-14` de la passe shell du 16 août — décider s'ils méritent des fiches ou un seul chantier de correction
 - [ ] Le front d'intégration contredit le vocabulaire de `statut:` : R6 affiche « livré » et « absent de origin/main, dev ». Décider si `livré` suppose un front, ou si les deux axes restent indépendants
 - [ ] L'onglet masses ne jalonne que les **retraits** : les plus gros ajouts sont tous des commits de bootstrap de mars (jusqu'à +146 951 lignes), inexploitables. À rouvrir quand février-mars sortira de toute fenêtre utile
-- [ ] Remonter les codes de constat vers leur chantier (`ALI-*` → R3 via `audit:`) et exclure du silence les commits qui ne touchent que `pilotage/`. Les deux vont ensemble : l'exclusion seule ferait passer R3 pour dormant, puisque le travail réel cite `ALI-*` et non `R3`. Bloqué sur un choix qui n'est pas le mien — soit dupliquer le parseur de tableau d'audit dans `journal.mjs`, soit le remonter dans `journal-contrat.mjs` et adapter `verifier.mjs`
+- [x] Remonter les codes de constat vers leur chantier et exclure du silence les commits qui ne touchent que `pilotage/` — fait le 21 août : `constatsAudit` remonté dans `journal-contrat.mjs`, sortie de `verifier.mjs` prouvée identique au caractère près
 - [ ] Le front n'est calculé que pour les fiches — ni le fil ni les passes ne le portent. Coupe volontaire, à rouvrir seulement si le fil devient illisible une fois plusieurs branches vivantes
 
 ## Contexte
@@ -100,6 +100,30 @@ Effet de bord à ne pas prendre pour un défaut : le front d'intégration de cet
 affiche toujours `refonte`. C'est exact — il suit le dernier commit **citant le code**, et
 le commit de portage n'en cite aucun. Les fichiers sont sur dev, l'historique de l'outil
 non.
+
+**La remontée des constats, et pourquoi le contrat plutôt qu'une copie.** Trois options
+étaient sur la table : dupliquer le parseur de tableau d'audit dans `journal.mjs`, le
+remonter dans `journal-contrat.mjs`, ou faire consommer au serveur le JSON du contrôleur.
+La copie est condamnée par l'en-tête du contrat lui-même — deux lectures divergentes
+donneraient des chiffres plausibles et contradictoires, et le mode de divergence était
+concret : le contrôleur ne compte que les constats **ouverts**, une copie naïve aurait
+attribué à R3 des commits pour des constats soldés. Le JSON du contrôleur a été écarté
+parce qu'il **inverse la dépendance** : le silence et le dernier commit dépendraient alors
+de la présence d'un script de contrôle, qui disparaît dès qu'on lance avec `--dir` ailleurs.
+
+Trois gardes, imposées par la mesure : le code doit venir du **tableau** et non de la prose
+(`AUDIT_ALIGNEMENT` renvoie à `T-05` en texte, pas en tableau) ; l'audit doit n'avoir
+**qu'une** fiche propriétaire (`AUDIT_2026-06-12` est cité par quatre, ses orphelins
+seraient allés aux quatre) ; le code ne doit pas avoir de fiche à lui. Effet : R3 passe de
+57 à 71 commits et son dernier commit devient `b23f05b` (le travail) au lieu de `e955e6d`
+(la note *sur* R3). `fourretout` a dû être redéfini au passage — il comptait les codes,
+il compte maintenant les **chantiers** touchés, sans quoi un commit citant trois `ALI-*`
+aurait été écarté alors qu'il est du R3 pur.
+
+Un seuil reste arbitraire et le restera : une passe armée mais pas jouée sort de « en vol »
+après **2 jours actifs** (`ARME` dans `journal.html`). Premier essai à 3 : la passe shell
+remise à zéro le 16 août remontait avec les passes du jour. Ce n'est pas dérivé, c'est un
+jugement.
 
 **Le test d'admission du tableau de bord.** Un chiffre n'entre que s'il peut être
 mauvais et qu'être mauvais change la suite. Admis : la veille `sidecar.py` (`+410 / 500`,
