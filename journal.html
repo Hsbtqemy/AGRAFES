@@ -276,6 +276,19 @@ a{color:var(--outremer)}
   .mot{margin-left:auto;text-align:right}
   .cmt{grid-template-columns:1fr;gap:.15rem}
   .ong a{padding:.55rem .7rem}
+  /* Les bandes ajoutées les 21-22 août avaient des colonnes fixes et aucune règle
+     étroite : à 430 px le corps de page défilait latéralement. Mesuré à la capture,
+     invisible au clavier. */
+  .vol{grid-template-columns:4.25rem 1fr;gap:.45rem .8rem}
+  .vol .v-j{grid-column:1/-1;order:3}
+  .vol .v-c{grid-column:1/-1;order:4}
+  .b-l{grid-template-columns:1fr auto;gap:.3rem .8rem}
+  .b-l .b-j,.b-l .b-n{grid-column:1/-1}
+  .av{grid-template-columns:2rem 1fr;gap:.3rem .8rem}
+  .av .a-l{grid-column:2;text-align:left}
+  .trainee li{grid-template-columns:5rem 1fr;gap:.2rem .8rem;padding:.5rem .95rem}
+  .trainee .t-s{grid-column:1/-1}
+  .masses td.c{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -782,5 +795,6 @@ charger().catch(() => {
      <p>Lance <code>node journal.mjs</code> à la racine du dépôt, puis recharge.</p>`);
 });
 </script>
+
 </body>
 </html>
