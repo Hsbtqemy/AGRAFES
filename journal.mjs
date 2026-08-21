@@ -11,6 +11,25 @@ import { join, relative, basename } from "node:path";
 // Contrat de parsing partage avec pilotage/verifier.mjs -- voir journal-contrat.mjs.
 import { RX, frontmatter, walk, estPasse, constatsAudit } from "./journal-contrat.mjs";
 
+// Une case peut tenir sur plusieurs lignes : les suivantes sont indentees, et ne sont
+// ni une autre case ni un titre. Le parseur, ligne a ligne, les jetait EN SILENCE --
+// ce qui coupait l'item a sa moitie « attendu ». Mesure le 2026-08-21 sur le dossier :
+// 21 cases tronquees, dont 15 DEJA COCHEES. L'une d'elles, cochee, se lisait « Croiser
+// une portee vide — document X et langue fr — » sans plus rien dire de ce qui devait se
+// passer : on coche ce qu'on voit.
+//
+// Le numero de ligne rendu reste celui de la CASE, donc l'ecriture des coches
+// (`ecrireCase`) n'est pas concernee : elle vise toujours la bonne ligne.
+const suiteDeCase = (lines, i) => {
+  const bouts = [];
+  for (let j = i + 1; j < lines.length; j++) {
+    const l = lines[j];
+    if (!l.trim() || !/^\s/.test(l) || RX.box.test(l)) break;
+    bouts.push(l.trim());
+  }
+  return bouts.length ? " " + bouts.join(" ") : "";
+};
+
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(`--${n}`); return i > -1 ? args[i + 1] : d; };
 const PORT = Number(opt("port", 4123));
@@ -47,7 +66,7 @@ async function pilotage() {
         const b = RX.box.exec(l);
         if (b) {
           if (!cur) { cur = { nom: "Général", items: [] }; zones.push(cur); }
-          cur.items.push({ texte: b[2].trim(), fait: b[1].toLowerCase() === "x", ligne: i + 1 });
+          cur.items.push({ texte: (b[2] + suiteDeCase(lines, i)).trim(), fait: b[1].toLowerCase() === "x", ligne: i + 1 });
         }
       });
       const tot = zones.reduce((n, z) => n + z.items.length, 0);
@@ -66,7 +85,7 @@ async function pilotage() {
         const h2 = RX.h2.exec(l); if (h2) { section = h2[1].trim().toLowerCase(); return; }
         const b = RX.box.exec(l);
         if (b && section === "reste")
-          reste.push({ texte: b[2].trim(), fait: b[1].toLowerCase() === "x", ligne: i + 1 });
+          reste.push({ texte: (b[2] + suiteDeCase(lines, i)).trim(), fait: b[1].toLowerCase() === "x", ligne: i + 1 });
       });
       chantiers.push({
         file: rel, code: fm.chantier || basename(rel, ".md"), titre,
