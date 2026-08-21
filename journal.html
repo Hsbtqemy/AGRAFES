@@ -210,9 +210,13 @@ a{color:var(--outremer)}
 .b-l.pres .b-v,.b-l.haut .b-v{color:var(--minium)}
 .b-l.pres .b-j i,.b-l.haut .b-j i{background:var(--minium)}
 .b-l.haut{box-shadow:inset 2.5px 0 0 var(--minium)}
-.avs{display:flex;flex-direction:column;gap:.125rem;margin-top:.5rem}
-.av{display:grid;grid-template-columns:2rem 1fr 11rem;gap:1rem;padding:.5rem 1rem;
-  align-items:baseline;font:400 var(--t2)/1.45 var(--mo);color:var(--encre3)}
+.avs{display:flex;flex-direction:column;gap:.1875rem;margin-top:.5rem}
+/* Même surface que les autres lignes : `plat2` aurait paru plus discret en clair
+   mais plus voyant en sombre, où il est la teinte la plus claire des trois. Le
+   second rang se tient donc par la typographie, pas par le fond. */
+.av{display:grid;grid-template-columns:2rem 1fr 11rem;gap:1rem;padding:.6rem 1rem;
+  align-items:baseline;background:var(--plat);border-radius:2px;
+  font:400 var(--t2)/1.45 var(--mo);color:var(--encre3)}
 .av .a-n{text-align:right;font-variant-numeric:tabular-nums;color:var(--encre)}
 .av .a-m{color:var(--encre2)}
 .av .a-l{text-align:right}
