@@ -39,6 +39,8 @@ const ROOT = process.cwd();
 // Refs d'intégration, de l'amont vers l'aval. Un chantier vit sur la première qui
 // contient son dernier commit ; à défaut sur la branche courante, donc pas intégré.
 const REFS = opt("refs", "origin/main,dev").split(",").map(s => s.trim()).filter(Boolean);
+// Longueur de la traînée de commits affichée sur une fiche.
+const TRAINEE = Number(opt("trainee", 5));
 
 const git = (...a) => {
   try { return execFileSync("git", a, { cwd: ROOT, encoding: "utf8", maxBuffer: 64e6 }).trim(); }
@@ -166,15 +168,15 @@ const rxCodes = (codes) =>
 const fourretout = (sujet, proprietaire) =>
   new Set((sujet.match(RX.chantier) || []).map(c => proprietaire[c] || c)).size >= 3;
 
-// `tenue` = les commits qui ne touchent que `pilotage/`. Tenir le dossier n'est pas
-// travailler sur le chantier dont on parle : sans cette garde, une note « recompter
-// l'item de R3 » remettait le silence de R3 à zéro.
-function dernierCommit(commits, codes, proprietaire, tenue) {
+// Les commits d'un chantier, du plus récent au plus ancien. `tenue` = ceux qui ne
+// touchent que `pilotage/` : tenir le dossier n'est pas travailler sur le chantier
+// dont on parle — sans cette garde, une note « recompter l'item de R3 » remettait le
+// silence de R3 à zéro.
+const commitsDuChantier = (commits, codes, proprietaire, tenue) => {
   const rx = rxCodes(codes);
-  for (const c of commits)
-    if (rx.test(c.sujet) && !fourretout(c.sujet, proprietaire) && !tenue.has(c.hash)) return c;
-  return null;
-}
+  return commits.filter(c =>
+    rx.test(c.sujet) && !fourretout(c.sujet, proprietaire) && !tenue.has(c.hash));
+};
 
 // Front d'intégration : jusqu'où le travail est remonté. Dérivé, jamais déclaré.
 function fronts() {
@@ -338,14 +340,17 @@ async function build() {
   for (const ch of chantiers) {
     const codes = [ch.code, ...(rem[ch.code] || [])];
     ch.remontee = rem[ch.code] || null;
-    const last = dernierCommit(commits, codes, proprietaire, tenue);
+    const liste = commitsDuChantier(commits, codes, proprietaire, tenue);
+    const last = liste[0] || null;
     ch.dernier = last ? { hash: last.hash, date: last.date, sujet: last.sujet } : null;
     ch.silence = last ? joursActifs(jours, last.date) : null;
     const f = last ? fr.find(x => x.hashes.has(last.full)) : null;
     ch.front = f ? { ref: f.nom, integre: f.integre } : null;
-    const rxc = rxCodes(codes);
-    ch.commits = commits.filter(c =>
-      rxc.test(c.sujet) && !fourretout(c.sujet, proprietaire) && !tenue.has(c.hash)).length;
+    ch.commits = liste.length;
+    // La traînée : `Arrêté sur` est une pile de profondeur un, réécrite à chaque
+    // reprise. Mesuré le 2026-08-22 : 4 fiches sur 14 la portaient périmée, et
+    // c'étaient les trois plus actives — elle ne tient que là où on n'en a pas besoin.
+    ch.trainee = liste.slice(0, TRAINEE).map(c => ({ hash: c.hash, date: c.date, sujet: c.sujet }));
     ch.passes = passes.filter(p => p.chantier === ch.code).map(p => p.file);
     liens[ch.code] = `#/c/${encodeURIComponent(ch.code)}`;
   }

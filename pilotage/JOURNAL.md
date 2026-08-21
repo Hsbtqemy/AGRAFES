@@ -5,7 +5,7 @@ statut: interrompu
 
 # JOURNAL — journal de bord local
 
-**Arrêté sur** — l'accueil s'ouvre sur deux bandes neuves : *en vol* (les passes entamées ou armées du jour, avec leur jauge) et *en attente* (quatre chiffres à conséquence + la sortie du contrôleur), 21 août 2026.
+**Arrêté sur** — traînée des cinq derniers commits sous le point de reprise, commit `dd2f2c0` puis celui-ci, 22 août 2026.
 
 ## Reste
 
@@ -14,6 +14,7 @@ statut: interrompu
 - [ ] `pilotage/qa/smoke-u02.md` porte `chantier: U-02`, qui n'a pas de fiche — la passe n'est rattachée à rien à l'écran
 - [ ] Les 9 points de `smoke-u02` sous « À recadrer » visent des écrans supprimés en R6.5 — les recadrer vers le canvas ou les supprimer
 - [ ] Élaguer les notes du 16 août dans `pilotage/qa/shell-v040.md` : l'énoncé doit porter le protocole, la preuve va dans le rapport
+- [ ] Le contrôleur pourrait signaler mécaniquement l'écart entre le commit cité dans `Arrêté sur` et le dernier commit réel du chantier — la traînée le rend visible, elle ne le compte pas
 - [ ] La nappe `.cible::after` couvre la carte : le texte d'une carte n'est plus sélectionnable à la souris — compromis connu du motif, à trancher si la sélection sert
 - [x] `journal.mjs` : le compteur `commits` n'applique pas la garde `fourretout` alors que `dernierCommit` le fait — R2 et R4 comptent quelques commits de trop
 - [ ] `journal.mjs` : la section `## QA` d'une fiche n'est pas lue — le rattachement est dérivé du `chantier:` de la passe. Le contrat du gabarit décrit une section inerte
@@ -124,6 +125,20 @@ Un seuil reste arbitraire et le restera : une passe armée mais pas jouée sort 
 après **2 jours actifs** (`ARME` dans `journal.html`). Premier essai à 3 : la passe shell
 remise à zéro le 16 août remontait avec les passes du jour. Ce n'est pas dérivé, c'est un
 jugement.
+
+**`Arrêté sur` est une pile de profondeur un — mesuré le 22 août.** En comparant, pour
+chaque fiche, le commit cité dans la ligne de reprise avec le dernier commit réel du
+chantier : **4 fiches sur 14 la portent périmée, et ce sont les trois plus actives**
+(R3 renvoyait au 19 juillet quand le travail datait du 20 août, R5 pareil, JOURNAL et
+U-02 ne citaient aucun hash). Les dix autres sont exactes parce que rien ne s'est passé
+depuis qu'on les a écrites. Autrement dit, l'artefact de reprise n'est fiable que là où
+on n'en a pas besoin — un défaut invisible sans cette comparaison, puisqu'une ligne
+périmée reste une ligne plausible.
+
+La traînée ne remplace pas la ligne écrite : celle-ci porte l'intention, que git ne sait
+pas dire. Elle porte les faits à côté, pour que l'écart se voie. `dernier commit` a quitté
+le panneau latéral du même coup — la traînée le donne avec son sujet, à l'endroit où on
+le lit.
 
 **Le test d'admission du tableau de bord.** Un chiffre n'entre que s'il peut être
 mauvais et qu'être mauvais change la suite. Admis : la veille `sidecar.py` (`+410 / 500`,

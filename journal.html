@@ -122,6 +122,18 @@ a{color:var(--outremer)}
 .lemme-f b{font:600 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.11em;
   color:var(--encre3);display:block;margin-bottom:.35rem}
 
+/* ---------- traînée de commits ---------- */
+/* Sous le point de reprise, pas dans le panneau latéral : c'est la ligne écrite qu'on
+   lit d'abord, et l'écart avec les faits doit se voir sans bouger les yeux. */
+.trainee{list-style:none;margin:.5rem 0 0;padding:0;display:flex;flex-direction:column}
+.trainee li{display:grid;grid-template-columns:5rem 6.25rem 1fr;gap:.9rem;align-items:baseline;
+  padding:.4rem 1.1rem;font:400 var(--t2)/1.5 var(--mo)}
+.trainee li:first-child{padding-top:.55rem}
+.trainee .t-h{color:var(--encre2)}
+.trainee .t-d{color:var(--encre3);font-variant-numeric:tabular-nums}
+.trainee .t-s{font:400 .9375rem/1.5 var(--sr);color:var(--encre);overflow-wrap:break-word}
+.trainee li+li .t-s{color:var(--encre2)}
+
 /* ---------- cases ---------- */
 .cases{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.1875rem}
 .case{display:grid;grid-template-columns:auto 1fr;gap:.8rem;align-items:start;
@@ -480,7 +492,8 @@ function vueFiche(code){
   const ouv = c.reste.filter(r => !r.fait).length;
   const passes = c.passes.map(byFile).filter(Boolean);
   const meta = [
-    c.dernier && ["dernier commit", `${c.dernier.hash} · ${c.dernier.date}`],
+    /* « dernier commit » a quitté ce panneau : la traînée le donne avec son sujet,
+       juste sous le point de reprise, là où on le lit. */
     c.front && ["intégration", c.front.integre ? esc(c.front.ref)
       : `${esc(c.front.ref)} — absent de ${(D.refs || []).map(esc).join(", ")}`],
     ["silence", `${c.silence ?? "—"} jours actifs`],
@@ -501,6 +514,9 @@ function vueFiche(code){
     <div>
       <h1 class="titre-f">${esc(c.titre)}</h1>
       ${c.arrete ? `<p class="lemme-f"><b>Arrêté sur</b>${ligne(c.arrete)}</p>` : ""}
+      ${!c.trainee?.length ? "" : `<ol class="trainee">${c.trainee.map(t => `<li>
+        <span class="t-h">${t.hash}</span><span class="t-d">${t.date}</span>
+        <span class="t-s">${ligne(t.sujet)}</span></li>`).join("")}</ol>`}
 
       <h2 class="sec"><span>Reste</span>${c.reste.length
         ? `<span class="n">${c.reste.length - ouv} / ${c.reste.length}</span>` : ""}</h2>
