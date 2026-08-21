@@ -239,7 +239,10 @@ function calculMasses(seuil, fenetre) {
 // ---------- veille à seuil ----------
 // Le seul chiffre du tableau de bord qui ait une limite réelle. Mêmes paramètres que
 // .github/workflows/sidecar-growth-gate.yml — s'ils y changent, ils changent ici.
-const VEILLE = { fichier: "src/multicorpus_engine/sidecar.py", seuil: 500, jours: 90 };
+// `chantier` = la fiche où se prend la décision quand le seuil approche. Sans elle,
+// le chiffre est un cul-de-sac : on voit qu'il monte, on ne sait pas où agir.
+const VEILLE = { fichier: "src/multicorpus_engine/sidecar.py", seuil: 500, jours: 90,
+                 chantier: "A-01" };
 
 // Mémo sur le hash de HEAD : ce qui ne dépend que de l'historique se recalcule au
 // commit suivant, pas à chaque coche de case. (Le contrôleur, lui, lit les fichiers

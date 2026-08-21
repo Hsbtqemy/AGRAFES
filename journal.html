@@ -191,6 +191,8 @@ a{color:var(--outremer)}
 .b-j{height:.375rem;background:var(--verge);border-radius:1px;overflow:hidden}
 .b-j i{display:block;height:100%;width:var(--p);background:var(--encre3)}
 .b-n{font:400 var(--t2)/1.4 var(--mo);color:var(--encre3)}
+.b-n a{color:var(--outremer);text-decoration:none;border-bottom:1px solid transparent}
+.b-n a:hover{border-bottom-color:currentColor}
 .b-l.pres .b-v,.b-l.haut .b-v{color:var(--minium)}
 .b-l.pres .b-j i,.b-l.haut .b-j i{background:var(--minium)}
 .b-l.haut{box-shadow:inset 2.5px 0 0 var(--minium)}
@@ -361,20 +363,30 @@ function bandeBord(){
   if (!v && !c) return "";
   const l = [];
 
+  /* Les liens vivent dans la note, pas sur la ligne entière : une ancre autour d'une
+     ligne qui contient déjà des ancres se fait démonter par le parseur — déjà vu sur
+     les cartes le 19 août. */
+  const versFiche = (code) => byCode(code)
+    ? `<a href="#/c/${encodeURIComponent(code)}">${esc(code)}</a>` : esc(code);
+
   if (v) {
     const pc = Math.round(v.net / v.seuil * 100);
     l.push({ cle: `veille <code>${esc(v.fichier.split("/").pop())}</code>`,
       val: `${v.net > 0 ? "+" : ""}${v.net.toLocaleString("fr-FR")} <i>/ ${v.seuil}</i>`,
       etat: pc >= 100 ? "haut" : pc >= 75 ? "pres" : "",
-      note: `${pc} % du budget, ${v.jours} jours glissants`,
+      note: `${pc} % du budget, ${v.jours} jours glissants`
+          + (v.chantier ? ` · ${versFiche(v.chantier)}` : ""),
       jauge: Math.min(100, Math.max(0, pc)) });
   }
 
   const vol = enVol(), file = vol.reduce((n, p) => n + p.total - p.faits, 0);
   const dort = D.passes.filter(p => !vol.includes(p)).reduce((n, p) => n + p.total - p.faits, 0);
   if (file || dort) l.push({ cle: "vérification en file", val: file.toLocaleString("fr-FR"),
-    note: `${vol.length} passe${vol.length > 1 ? "s" : ""} en vol · ${dort} points au repos` });
+    note: `<a href="#/qa">${vol.length} passe${vol.length > 1 ? "s" : ""} en vol</a>`
+        + ` · ${dort} points au repos` });
 
+  /* Seul chiffre volontairement inerte : il est la somme des Reste de toutes les
+     fiches, et sa destination est la liste qui suit déjà sur cet écran. */
   if (c?.nonCouvert) l.push({ cle: "items jamais confrontés", val: String(c.nonCouvert.items),
     note: "au code — aucun contrôle mécanique ne peut le faire" });
 
@@ -383,9 +395,12 @@ function bandeBord(){
     const sev = {}; let tot = 0, sans = 0;
     for (const a of rec) { tot += a.total; sans += a.sansItem;
       for (const [s, n] of Object.entries(a.parSeverite || {})) sev[s] = (sev[s] || 0) + n; }
+    // Dire OÙ vivent les 17 : sans la ventilation par fiche, le total ne mène nulle part.
+    const par = rec.filter(a => a.total).sort((x, y) => y.total - x.total)
+      .map(a => `${versFiche(a.chantier)} ${a.total}`).join(", ");
     l.push({ cle: "constats d'audit ouverts", val: String(tot),
-      note: Object.entries(sev).map(([s, n]) => s + n).join(" ")
-          + (sans ? ` · ${sans} sans item dans un Reste` : "") });
+      note: Object.entries(sev).map(([s, n]) => s + n).join(" ") + ` · ${par}`
+          + (sans ? ` · ${sans} sans item` : "") });
   }
 
   const av = c?.avertissements || [];
