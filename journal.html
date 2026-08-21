@@ -211,10 +211,11 @@ a{color:var(--outremer)}
 .b-l.pres .b-j i,.b-l.haut .b-j i{background:var(--minium)}
 .b-l.haut{box-shadow:inset 2.5px 0 0 var(--minium)}
 .avs{display:flex;flex-direction:column;gap:.125rem;margin-top:.5rem}
-.av{display:grid;grid-template-columns:13rem 2rem 1fr;gap:1rem;padding:.4rem 1rem;
-  font:400 var(--t2)/1.45 var(--mo);color:var(--encre3)}
-.av .a-f{color:var(--encre2)}
+.av{display:grid;grid-template-columns:2rem 1fr 11rem;gap:1rem;padding:.5rem 1rem;
+  align-items:baseline;font:400 var(--t2)/1.45 var(--mo);color:var(--encre3)}
 .av .a-n{text-align:right;font-variant-numeric:tabular-nums;color:var(--encre)}
+.av .a-m{color:var(--encre2)}
+.av .a-l{text-align:right}
 .av a{color:var(--outremer);text-decoration:none;border-bottom:1px solid transparent}
 .av a:hover{border-bottom-color:currentColor}
 
@@ -426,13 +427,23 @@ function bandeBord(){
       ${x.jauge !== undefined ? `<span class="b-j"><i style="--p:${x.jauge}%"></i></span>` : `<span></span>`}
       <span class="b-n">${x.note}</span></div>`).join("")}</div>
     ${!av.length ? "" : `<div class="avs">${
-      /* groupés par contrôle : les 12 lignes brutes répètent huit fois le même
-         message et enterrent les chantiers sous le pli. Le détail reste au CLI. */
-      Object.entries(av.reduce((g, a) => ((g[a.ctl] ||= []).push(a.file), g), {}))
-        .map(([ctl, files]) => `<div class="av">
-          <span class="a-f">${esc(ctl)}</span>
+      /* Groupés par FORME du reproche, pas par nom de contrôle. Grouper sur `ctl`
+         mettait « aucun tableau reconnu » et « un constat sans item » dans le même
+         sac, et n'affichait que l'étiquette du contrôle — le lecteur voyait un nom
+         de règle, jamais ce qu'elle reproche. On normalise les nombres et les
+         chemins, ce qui reste est la phrase commune. */
+      Object.values(av.reduce((g, a) => {
+        // Seuls le compte de tête et le chemin d'audit varient d'une fiche à l'autre.
+        // Normaliser tous les chiffres écrasait `CODE-00` en `CODE-N` et « n'est pas
+        // 0 » en « n'est pas N » — la phrase perdait son sens en devenant générique.
+        const forme = a.msg.replace(/^\d+/, "N").replace(/`?docs\/[^\s`:]+`?/g, "l'audit");
+        (g[forme] ||= { forme, files: [] }).files.push(a.file);
+        return g;
+      }, {})).sort((x, y) => y.files.length - x.files.length)
+        .map(({ forme, files }) => `<div class="av">
           <span class="a-n">${files.length}</span>
-          <span>${files.map(f => { const c = f.replace(/^.*\//, "").replace(/\.md$/, "");
+          <span class="a-m">${ligne(forme)}</span>
+          <span class="a-l">${files.map(f => { const c = f.replace(/^.*\//, "").replace(/\.md$/, "");
             return `<a href="#/c/${encodeURIComponent(c)}">${esc(c)}</a>`; }).join(" ")}</span>
         </div>`).join("")}</div>`}`;
 }
