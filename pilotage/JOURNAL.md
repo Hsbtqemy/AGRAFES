@@ -9,20 +9,31 @@ statut: interrompu
 
 ## Reste
 
+### Ce qui manque à l'outil
+
 - [ ] Indicateur de collision entre chantiers — retenu à la conception, jamais codé ; les données existent (`git log --name-only` par code), c'est la brique la plus proche du besoin d'origine
 - [ ] Seuil de dormance sur le silence d'un chantier (dormant ≥ 10 jours actifs) — coupé à la relecture de la maquette, à reposer si le tri seul ne suffit pas. La moitié « fossile ≥ 25 » est morte : elle visait la dormance des **fichiers**, axe mesuré cassé le 19 août (voir `Contexte`)
-- [x] `pilotage/qa/smoke-u02.md` porte `chantier: U-02`, qui n'a pas de fiche — clos : `pilotage/U-02.md` existe, la passe est rattachée
-- [ ] Les 9 points de `smoke-u02` sous « À recadrer » visent des écrans supprimés en R6.5 — les recadrer vers le canvas ou les supprimer
-- [ ] Élaguer les notes du 16 août dans `pilotage/qa/shell-v040.md` : l'énoncé doit porter le protocole, la preuve va dans le rapport
+- [ ] L'onglet masses ne jalonne que les **retraits** : les plus gros ajouts sont tous des commits de bootstrap de mars (jusqu'à +146 951 lignes), inexploitables. À rouvrir quand février-mars sortira de toute fenêtre utile
+- [ ] Le front n'est calculé que pour les fiches — ni le fil ni les passes ne le portent. Coupe volontaire, à rouvrir seulement si le fil devient illisible une fois plusieurs branches vivantes
 - [ ] Le contrôleur pourrait signaler mécaniquement l'écart entre le commit cité dans `Arrêté sur` et le dernier commit réel du chantier — la traînée le rend visible, elle ne le compte pas
-- [ ] La nappe `.cible::after` couvre la carte : le texte d'une carte n'est plus sélectionnable à la souris — compromis connu du motif, à trancher si la sélection sert
-- [x] `journal.mjs` : le compteur `commits` n'applique pas la garde `fourretout` alors que `dernierCommit` le fait — R2 et R4 comptent quelques commits de trop
-- [x] `journal.mjs` : la section `## QA` d'une fiche n'est pas lue — clos non par un correctif mais par le gabarit, qui l'écrit désormais en toutes lettres (« le journal ne lit **jamais** `## QA` »). Section inerte assumée, plus un défaut
+
+### Décisions en attente
+
 - [ ] **Treize** des quatorze findings `QA-01`…`QA-14` de la passe shell du 16 août n'ont ni fiche ni item — seul `QA-06` est suivi, dans le `Reste` de R6. Décider s'ils méritent des fiches ou un seul chantier de correction
 - [ ] Le front d'intégration contredit le vocabulaire de `statut:` : R6 affiche « livré » et « absent de origin/main, dev ». Décider si `livré` suppose un front, ou si les deux axes restent indépendants
-- [ ] L'onglet masses ne jalonne que les **retraits** : les plus gros ajouts sont tous des commits de bootstrap de mars (jusqu'à +146 951 lignes), inexploitables. À rouvrir quand février-mars sortira de toute fenêtre utile
+- [ ] La nappe `.cible::after` couvre la carte : le texte d'une carte n'est plus sélectionnable à la souris — compromis connu du motif, à trancher si la sélection sert
+
+### Le dossier à tenir
+
+- [ ] Les 9 points de `smoke-u02` sous « À recadrer » visent des écrans supprimés en R6.5 — les recadrer vers le canvas ou les supprimer
+- [ ] Élaguer les notes du 16 août dans `pilotage/qa/shell-v040.md` : l'énoncé doit porter le protocole, la preuve va dans le rapport
+
+### Soldés
+
+- [x] `pilotage/qa/smoke-u02.md` porte `chantier: U-02`, qui n'a pas de fiche — clos : `pilotage/U-02.md` existe, la passe est rattachée
+- [x] `journal.mjs` : le compteur `commits` n'applique pas la garde `fourretout` alors que `dernierCommit` le fait — R2 et R4 comptent quelques commits de trop
+- [x] `journal.mjs` : la section `## QA` d'une fiche n'est pas lue — clos non par un correctif mais par le gabarit, qui l'écrit désormais en toutes lettres (« le journal ne lit **jamais** `## QA` »). Section inerte assumée, plus un défaut
 - [x] Remonter les codes de constat vers leur chantier et exclure du silence les commits qui ne touchent que `pilotage/` — fait le 21 août : `constatsAudit` remonté dans `journal-contrat.mjs`, sortie de `verifier.mjs` prouvée identique au caractère près
-- [ ] Le front n'est calculé que pour les fiches — ni le fil ni les passes ne le portent. Coupe volontaire, à rouvrir seulement si le fil devient illisible une fois plusieurs branches vivantes
 
 ## Contexte
 

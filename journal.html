@@ -157,8 +157,10 @@ a{color:var(--outremer)}
 .prose strong{font-weight:600;color:var(--encre)}
 .prose code,.lemme code,.lemme-f code,.case code,.vide code{font:400 .85em/1 var(--mo);
   background:var(--plat2);padding:.15em .35em;border-radius:2px;color:var(--encre)}
-.zone{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.13em;
+.zone{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;
+  font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.13em;
   color:var(--encre3);margin:2rem 0 .6rem}
+.zone .n{font-weight:400;font-variant-numeric:tabular-nums;letter-spacing:.06em}
 
 /* ---------- pastilles ---------- */
 .pill{font:500 .875em/1 var(--mo);text-decoration:none;padding:.18em .4em;
@@ -481,6 +483,25 @@ function vueChantiers(){
                c.front && !c.front.integre ? ` <span class="nf">${esc(c.front.ref)}</span>` : ""}</a>`).join("")}</div>` : "");
 }
 
+/* Les items du Reste, groupés par zone `###` s'il y en a. Aucune zone déclarée →
+   liste simple, exactement comme avant : une fiche à trois items n'a rien à grouper. */
+function zonesReste(c){
+  const z = [];
+  for (const r of c.reste) {
+    const nom = r.zone || null;
+    if (!z.length || z[z.length - 1].nom !== nom) z.push({ nom, items: [] });
+    z[z.length - 1].items.push(r);
+  }
+  if (z.length === 1 && !z[0].nom)
+    return `<ul class="cases">${c.reste.map(r => item(c.file, r)).join("")}</ul>`;
+  return z.map(g => {
+    const ouv = g.items.filter(i => !i.fait).length;
+    return `${g.nom ? `<h3 class="zone"><span>${esc(g.nom)}</span>
+        <span class="n">${ouv} / ${g.items.length}</span></h3>` : ""}
+      <ul class="cases">${g.items.map(i => item(c.file, i)).join("")}</ul>`;
+  }).join("");
+}
+
 /* ---------------- fiche ---------------- */
 function vueFiche(code){
   const c = byCode(code);
@@ -521,7 +542,7 @@ function vueFiche(code){
       <h2 class="sec"><span>Reste</span>${c.reste.length
         ? `<span class="n">${c.reste.length - ouv} / ${c.reste.length}</span>` : ""}</h2>
       ${c.reste.length
-        ? `<ul class="cases">${c.reste.map(r => item(c.file, r)).join("")}</ul>`
+        ? zonesReste(c)
         : vide(`<p>Aucun reliquat déclaré.</p>
             <p>Si tu trouves du travail restant, ajoute une ligne <code>- [ ]</code> sous
             <code>## Reste</code> dans <a href="${vsc(c.file)}">${esc(c.file)}</a> — elle

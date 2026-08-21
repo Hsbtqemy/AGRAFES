@@ -82,12 +82,19 @@ async function pilotage() {
       });
     } else {
       // --- fiche de chantier ---
-      const reste = []; let section = null;
+      // Le `Reste` accepte les mêmes zones `###` qu'une passe. Sans elles, une fiche
+      // à seize items aplatit des groupes qui existent déjà — trois items T6 qui ont
+      // un ordre, trois sur l'annulation, quatre arbitrages — et oblige à tout
+      // re-trier de tête à chaque ouverture. Zone nulle = liste simple, comme avant.
+      const reste = []; let section = null, zone = null;
       lines.forEach((l, i) => {
-        const h2 = RX.h2.exec(l); if (h2) { section = h2[1].trim().toLowerCase(); return; }
+        const h2 = RX.h2.exec(l);
+        if (h2) { section = h2[1].trim().toLowerCase(); zone = null; return; }
+        const h3 = RX.h3.exec(l); if (h3) { zone = h3[1].trim(); return; }
         const b = RX.box.exec(l);
         if (b && section === "reste")
-          reste.push({ texte: (b[2] + suiteDeCase(lines, i)).trim(), fait: b[1].toLowerCase() === "x", ligne: i + 1 });
+          reste.push({ texte: (b[2] + suiteDeCase(lines, i)).trim(),
+                       fait: b[1].toLowerCase() === "x", ligne: i + 1, zone });
       });
       chantiers.push({
         file: rel, code: fm.chantier || basename(rel, ".md"), titre,
