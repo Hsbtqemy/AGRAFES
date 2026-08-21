@@ -454,6 +454,55 @@ function _escCqlVal(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+/** Rend une saisie de boîte rapide LITTÉRALE, en préservant le seul construit que
+ *  l'écran documente : le wildcard `.*`.
+ *
+ *  Les prédicats CQL sont des expressions régulières côté moteur, et les boîtes
+ *  « mot » / « lemme » y injectaient la saisie telle quelle. Une parenthèse orpheline
+ *  remontait donc `Invalid regex in predicate 'word="trois)" %c': unbalanced
+ *  parenthesis at position 7` — un CQL que l'utilisateur n'a jamais écrit, et une
+ *  position dans une chaîne qu'il n'a jamais vue. Trouvé en QA le 2026-08-21.
+ *
+ *  Mesuré, cinq saisies plausibles tombaient : `trois)`, `(`, `?`, `[`, `*`. À
+ *  l'inverse `chat|chien` faisait une alternance que personne n'avait annoncée.
+ *  L'écran ne promet qu'une chose — « Tapez un mot ou un préfixe (wildcard `.*`) » —
+ *  et c'est désormais exactement ce qu'il tient. Le mode CQL reste la surface des
+ *  expressions régulières complètes. */
+/** Traduit une erreur de moteur en phrase qui parle de la REQUÊTE.
+ *
+ *  Le moteur rendait `Invalid regex in predicate 'word="trois)" %c': unbalanced
+ *  parenthesis at position 7` : il cite un CQL que l'utilisateur n'a pas écrit quand
+ *  il passe par une boîte rapide, et une position dans une chaîne qu'il n'a jamais
+ *  vue. Les boîtes rapides ne peuvent plus produire ce cas depuis
+ *  `_litteralSaufWildcard` ; le mode CQL, lui, le peut légitimement — et c'est là que
+ *  le message doit être lisible plutôt que rattrapé, parce que l'utilisateur a
+ *  VOULU écrire une expression régulière.
+ */
+export function _messageLisible(msg: string): string {
+  const m = /Invalid regex in predicate '([^']*)': (.+?)(?: at position (\d+))?$/.exec(msg);
+  if (m) {
+    const detail = m[2].trim();
+    const ou = m[3] ? ` (caractère n° ${Number(m[3]) + 1})` : "";
+    return `Expression régulière invalide dans « ${m[1]} »${ou} : ${detail}. `
+      + "Échappez le caractère spécial d'un antislash — par exemple « trois\\) » — "
+      + "ou utilisez une boîte rapide, qui prend la saisie au pied de la lettre.";
+  }
+  if (/Unsupported CQL attribute/i.test(msg)) {
+    return `${msg}. Attributs acceptés : word, lemma, pos, upos, xpos, feats.`;
+  }
+  return `Erreur : ${msg}`;
+}
+
+export function _litteralSaufWildcard(s: string): string {
+  // Le point de code nul ne peut pas apparaître dans une saisie et n'est pas un
+  // métacaractère : il traverse l'échappement sans être touché.
+  const SENTINELLE = String.fromCharCode(0);
+  return s
+    .split(".*").join(SENTINELLE)
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .split(SENTINELLE).join(".*");
+}
+
 function _buildQuickCql(root: HTMLElement): string | null {
   if (_quickMode === "cql") {
     const ta = root.querySelector<HTMLTextAreaElement>(".rech-cql-input");
@@ -467,7 +516,7 @@ function _buildQuickCql(root: HTMLElement): string | null {
     if (!val) return null;
     const ignoreCase = panel.querySelector<HTMLInputElement>(".rech-quick-cs-cb")?.checked ?? true;
     const attr = _quickMode === "mot" ? "word" : "lemma";
-    return `[${attr}="${_escCqlVal(val)}"${ignoreCase ? " %c" : ""}]`;
+    return `[${attr}="${_escCqlVal(_litteralSaufWildcard(val))}"${ignoreCase ? " %c" : ""}]`;
   }
 
   if (_quickMode === "pos") {
@@ -475,7 +524,7 @@ function _buildQuickCql(root: HTMLElement): string | null {
     return _posSelection.map(({ pos, word }) => {
       const w = word.trim();
       return w
-        ? `[word="${_escCqlVal(w)}" & upos="${pos}"]`
+        ? `[word="${_escCqlVal(_litteralSaufWildcard(w))}" & upos="${pos}"]`
         : `[upos="${pos}"]`;
     }).join("");
   }
@@ -965,7 +1014,7 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
     }
   } catch (err) {
     const msg = err instanceof SidecarError ? err.message : String(err);
-    _setStatus(root, `Erreur : ${msg}`, true);
+    _setStatus(root, _messageLisible(msg), true);
   } finally {
     _loading = false;
     _showSpinner(root, false);
@@ -1498,10 +1547,13 @@ function _showTokenPopover(anchor: HTMLElement, tok: _Token): void {
   const upos  = tok.upos?.trim();
   const feats = tok.feats?.trim();
 
-  if (lemma) options.push({ label: `lemme = "${lemma}"`, cql: `[lemma="${lemma}"]` });
-  if (word)  options.push({ label: `mot = "${word}"`,   cql: `[word="${word}"]` });
+  // Valeurs CONCRÈTES d'un token cliqué, jamais des motifs : un token dont le mot
+  // est « ( » fabriquait un CQL invalide.
+  const litt = (v: string) => _escCqlVal(_litteralSaufWildcard(v));
+  if (lemma) options.push({ label: `lemme = "${lemma}"`, cql: `[lemma="${litt(lemma)}"]` });
+  if (word)  options.push({ label: `mot = "${word}"`,   cql: `[word="${litt(word)}"]` });
   if (upos)  options.push({ label: `POS = ${upos}`,     cql: `[upos="${upos}"]` });
-  if (lemma && upos) options.push({ label: `${lemma} (${upos})`, cql: `[lemma="${lemma}" & upos="${upos}"]` });
+  if (lemma && upos) options.push({ label: `${lemma} (${upos})`, cql: `[lemma="${litt(lemma)}" & upos="${upos}"]` });
   if (feats) options.push({ label: `feats ∋ ${feats.split("|")[0]}`, cql: `[feats=".*${feats.split("|")[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*"]` });
 
   if (options.length === 0) { _popoverEl = null; return; }
