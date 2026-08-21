@@ -185,7 +185,7 @@ et ne doit pas tomber :*
 Un défaut antérieur corrigé le 2026-08-21 : les **opérateurs** étaient surlignés comme
 des termes. Invisible en français, criant sur un document anglais.
 
-- [x] `chat AND chien` ne surligne **pas** les « and » du segment (à voir sur un document anglais : `cat AND dog`)
+- [ ] `chat AND chien` ne surligne **pas** les « and » du segment (à voir sur un document anglais : `cat AND dog`)
 - [ ] `NEAR(chat chien, 3)` ne surligne ni « near » ni le chiffre **3** du texte
 - [ ] Une recherche sur le **mot** `or` (minuscules) surligne bien les « or » — l'opérateur ne se reconnaît qu'en capitales
 
