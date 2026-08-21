@@ -68,12 +68,28 @@ régulières côté moteur, et la boîte y injectait la saisie telle quelle. L'�
 promet qu'un wildcard `.*` ; c'est désormais exactement ce qu'il tient, le reste
 étant pris au pied de la lettre. **À jouer en mode « mot ».**
 
-- [ ] `trois)` ne fait plus tomber la recherche — et trouve le token s'il existe
-- [ ] `(`, `?`, `[`, `*` seuls non plus
-- [ ] `liber.*` trouve toujours *liberté*, *libre* — le wildcard documenté survit
+- [x] `trois)` ne fait plus tomber la recherche — et trouve le token s'il existe
+- [x] `(`, `?`, `[`, `*` seuls non plus
+- [x] `habit.*` trouve *habitants*, *habitude*, *habiter*… — le wildcard documenté survit
+      *(l'item disait « `liber.*` trouve *liberté*, *libre* » : faux deux fois — « libre »
+      ne commence pas par « liber », et le corpus annoté ne porte qu'un seul token en
+      liber-, `libertad`. Le constat coché reste valable, seul l'exemple était mauvais.
+      Corrigé le 2026-08-21 sur mesure en base.)*
 - [ ] `chat|chien` cherche désormais la chaîne littérale, plus une alternance
 - [ ] En mode **CQL**, une regex fautive donne un message qui parle de la requête,
       pas un `Invalid regex in predicate '…' at position 7`
+
+**Un piège de lecture, mesuré le 2026-08-21** : seuls **6 documents sur 54** sont
+annotés — Asimov-Foundation_FR, Lodge-Nice_FR, Lodge-Small_ES, Hagena_Apfel_AL,
+9-CI-OrEn-Obs-2022, Beigbeder-Francs_FR. La recherche grammaticale ne peut atteindre
+qu'eux, soit 11 % du corpus. Or le filtre de documents les liste **tous**, sans
+distinction, alors que `/documents` renvoie déjà `token_count` et `annotation_status`.
+Un résultat vide ne dit donc pas « ce mot est absent du corpus » : il dit peut-être
+« ce document n'est pas annoté ».
+
+- [ ] Sélectionner un document **non annoté** (ex. `Rankin-Naming_FR`) et chercher
+      n'importe quoi : constater que rien ne signale pourquoi c'est vide
+- [ ] Le filtre de langue propose des langues sans aucun token annoté (ro, de…)
 
 ### Le mode « proximité » du constructeur de requête
 
