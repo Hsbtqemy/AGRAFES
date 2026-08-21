@@ -261,6 +261,13 @@ a{color:var(--outremer)}
 .toast.ko{background:var(--minium);color:#fff}
 
 /* ---------- responsive ---------- */
+/* Le tableau de bord garde ses colonnes fixes (13+7+5,5rem) : mesurée, sa colonne
+   de note tombe à 69 px de large à 602 px de fenêtre et la ligne passe de 42 à
+   113 px de haut. Elle ne retrouve sa pleine largeur qu'au-delà de 1020. */
+@media (max-width:900px){
+  .b-l{grid-template-columns:1fr auto;gap:.3rem .8rem}
+  .b-l .b-j,.b-l .b-n{grid-column:1/-1}
+}
 @media (max-width:760px){
   .folio{grid-template-columns:1fr;gap:1.5rem}
   .apparat{position:static}
@@ -282,8 +289,6 @@ a{color:var(--outremer)}
   .vol{grid-template-columns:4.25rem 1fr;gap:.45rem .8rem}
   .vol .v-j{grid-column:1/-1;order:3}
   .vol .v-c{grid-column:1/-1;order:4}
-  .b-l{grid-template-columns:1fr auto;gap:.3rem .8rem}
-  .b-l .b-j,.b-l .b-n{grid-column:1/-1}
   .av{grid-template-columns:2rem 1fr;gap:.3rem .8rem}
   .av .a-l{grid-column:2;text-align:left}
   .trainee li{grid-template-columns:5rem 1fr;gap:.2rem .8rem;padding:.5rem .95rem}
@@ -795,6 +800,7 @@ charger().catch(() => {
      <p>Lance <code>node journal.mjs</code> à la racine du dépôt, puis recharge.</p>`);
 });
 </script>
+
 
 </body>
 </html>
