@@ -10,7 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { state } from "../../state";
-import { buildFtsQuery, isSimpleInput } from "../search";
+import { buildFtsQuery, isSimpleInput, validateCqlSyntax } from "../search";
 
 beforeEach(() => {
   state.builderMode = "simple";
@@ -82,5 +82,29 @@ describe("buildFtsQuery", () => {
     expect(buildFtsQuery("NEAR(a b, 3)")).toBe("NEAR(a b, 3)");
     // empty -> ""
     expect(buildFtsQuery("")).toBe("");
+  });
+});
+
+describe("validateCqlSyntax — nommer le vrai problème", () => {
+  it("distingue un attribut inconnu d'un prédicat mal formé", () => {
+    // Vu en QA le 2026-08-21 : `[mot="chat"]` — la faute la plus probable en français
+    // — rendait « Prédicat invalide » suivi du conseil « utilisez des clauses entre
+    // crochets ». L'utilisateur EN AVAIT MIS : le conseil se lisait comme un
+    // contresens, et le vrai problème (le nom de l'attribut) n'était pas nommé.
+    const err = validateCqlSyntax('[mot="chat"]');
+    expect(err).toContain("Attribut inconnu");
+    expect(err).toContain("mot");
+    expect(err).toContain("word, lemma, pos, upos, xpos, feats");
+  });
+
+  it("laisse les six attributs valides passer", () => {
+    for (const attr of ["word", "lemma", "pos", "upos", "xpos", "feats"]) {
+      expect(validateCqlSyntax(`[${attr}="chat"]`)).toBeNull();
+    }
+  });
+
+  it("garde le message générique quand le prédicat n'a pas de nom d'attribut", () => {
+    // `"chat"` seul n'est pas un `attr = valeur` : rien à nommer.
+    expect(validateCqlSyntax('["chat"]')).toContain("Prédicat invalide");
   });
 });

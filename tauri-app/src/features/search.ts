@@ -161,6 +161,14 @@ export function validateCqlSyntax(raw: string): string | null {
       if (preds.length === 0) return "Clause CQL invalide autour de '&'.";
       for (const p of preds) {
         if (!predRe.test(p)) {
+          // Distinguer « attribut inconnu » de « prédicat mal formé ». Sans ça, le
+          // message conseillait des crochets à quelqu'un qui en avait mis : la faute
+          // la plus probable en français est `[mot="chat"]`, où seul le NOM est faux.
+          const attrRe = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(p.trim());
+          if (attrRe) {
+            return `Attribut inconnu « ${attrRe[1]} ». `
+              + "Attributs acceptés : word, lemma, pos, upos, xpos, feats.";
+          }
           return `Prédicat invalide: ${p}`;
         }
       }

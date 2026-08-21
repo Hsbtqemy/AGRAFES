@@ -517,10 +517,12 @@ export function _messageLisible(msg: string): string {
       + "Échappez le caractère spécial d'un antislash — par exemple « trois\\) » — "
       + "ou utilisez une boîte rapide, qui prend la saisie au pied de la lettre.";
   }
-  // C'est CE message que le moteur rend sur un attribut inconnu — « [mot=… ] », la
-  // faute la plus probable en français. `Unsupported CQL attribute` existe dans
-  // `cql_parser.py` mais est INATTEIGNABLE : `_PRED_RE` n'accepte déjà que les six
-  // attributs valides, donc le contrôle qui suit ne voit jamais rien d'autre.
+  // FILET, et non chemin vivant : `validateCqlSyntax` intercepte l'attribut inconnu
+  // côté client avant tout appel, donc ce cas n'arrive ici que si ce contrôle est
+  // contourné ou vient à diverger du moteur. J'avais écrit l'inverse — c'était faux,
+  // et c'était la deuxième branche morte que j'écrivais pour ce même cas.
+  // (`Unsupported CQL attribute`, la première, est inatteignable dans le moteur :
+  // `_PRED_RE` n'accepte déjà que les six attributs valides.)
   const attr = /Invalid predicate syntax in token clause: '([^']*)'/.exec(msg);
   if (attr) {
     return `Prédicat non reconnu : « ${attr[1]} ». `
@@ -973,7 +975,13 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
 
   const cqlErr = validateCqlSyntax(cql);
   if (cqlErr) {
-    _setStatus(root, `CQL invalide : ${cqlErr} — utilisez des clauses entre crochets, ex. [word = "…"] ou [lemma = "…"].`, true);
+    // Le conseil générique ne s'ajoute que si le message ne porte pas déjà le sien :
+    // « utilisez des clauses entre crochets » se lisait comme un contresens pour
+    // quelqu'un qui en avait mis et s'était seulement trompé d'attribut.
+    const conseil = cqlErr.includes("Attributs acceptés")
+      ? ""
+      : ' — utilisez des clauses entre crochets, ex. [word = "…"] ou [lemma = "…"].';
+    _setStatus(root, `CQL invalide : ${cqlErr}${conseil}`, true);
     return;
   }
 
