@@ -38,7 +38,7 @@ import {
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
-import { compareDocsByTitle } from "../lib/docSort.ts";
+import { compareDocsByTitle } from "../../../shared/docSort.ts";
 import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
 import { AlignCollisionPanel } from "../components/AlignCollisionPanel.ts";

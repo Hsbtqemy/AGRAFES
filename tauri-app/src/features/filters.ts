@@ -4,6 +4,7 @@
 
 import type { DocumentRecord, FamilyRecord, DocTag } from "../lib/sidecarClient";
 import { listDocuments, listFamilies, listTags } from "../lib/sidecarClient";
+import { compareDocsByTitle } from "../../../shared/docSort.ts";
 import { state } from "../state";
 import { elt } from "../ui/dom";
 import {
@@ -24,7 +25,11 @@ const LARGE_CORPUS_WARN = 2000;
 export async function loadDocsForFilters(): Promise<void> {
   if (!state.conn) return;
   try {
-    state.docs = await listDocuments(state.conn);
+    // `/documents` rend l'ordre doc_id, c'est-à-dire l'ordre d'import : illisible dès
+    // qu'il y a plus d'une poignée de documents. Le tri est posé ICI plutôt qu'à chaque
+    // affichage, pour que la liste déroulante, la checklist et `docsById` partagent le
+    // même ordre.
+    state.docs = [...await listDocuments(state.conn)].sort(compareDocsByTitle);
     docsById.clear();
     for (const doc of state.docs) docsById.set(doc.doc_id, doc);
     populateFilterDropdowns();

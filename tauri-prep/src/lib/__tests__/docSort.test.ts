@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compareDocsByTitle, compareLocale, type DocLike } from "../docSort.ts";
+import { compareDocsByTitle, compareLocale, type DocLike } from "../../../../shared/docSort.ts";
 
 const d = (doc_id: number, title: string | null | undefined): DocLike =>
   ({ doc_id, title });
@@ -99,5 +99,22 @@ describe("compareLocale", () => {
   it("strings égales → 0 (pas de tie-break ici, c'est au caller)", () => {
     expect(compareLocale("foo", "foo")).toBe(0);
     expect(compareLocale("Foo", "foo")).toBe(0); // sensitivity base
+  });
+});
+
+describe("l'ordre rendu par /documents n'est pas un ordre d'affichage", () => {
+  it("range les titres alphabétiquement quel que soit l'ordre d'import", () => {
+    // `/documents` trie par doc_id — l'ordre d'IMPORT. Sur le corpus de travail,
+    // ça donnait « Beigbeder-Francs_EN, Houellebecq-Carte_FR, … » : illisible dès
+    // qu'il y a plus d'une poignée de documents. Trouvé en QA le 2026-08-21, dans la
+    // recherche grammaticale ; le concordancier avait le même défaut.
+    const commeLApi: DocLike[] = [
+      { doc_id: 364, title: "Rankin-Naming_FR.docx" },
+      { doc_id: 366, title: "asimov-Foundation_FR.docx" },   // casse indifférente
+      { doc_id: 367, title: "Élan_FR.docx" },                // accent indifférent
+      { doc_id: 411, title: "Beigbeder-Francs_EN.docx" },
+    ];
+    expect([...commeLApi].sort(compareDocsByTitle).map(d => d.doc_id))
+      .toEqual([366, 411, 367, 364]);
   });
 });

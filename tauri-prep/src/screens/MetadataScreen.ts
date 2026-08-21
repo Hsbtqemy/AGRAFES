@@ -47,7 +47,7 @@ import {
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
-import { compareDocsByTitle, compareLocale } from "../lib/docSort.ts";
+import { compareDocsByTitle, compareLocale } from "../../../shared/docSort.ts";
 import {
   indexButtonState,
   isAutoReindexEnabled,

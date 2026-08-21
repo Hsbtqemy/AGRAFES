@@ -17,7 +17,7 @@ import { importFile, enqueueJob, SidecarError, listDocuments, setDocRelation, up
 import type { DocumentRecord } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
-import { compareDocsByTitle } from "../lib/docSort.ts";
+import { compareDocsByTitle } from "../../../shared/docSort.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { escHtml as _escHtml } from "../lib/diff.ts";
 import { importScreenTemplate } from "../lib/importScreenTemplate.ts";

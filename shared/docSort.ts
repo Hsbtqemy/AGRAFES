@@ -1,7 +1,7 @@
 /**
  * docSort.ts — Comparateur pur pour trier des documents par titre.
  *
- * Convention unique pour tout le repo tauri-prep : locale FR, insensible
+ * Convention unique pour tout le repo — prep, app ET shell : locale FR, insensible
  * casse + accents, tri secondaire sur doc_id pour la stabilité. Évite la
  * dérive entre call sites (avant : 3 variantes coexistaient — sans options,
  * avec undefined, avec "fr").

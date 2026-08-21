@@ -7,6 +7,7 @@
 
 import type { ShellContext } from "../context.ts";
 import { validateCqlSyntax } from "../../../tauri-app/src/features/search.ts";
+import { compareDocsByTitle, compareLocale } from "../../../shared/docSort.ts";
 import { ensureRunning, SidecarError, type Conn } from "../../../tauri-prep/src/lib/sidecarClient.ts";
 import { setHtml, raw as rawHtml } from "../../../tauri-prep/src/lib/safeHtml.ts";
 import {
@@ -885,7 +886,7 @@ async function _populateDocFilter(root: HTMLElement): Promise<void> {
     const langSel = root.querySelector<HTMLSelectElement>(".rech-filter-lang")!;
     // Clear previous options (keep only the static "(toutes)" placeholder)
     langSel.innerHTML = `<option value="">(toutes)</option>`;
-    const langs = [...new Set(docs.map(d => d.language ?? "").filter(Boolean))].sort();
+    const langs = [...new Set(docs.map(d => d.language ?? "").filter(Boolean))].sort(compareLocale);
     langs.forEach(lang => {
       const opt = document.createElement("option");
       opt.value = lang;
@@ -904,7 +905,11 @@ async function _populateDocFilter(root: HTMLElement): Promise<void> {
     const allOpt = document.createElement("option");
     allOpt.value = ""; allOpt.textContent = "(tous)"; allOpt.selected = true;
     docSel.appendChild(allOpt);
-    docs.forEach(doc => {
+    // `/documents` rend l'ordre doc_id, c'est-à-dire l'ordre d'import : illisible dès
+    // qu'il y a plus d'une poignée de documents. On réemploie le comparateur du repo
+    // (locale FR, insensible casse et accents, stable sur doc_id) plutôt que d'en
+    // écrire un second — trois variantes avaient déjà divergé par le passé.
+    [...docs].sort(compareDocsByTitle).forEach(doc => {
       const opt = document.createElement("option");
       opt.value = String(doc.doc_id);
       const n = doc.token_count ?? 0;
