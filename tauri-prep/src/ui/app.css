@@ -5089,6 +5089,18 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 .prep-seg-canvas-surfbtn.active { background: #0c4a46; border-color: #0c4a46; color: #fff; }
 .prep-seg-canvas-surfbtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .prep-seg-canvas-hint { font-size: 0.76rem; color: #64748b; }
+/* R5 — deux groupes d'onglets, pas cinq onglets de meme nature : a gauche l'ETAT du
+   document (modifiable), a droite les generateurs, qui ne rendent qu'un apercu. La
+   frontiere est visible ET franchie expres : deux `tablist` distincts, donc les fleches
+   ne la traversent pas (DESIGN_segmentation_surfaces.md §3.1 et §4). */
+.prep-seg-canvas-surfsep {
+  width: 1px; align-self: stretch; min-height: 1.2rem;
+  background: #cbd5e1; margin: 0 0.5rem;
+}
+.prep-seg-canvas-surflabel { font-size: 0.76rem; color: #475569; margin-right: 0.35rem; }
+/* Ce qu'un decoupage candidat couterait, a cote du bouton qui l'applique. */
+.prep-seg-canvas-anomalies { font-size: 0.76rem; color: #64748b; }
+.prep-seg-canvas-anomalies--flagged { color: #b45309; font-weight: 600; }
 /* R5.4 tranche 4 — action « Propager la segmentation » (conditionnelle : trad avec source). */
 .prep-seg-canvas-propbtn { white-space: nowrap; }
 .prep-seg-canvas-propbtn[hidden] { display: none; }

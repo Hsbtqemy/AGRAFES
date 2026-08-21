@@ -10,7 +10,7 @@
 
 import type { SegmentPreviewSegment, SegmentSpecInput } from "./sidecarClient.ts";
 
-export type SegSurface = "brut" | "phrases" | "balises" | "custom" | "tours";
+export type SegSurface = "actuel" | "phrases" | "balises" | "custom" | "tours";
 
 /** State of the "Personnalisé" controls (R5.4b-2). Kept here so buildSegmentParams
  *  is total over every surface even though b-1 only wired phrases/balises. */
@@ -58,9 +58,9 @@ export interface SegmentParams {
  * `spec`. The caller merges in `doc_id` + `lang`.
  */
 export function buildSegmentParams(surface: SegSurface, custom?: CustomSpecState): SegmentParams {
-  // "Brut" is the current state and "Tours" is a coarse regroup (its own endpoint) — neither
-  // requests a fine split.
-  if (surface === "brut" || surface === "tours") return {};
+  // "actuel" is the document's current segmentation and "tours" a coarse regroup (its own
+  // endpoint) — neither requests a fine split.
+  if (surface === "actuel" || surface === "tours") return {};
   if (surface === "phrases") return { preset: "phrases" };
   if (surface === "balises") return { preset: "balises" };
   const c = custom ?? { terminators: [".!?"], requireUppercase: false, wordMode: false, abbreviations: [] };
@@ -106,6 +106,32 @@ export function segmentSummaryLine(unitsInput: number, unitsOutput: number): str
   return `${u} → ${s}`;
 }
 
+/**
+ * Ce qu'un découpage candidat coûterait, lu AVANT de l'appliquer.
+ *
+ * `segmentAnomalies.ts` détecte les deux signatures d'un mauvais découpage — segment
+ * trop court, ponctuation fermante orpheline en tête — mais cette détection ne tournait
+ * que sur la vue d'ÉTAT, donc seulement une fois la segmentation appliquée. On jugeait
+ * un candidat à l'aveugle, alors qu'appliquer détruit tous les liens d'alignement du
+ * document (`docs/DESIGN_segmentation_surfaces.md` §3.3).
+ *
+ * Le cas propre rend une phrase plutôt que le vide : « rien » se confond avec « pas
+ * calculé », et on veut justement voir le compte TOMBER à mesure qu'on règle les
+ * terminateurs et les abréviations.
+ */
+export function anomalySummaryLine(shortCount: number, orphanCount: number): string {
+  const parts: string[] = [];
+  if (shortCount > 0) {
+    const s = shortCount > 1 ? "s" : "";
+    parts.push(`${shortCount} segment${s} court${s}`);
+  }
+  if (orphanCount > 0) {
+    const s = orphanCount > 1 ? "s" : "";
+    parts.push(`${orphanCount} ponctuation${s} orpheline${s}`);
+  }
+  return parts.length ? parts.join(" · ") : "aucune anomalie détectée";
+}
+
 /** Applying a resegmentation clears alignment — only confirm when there is one to lose. */
 export function needsAlignmentConfirm(alignedCount: number | null | undefined): boolean {
   return (alignedCount ?? 0) > 0;
@@ -113,7 +139,7 @@ export function needsAlignmentConfirm(alignedCount: number | null | undefined): 
 
 /** Short hint shown under the surface control for the chosen mode. */
 export function surfaceHint(surface: SegSurface): string {
-  if (surface === "brut") return "Le texte actuel, tel qu'il est découpé aujourd'hui (avant transformation).";
+  if (surface === "actuel") return "Les segments actuels du document — c'est ici, et seulement ici, qu'on les corrige, fusionne ou coupe.";
   if (surface === "phrases") return "Découpe en phrases (. ! ?), abréviations protégées.";
   if (surface === "balises") return "Découpe sur les marqueurs [N] présents dans le texte.";
   if (surface === "tours") return "Regroupe les unités en tours de parole (tiret de dialogue) — grain grossier, sans re-découper.";

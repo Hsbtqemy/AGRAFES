@@ -94,12 +94,12 @@ beforeEach(() => {
 async function mountBrut(conn: Conn, opts: { onReseg?: () => void } = {}): Promise<SegmentPane> {
   const pane = new SegmentPane(host, () => conn, () => {}, null, opts.onReseg ?? (() => {}));
   await pane.setDocument(1, "fr");
-  (host.querySelector('[data-surface="brut"]') as HTMLButtonElement).click();
+  (host.querySelector('[data-surface="actuel"]') as HTMLButtonElement).click();
   await flush();
   return pane;
 }
 
-describe("SegmentPane — Brut view (R5.4b-3)", () => {
+describe("SegmentPane — vue « Segmentation actuelle » (R5.4b-3)", () => {
   it("renders the current units with per-line edit actions", async () => {
     await mountBrut(fakeConn({ units: [unit(1), unit(2)] }));
     const rows = host.querySelectorAll(".prep-seg-canvas-unit");
@@ -188,7 +188,7 @@ describe("SegmentPane — Brut view (R5.4b-3)", () => {
     const conn = fakeConn({ units: [unit(1, { text_norm: "Bonjour le monde ici." })], calls });
     const pane = new SegmentPane(host, () => conn, (m, isErr) => { if (isErr) errs.push(m); }, null, () => {});
     await pane.setDocument(1, "fr");
-    (host.querySelector('[data-surface="brut"]') as HTMLButtonElement).click();
+    (host.querySelector('[data-surface="actuel"]') as HTMLButtonElement).click();
     await flush();
     (host.querySelector('[data-act="split"]') as HTMLButtonElement).click();
     const editor = host.querySelector(".prep-seg-canvas-unit--editing")!;
@@ -429,7 +429,7 @@ describe("SegmentPane — Propager la segmentation (tranche 4)", () => {
     (host.querySelector("#prep-seg-canvas-propagate") as HTMLButtonElement).click();
     await flush();
     expect(host.querySelector("#prep-seg-canvas-prop-apply")).not.toBeNull();
-    (host.querySelector('[data-surface="brut"]') as HTMLButtonElement).click();
+    (host.querySelector('[data-surface="actuel"]') as HTMLButtonElement).click();
     await flush();
     expect(host.querySelector("#prep-seg-canvas-prop-apply")).toBeNull();
     expect(host.querySelector("#prep-seg-canvas-propagate")!.classList.contains("active")).toBe(false);
@@ -522,23 +522,53 @@ describe("SegmentPane — Brut rendering parity (tranche 3)", () => {
   });
 });
 
+describe("SegmentPane — les deux natures de surface (R5)", () => {
+  it("ouvre sur l'ÉTAT du document, pas sur un aperçu", async () => {
+    // Le défaut valait « phrases » : on arrivait devant une hypothèse avec « Appliquer la
+    // segmentation » sous la main — un geste qui supprime TOUS les liens d'alignement du
+    // document — sans avoir jamais vu ses segments réels.
+    const pane = new SegmentPane(host, () => fakeConn({ units: [unit(1), unit(2)] }), () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    await flush();
+    expect(host.querySelector('[data-surface="actuel"]')?.classList.contains("active")).toBe(true);
+    expect(host.querySelector('[data-surface="phrases"]')?.classList.contains("active")).toBe(false);
+    // ...et on voit bien des segments réels, donc modifiables.
+    expect(host.querySelector('.prep-seg-canvas-unit[data-n="1"] [data-act="split"]')).not.toBeNull();
+  });
+
+  it("sépare l'état des générateurs en deux groupes d'onglets distincts", async () => {
+    const pane = new SegmentPane(host, () => fakeConn({ units: [unit(1)] }), () => {}, null, () => {});
+    await pane.setDocument(1, "fr");
+    await flush();
+    const groupes = host.querySelectorAll('[role="tablist"]');
+    expect(groupes.length).toBe(2);
+    // L'état : la segmentation actuelle et son autre grain. Les générateurs : les aperçus.
+    expect(groupes[0].querySelectorAll('[role="tab"]').length).toBe(2);
+    expect(groupes[1].querySelectorAll('[role="tab"]').length).toBe(3);
+    expect(groupes[0].querySelector('[data-surface="tours"]')).not.toBeNull();
+    expect(groupes[1].querySelector('[data-surface="actuel"]')).toBeNull();
+    // Un verbe, et non « Re-découper » : c'est souvent le premier geste sur un import.
+    expect(host.querySelector("#prep-seg-canvas-seglabel")?.textContent).toContain("Segmenter");
+  });
+});
+
 describe("SegmentPane — focusUnit deep-link (tranche 5)", () => {
-  it("switches to Brut and reveals the target unit (Explorer→Prep re-route)", async () => {
+  it("switches to the state surface and reveals the target unit (Explorer→Prep re-route)", async () => {
     const pane = await mountBrut(fakeConn({ units: [unit(1), unit(2), unit(3)] }));
-    // move off Brut, then focus a unit → must switch back to Brut with the unit present
+    // move off the state surface, then focus a unit → must switch back to it with the unit present
     (host.querySelector('[data-surface="phrases"]') as HTMLButtonElement).click();
     await flush();
     await pane.focusUnit(2);
     await flush();
-    expect(host.querySelector('[data-surface="brut"]')?.classList.contains("active")).toBe(true);
+    expect(host.querySelector('[data-surface="actuel"]')?.classList.contains("active")).toBe(true);
     expect(host.querySelector('.prep-seg-canvas-unit[data-n="2"]')).not.toBeNull();
   });
 
-  it("re-renders Brut even when already on the Brut surface", async () => {
+  it("re-renders the state surface even when already on it", async () => {
     const pane = await mountBrut(fakeConn({ units: [unit(1), unit(2)] }));
-    await pane.focusUnit(1); // already on Brut → the else branch (_renderBrutView) must still render
+    await pane.focusUnit(1); // already on the state surface → the else branch (_renderActuelView) must still render
     await flush();
-    expect(host.querySelector('[data-surface="brut"]')?.classList.contains("active")).toBe(true);
+    expect(host.querySelector('[data-surface="actuel"]')?.classList.contains("active")).toBe(true);
     expect(host.querySelector('.prep-seg-canvas-unit[data-n="1"]')).not.toBeNull();
   });
 });

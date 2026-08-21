@@ -37,6 +37,7 @@ import {
   segmentSummaryLine,
   needsAlignmentConfirm,
   alignmentLossNote,
+  anomalySummaryLine,
   cutDissolvedNote,
   surfaceHint,
   defaultAbbreviations,
@@ -64,8 +65,12 @@ export class SegmentPane {
 
   private _docId: number | null = null;
   private _lang: string | null = null;
-  private _surface: SegSurface = "phrases";
-  /** Current units, rendered as-is by the "Brut" tab so the user can compare the current state
+  // R5 — l'onglet par defaut est l'ETAT, pas un apercu. Il valait « phrases » : on
+  // arrivait sur la couche devant une hypothese, avec « Appliquer la segmentation » sous
+  // la main — un geste qui supprime TOUS les liens d'alignement du document — sans avoir
+  // jamais vu ses segments reels (docs/DESIGN_segmentation_surfaces.md §3.2).
+  private _surface: SegSurface = "actuel";
+  /** Current units, rendered as-is by the « Segmentation actuelle » tab so the user can compare the current state
    *  against a proposed segmentation by switching tabs, flag anomalies, and edit (merge/split)
    *  line units in place (R5.4b-3). Carries role + verbatim raw + import-original for parity with
    *  SegmentationView's rendering (tranche 3: role badge · richText · « voir l'original » fold). */
@@ -89,10 +94,10 @@ export class SegmentPane {
   };
   /** Doc the abbreviation field was last pre-filled for — so a layer re-entry doesn't wipe edits. */
   private _prefillDoc: number | null | undefined = undefined;
-  /** Brut view anomaly filters (R5.4b-3): short segments / orphan closing punctuation. */
+  /** current-segmentation view anomaly filters (R5.4b-3): short segments / orphan closing punctuation. */
   private _filterShort = false;
   private _filterOrphan = false;
-  /** Unit n currently showing the inline split editor in the Brut view, or null. */
+  /** Unit n currently showing the inline split editor in the current-segmentation view, or null. */
   private _splitEditingN: number | null = null;
   /** In-progress split editor text, preserved across re-renders (e.g. a filter toggle). */
   private _splitDraft: { a: string; b: string } | null = null;
@@ -103,7 +108,7 @@ export class SegmentPane {
   private _textDraft: string | null = null;
   /** Unit n to scroll to + flash once after a merge/split reload, or null. */
   private _pendingFocusN: number | null = null;
-  /** Last Mode A undo eligibility for this doc — drives the Brut "↶ Annuler" button. */
+  /** Last Mode A undo eligibility for this doc — drives the « Segmentation actuelle » "↶ Annuler" button. */
   private _undoElig: PrepUndoEligibilityResponse | null = null;
   /** Custom coarse boundary pattern for the Tours « Pré-remplir » (empty → the built-in `tours` preset). */
   private _toursPattern = "";
@@ -138,12 +143,16 @@ export class SegmentPane {
     this._root.innerHTML = `
       <div class="prep-seg-canvas-root">
         <div class="prep-seg-canvas-toolbar">
-          <div class="prep-seg-canvas-surface" role="tablist" aria-label="Vue de segmentation">
-            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="brut" role="tab" aria-selected="false">Brut</button>
-            <button type="button" class="prep-seg-canvas-surfbtn active" data-surface="phrases" role="tab" aria-selected="true">Phrases</button>
+          <div class="prep-seg-canvas-surface" role="tablist" aria-label="Segments du document">
+            <button type="button" class="prep-seg-canvas-surfbtn active" data-surface="actuel" role="tab" aria-selected="true" title="Les segments tels qu'ils existent aujourd'hui &#8212; la seule vue o&#249; on les modifie">Segmentation actuelle</button>
+            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="tours" role="tab" aria-selected="false" title="Grain grossier : regrouper en tours de parole (parent_n), sans re-d&#233;couper">Tours</button>
+          </div>
+          <span class="prep-seg-canvas-surfsep" aria-hidden="true"></span>
+          <span class="prep-seg-canvas-surflabel" id="prep-seg-canvas-seglabel">Segmenter :</span>
+          <div class="prep-seg-canvas-surface" role="tablist" aria-labelledby="prep-seg-canvas-seglabel">
+            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="phrases" role="tab" aria-selected="false">Phrases</button>
             <button type="button" class="prep-seg-canvas-surfbtn" data-surface="balises" role="tab" aria-selected="false">Balises [N]</button>
             <button type="button" class="prep-seg-canvas-surfbtn" data-surface="custom" role="tab" aria-selected="false">Personnalis&#233;</button>
-            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="tours" role="tab" aria-selected="false" title="Grain grossier : regrouper en tours de parole (parent_n), sans re-d&#233;couper">Tours</button>
           </div>
           <button type="button" class="prep-seg-canvas-propbtn btn btn-ghost btn-sm" id="prep-seg-canvas-propagate" hidden
             title="Recouper cette traduction pour qu'elle ait le m&#234;me nombre de segments par section que sa source.">Propager la segmentation</button>
@@ -212,7 +221,7 @@ export class SegmentPane {
     this._syncHint();
   }
 
-  /** Point the pane at a document; renders the active view (Brut = current units,
+  /** Point the pane at a document; renders the active view (la surface d'état = current units,
    *  else the live segmentation preview). */
   async setDocument(docId: number | null, lang: string | null, textStartN: number | null = null): Promise<void> {
     this.mount();
@@ -249,17 +258,17 @@ export class SegmentPane {
     await this._renderActiveView();
   }
 
-  /** Public deep-link (Explorer→Prep, retrait Seg tranche 5): reveal unit `n` in the Brut view
-   *  (scroll + flash). Switches to Brut — the surface that lists units by n — then renders so
-   *  `_consumePendingFocus` scrolls to it. Handles the "already on Brut" case (where `_setSurface`
+  /** Public deep-link (Explorer→Prep, retrait Seg tranche 5): reveal unit `n` in the current-segmentation view
+   *  (scroll + flash). Switches to the state surface — the surface that lists units by n — then renders so
+   *  `_consumePendingFocus` scrolls to it. Handles the "already on the state surface" case (where `_setSurface`
    *  early-returns) by re-rendering directly. */
   async focusUnit(n: number): Promise<void> {
     this._pendingFocusN = n;
-    if (this._surface !== "brut") this._setSurface("brut");
-    else await this._renderBrutView();
+    if (this._surface !== "actuel") this._setSurface("actuel");
+    else await this._renderActuelView();
   }
 
-  /** Load the current line units (for the Brut view). Mode switches don't change them,
+  /** Load the current line units (for the current-segmentation view). Mode switches don't change them,
    *  so this is per-document, not per-preview. */
   private async _loadUnits(): Promise<void> {
     const conn = this._getConn();
@@ -278,12 +287,12 @@ export class SegmentPane {
     }
   }
 
-  /** Render whichever view the active surface calls for: Brut shows the current units
+  /** Render whichever view the active surface calls for: the state surface shows the current units
    *  (no segmentation, no Apply); the other surfaces run the live preview. */
   private async _renderActiveView(): Promise<void> {
-    if (this._surface === "brut") {
+    if (this._surface === "actuel") {
       this._lastPreview = null;
-      await this._renderBrutView();
+      await this._renderActuelView();
       return;
     }
     if (this._surface === "tours") {
@@ -316,7 +325,7 @@ export class SegmentPane {
     this._root.querySelector<HTMLElement>("#prep-seg-canvas-propagate")?.classList.remove("active");
     this._surface = s;
     // Cancel a debounced preview scheduled by the previous surface — otherwise a pending
-    // Personnalisé preview could fire after switching to Brut and overwrite its view.
+    // Personnalisé preview could fire after switching to the current-segmentation view and overwrite its view.
     if (this._previewTimer) { clearTimeout(this._previewTimer); this._previewTimer = null; }
     this._root.querySelectorAll<HTMLButtonElement>(".prep-seg-canvas-surfbtn").forEach((b) => {
       const on = b.dataset.surface === s;
@@ -326,10 +335,10 @@ export class SegmentPane {
     this._syncHint();
     const customPanel = this._root.querySelector<HTMLElement>("#prep-seg-canvas-custom");
     if (customPanel) customPanel.hidden = s !== "custom";
-    if (s === "brut") {
+    if (s === "actuel") {
       this._previewToken++; // cancel any in-flight preview render
       this._lastPreview = null;
-      void this._renderBrutView();
+      void this._renderActuelView();
     } else if (s === "tours") {
       this._previewToken++;
       this._lastPreview = null;
@@ -359,16 +368,16 @@ export class SegmentPane {
     });
   }
 
-  // ─── Brut view: read current units · flag anomalies · edit (merge/split) ─────
+  // ─── current-segmentation view: read current units · flag anomalies · edit (merge/split) ─────
 
-  /** Render the Brut view, refreshing Mode A undo eligibility first (one cheap GET). */
-  private async _renderBrutView(): Promise<void> {
+  /** Render the current-segmentation view, refreshing Mode A undo eligibility first (one cheap GET). */
+  private async _renderActuelView(): Promise<void> {
     const conn = this._getConn();
-    if (conn) await this._ensureRoles(conn); // catalogue for the Brut role badges (tranche 3)
+    if (conn) await this._ensureRoles(conn); // catalogue for the state-view role badges (tranche 3)
     await this._refreshUndoElig();
-    if (this._surface !== "brut") return; // a fast surface switch during the await supersedes us
-    this._renderBrut();
-    this._renderApplyBar(); // Brut has no preview → the sheet apply bar hides itself
+    if (this._surface !== "actuel") return; // a fast surface switch during the await supersedes us
+    this._renderActuel();
+    this._renderApplyBar(); // the state surface has no preview → the sheet apply bar hides itself
   }
 
   /** Fetch Mode A undo eligibility for the current doc (best-effort; drives the button). */
@@ -384,10 +393,10 @@ export class SegmentPane {
     }
   }
 
-  /** Brut view: the current units in full (nothing truncated — this tab exists to read the
+  /** current-segmentation view: the current units in full (nothing truncated — this tab exists to read the
    *  raw text), with anomaly filters and per-unit merge/split editing (R5.4b-3). No Apply —
-   *  Brut is the current state, not a transform; edits mutate units directly. */
-  private _renderBrut(): void {
+   *  the state surface is the document as it is, not a transform; edits mutate units directly. */
+  private _renderActuel(): void {
     const el = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
     if (!el) return;
     if (!this._units.length) {
@@ -399,9 +408,9 @@ export class SegmentPane {
       { short: this._filterShort, orphan: this._filterOrphan },
       this._lang,
     );
-    const rows = this._units.map((u, i) => this._brutRowHtml(u, i, view)).join("");
+    const rows = this._units.map((u, i) => this._actuelRowHtml(u, i, view)).join("");
     setHtml(el, raw(`${this._brutBarHtml(view)}<div class="prep-seg-canvas-units">${rows}</div>`));
-    this._wireBrut(el);
+    this._wireActuel(el);
     this._consumePendingFocus(el);
   }
 
@@ -428,7 +437,7 @@ export class SegmentPane {
     return `<button type="button" class="btn btn-ghost btn-sm prep-seg-canvas-undo" id="prep-seg-canvas-undo"${disabled ? " disabled" : ""} title="${esc(title)}">${esc(label)}</button>`;
   }
 
-  /** Repaint the undo button in place, keeping its listener. Brut re-renders its whole bar on
+  /** Repaint the undo button in place, keeping its listener. the state view re-renders its whole bar on
    *  every change; Tours only re-renders its ¶ list, so the button needs this cheap sync. */
   private _syncUndoBtn(): void {
     const btn = this._root.querySelector<HTMLButtonElement>("#prep-seg-canvas-undo");
@@ -439,9 +448,9 @@ export class SegmentPane {
     btn.title = elig ? formatUndoTooltip(elig) : "";
   }
 
-  /** One Brut unit: number + edit actions (line units only) + text, decorated per anomaly.
+  /** One current-segmentation unit: number + edit actions (line units only) + text, decorated per anomaly.
    *  When this unit is being split, render the inline split editor in its place. */
-  private _brutRowHtml(
+  private _actuelRowHtml(
     u: { n: number; text: string; isLine: boolean; role: string | null; textRaw: string; textSource: string | null },
     i: number, view: AnomalyView,
   ): string {
@@ -515,14 +524,14 @@ export class SegmentPane {
       </div>`;
   }
 
-  private _wireBrut(el: HTMLElement): void {
+  private _wireActuel(el: HTMLElement): void {
     el.querySelector<HTMLInputElement>("#prep-seg-canvas-f-short")?.addEventListener("change", (e) => {
       this._filterShort = (e.target as HTMLInputElement).checked;
-      this._renderBrut();
+      this._renderActuel();
     });
     el.querySelector<HTMLInputElement>("#prep-seg-canvas-f-orphan")?.addEventListener("change", (e) => {
       this._filterOrphan = (e.target as HTMLInputElement).checked;
-      this._renderBrut();
+      this._renderActuel();
     });
     el.querySelector<HTMLButtonElement>("#prep-seg-canvas-undo")?.addEventListener("click", () => void this._undo());
     el.querySelectorAll<HTMLButtonElement>(".prep-seg-canvas-unit [data-act]").forEach((btn) => {
@@ -547,7 +556,7 @@ export class SegmentPane {
           if (this._textEditingN !== null) void this._confirmTextEdit(this._textEditingN);
         } else if (e.key === "Escape") {
           e.preventDefault();
-          this._textEditingN = null; this._textDraft = null; this._renderBrut();
+          this._textEditingN = null; this._textDraft = null; this._renderActuel();
         }
       });
       editTa.focus();
@@ -571,11 +580,11 @@ export class SegmentPane {
     const n = Number(btn.dataset.n);
     if (act === "merge-up") void this._merge(n, "up");
     else if (act === "merge-down") void this._merge(n, "down");
-    else if (act === "split") { this._splitEditingN = n; this._splitDraft = null; this._textEditingN = null; this._renderBrut(); }
-    else if (act === "split-cancel") { this._splitEditingN = null; this._splitDraft = null; this._renderBrut(); }
+    else if (act === "split") { this._splitEditingN = n; this._splitDraft = null; this._textEditingN = null; this._renderActuel(); }
+    else if (act === "split-cancel") { this._splitEditingN = null; this._splitDraft = null; this._renderActuel(); }
     else if (act === "split-confirm") void this._confirmSplit(n);
-    else if (act === "edit-text") { this._textEditingN = n; this._textDraft = null; this._splitEditingN = null; this._renderBrut(); }
-    else if (act === "edit-text-cancel") { this._textEditingN = null; this._textDraft = null; this._renderBrut(); }
+    else if (act === "edit-text") { this._textEditingN = n; this._textDraft = null; this._splitEditingN = null; this._renderActuel(); }
+    else if (act === "edit-text-cancel") { this._textEditingN = null; this._textDraft = null; this._renderActuel(); }
     else if (act === "edit-text-confirm") void this._confirmTextEdit(n);
   }
 
@@ -645,7 +654,7 @@ export class SegmentPane {
     if (!u) return;
     const box = this._root.querySelector<HTMLElement>(`.prep-seg-canvas-unit--editing[data-n="${n}"]`);
     const newText = box?.querySelector<HTMLTextAreaElement>(".prep-seg-canvas-edit-ta")?.value ?? "";
-    if (newText === u.text) { this._textEditingN = null; this._textDraft = null; this._renderBrut(); return; } // no-op
+    if (newText === u.text) { this._textEditingN = null; this._textDraft = null; this._renderActuel(); return; } // no-op
     this._busy = true;
     try {
       const res = await updateUnitTextNorm(conn, u.unitId, newText);
@@ -658,7 +667,7 @@ export class SegmentPane {
       this._textEditingN = null;
       this._textDraft = null;
       await this._refreshUndoElig(); // the edit recorded an undoable Mode-A action
-      this._renderBrut();
+      this._renderActuel();
     } catch (e) {
       this._notify(e instanceof Error ? e.message : String(e), true);
     } finally {
@@ -704,7 +713,7 @@ export class SegmentPane {
 
   private async _runPreview(): Promise<void> {
     const conn = this._getConn();
-    if (!conn || this._docId === null || this._surface === "brut" || this._surface === "tours") return; // these have their own render path
+    if (!conn || this._docId === null || this._surface === "actuel" || this._surface === "tours") return; // these have their own render path
     const token = ++this._previewToken;
     const previewEl = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
     if (previewEl) setHtml(previewEl, raw(`<div class="prep-seg-canvas-empty">Calcul de l&#8217;aper&#231;u&#8230;</div>`));
@@ -776,8 +785,20 @@ export class SegmentPane {
       return;
     }
     bar.classList.add("visible");
+    // Ce que ce decoupage couterait, LU AVANT de l'appliquer. La detection ne tournait que
+    // sur la vue d'etat, donc apres coup : on jugeait un candidat a l'aveugle alors
+    // qu'appliquer detruit tous les liens d'alignement du document. Filtres inactifs — on
+    // ne veut que les comptes (DESIGN_segmentation_surfaces.md §3.3).
+    const anomalies = computeAnomalyView(
+      resp.segments.map((seg) => ({ text: seg.text, isLine: true })),
+      { short: false, orphan: false },
+      this._lang,
+    );
+    const flagged = anomalies.shortCount + anomalies.orphanCount > 0;
     setHtml(bar, raw(`
       <span class="prep-seg-canvas-summary">${esc(segmentSummaryLine(resp.units_input, resp.units_output))}</span>
+      <span class="prep-seg-canvas-anomalies${flagged ? " prep-seg-canvas-anomalies--flagged" : ""}">${
+        esc(anomalySummaryLine(anomalies.shortCount, anomalies.orphanCount))}</span>
       <button type="button" class="btn btn-primary btn-sm" id="prep-seg-canvas-apply">Appliquer la segmentation</button>
     `));
     bar.querySelector("#prep-seg-canvas-apply")?.addEventListener("click", () => void this._apply());
@@ -830,7 +851,7 @@ export class SegmentPane {
   // by hand. R5.4c preview-then-apply flow retired (retrait Segmentation lineage).
 
   /** Render the Tours surface, refreshing Mode A undo eligibility first (one cheap GET) —
-   *  same shape as _renderBrutView, so the undo button is accurate on arrival. */
+   *  same shape as _renderActuelView, so the undo button is accurate on arrival. */
   private async _renderToursView(): Promise<void> {
     await this._refreshUndoElig();
     if (this._surface !== "tours") return; // a fast surface switch during the await supersedes us
@@ -868,8 +889,8 @@ export class SegmentPane {
     el.querySelector<HTMLButtonElement>("#prep-seg-canvas-tours-prefill")
       ?.addEventListener("click", () => void this._prefillTours());
     // QA-06: both gestures of this surface are undoable (¶ toggle and « Pré-remplir »), so the
-    // button belongs here too — it used to live only on the Brut bar, forcing a tab change to
-    // undo what was just done here. Same document-scoped semantics as Brut (the engine's undo
+    // button belongs here too — it used to live only on the state view's bar, forcing a tab change to
+    // undo what was just done here. Same document-scoped semantics as the state view (the engine's undo
     // is strictly linear); the label names the action, so it never undoes something unnamed.
     el.querySelector<HTMLButtonElement>("#prep-seg-canvas-undo")
       ?.addEventListener("click", () => void this._undo());
@@ -1074,7 +1095,7 @@ export class SegmentPane {
   }
 
   /** Read-only, section-by-section: header, source-vs-result count (delta), warnings, segments.
-   *  Fine tweaks are NOT here — the user resegments via Brut merge/split after applying. */
+   *  Fine tweaks are NOT here — the user adjusts via merge/split in « Segmentation actuelle » after applying. */
   private _renderPropagate(res: PropagatePreviewResponse): void {
     const el = this._root.querySelector<HTMLElement>("#prep-seg-canvas-preview");
     if (!el) return;

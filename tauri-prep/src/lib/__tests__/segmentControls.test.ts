@@ -3,6 +3,7 @@ import type { SegmentPreviewSegment } from "../sidecarClient.ts";
 import {
   buildSegmentParams,
   groupSegmentsBySource,
+  anomalySummaryLine,
   segmentSummaryLine,
   needsAlignmentConfirm,
   alignmentLossNote,
@@ -21,7 +22,7 @@ describe("buildSegmentParams", () => {
   });
 
   it("Brut and Tours request no fine segmentation params", () => {
-    expect(buildSegmentParams("brut")).toEqual({});
+    expect(buildSegmentParams("actuel")).toEqual({});
     expect(buildSegmentParams("tours")).toEqual({}); // Tours is a coarse regroup, own endpoint
   });
 
@@ -187,5 +188,24 @@ describe("cutDissolvedNote — une coupe ne doit pas disparaître en silence (D-
     // Une coupe répartit UNE phrase sur plusieurs lignes moyeu : effacer les bornes les
     // rend toutes entières d'un coup, et l'utilisateur doit savoir que ça a bougé ailleurs.
     expect(cutDissolvedNote(3)).toContain("3 segments la partageaient");
+  });
+});
+
+describe("anomalySummaryLine — ce qu'un découpage coûterait, lu avant de l'appliquer", () => {
+  it("accorde le pluriel des deux familles", () => {
+    expect(anomalySummaryLine(1, 0)).toBe("1 segment court");
+    expect(anomalySummaryLine(3, 0)).toBe("3 segments courts");
+    expect(anomalySummaryLine(0, 1)).toBe("1 ponctuation orpheline");
+    expect(anomalySummaryLine(0, 2)).toBe("2 ponctuations orphelines");
+  });
+
+  it("joint les deux familles quand les deux sont présentes", () => {
+    expect(anomalySummaryLine(3, 1)).toBe("3 segments courts · 1 ponctuation orpheline");
+  });
+
+  it("dit explicitement le cas propre plutôt que de se taire", () => {
+    // Le vide se confondrait avec « pas calculé », alors qu'on veut justement voir le
+    // compte tomber à mesure qu'on règle les terminateurs et les abréviations.
+    expect(anomalySummaryLine(0, 0)).toBe("aucune anomalie détectée");
   });
 });

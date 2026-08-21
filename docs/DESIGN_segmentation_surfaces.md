@@ -1,7 +1,8 @@
 # Les surfaces de la couche Segmentation — état contre proposition
 
-**Statut :** conception arrêtée, non codée. Décidé le 2026-08-21, en session, à partir
-d'une confusion rencontrée à l'écran puis reproduite en lisant le code.
+**Statut : LIVRÉ le 2026-08-21.** Conception arrêtée puis codée dans la foulée, à partir
+d'une confusion rencontrée à l'écran puis reproduite en lisant le code. Les quatre points
+de la §3 sont en place ; la §2 reste le registre de ce qui a été écarté, et pourquoi.
 
 Le chantier porteur est **R5** (couches Curation, Annotation et Segmentation au canvas) —
 voir ses items dans `pilotage/R5.md`.
@@ -185,8 +186,10 @@ celui du libellé est trivial.
 
 ## 4. Question laissée ouverte
 
-Le libellé exact de l'onglet d'état. « Segmentation actuelle » est retenu ici, mais
-« Segments » ou « Courant » diraient la même chose plus court. Le critère : le mot doit
+Le libellé exact de l'onglet d'état. **« Segmentation actuelle » est ce qui a été
+posé** — long pour un onglet, mais sans ambiguïté, et lever l'ambiguïté est toute la
+raison du lot. « Segments » ou « Courant » diraient la même chose plus court, et le
+changement ne coûte qu'une chaîne. Le critère : le mot doit
 opposer *ce document, maintenant* à *une découpe possible* — c'est le cœur du
 malentendu, et c'est tout ce que le nom doit porter.
 
