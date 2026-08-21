@@ -21,7 +21,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { _litteralSaufWildcard, _messageLisible } from "../rechercheModule";
+import { _litteralSaufWildcard, _messageLisible, _porteeAnnotee } from "../rechercheModule";
 
 /** Ce que le moteur compilera après le passage par la chaîne CQL. */
 function commeLeMoteur(saisie: string): RegExp {
@@ -83,5 +83,42 @@ describe("le message d'erreur parle de la requête", () => {
   it("laisse passer tout le reste sans le déguiser", () => {
     // Une panne réseau ne doit pas être maquillée en erreur de requête.
     expect(_messageLisible("Connection refused")).toBe("Erreur : Connection refused");
+  });
+});
+
+/**
+ * La portée réelle de la recherche grammaticale.
+ *
+ * Mesuré le 2026-08-21 : 6 documents annotés sur 54, soit 11 % du corpus. Le filtre
+ * les listait tous et le filtre de langue proposait des langues sans un seul token —
+ * si bien qu'un résultat vide ne disait pas « ce mot est absent » mais peut-être « ce
+ * document n'est pas annoté », sans moyen de faire la différence. `/documents` renvoie
+ * `token_count` depuis toujours ; il suffisait de le lire.
+ */
+describe("portée annotée — distinguer « absent » de « non annoté »", () => {
+  // Le corpus de travail en modèle réduit : deux annotés, un pas.
+  const tokens = new Map([[411, 24902], [387, 20636]]);
+  const langues = new Map([[411, "fr"], [387, "es"], [403, "fr"]]);
+
+  it("compte tout quand aucune portée n'est imposée", () => {
+    expect(_porteeAnnotee(tokens, [], null, langues)).toBe(45538);
+  });
+
+  it("rend zéro sur un document non annoté — le cas qui rendait l'écran muet", () => {
+    expect(_porteeAnnotee(tokens, [403], null, langues)).toBe(0);
+  });
+
+  it("rend zéro sur une langue sans aucun token", () => {
+    expect(_porteeAnnotee(tokens, [], "ro", langues)).toBe(0);
+  });
+
+  it("croise document et langue", () => {
+    expect(_porteeAnnotee(tokens, [411, 387], "es", langues)).toBe(20636);
+    // Un document annoté, mais dans une autre langue que celle demandée.
+    expect(_porteeAnnotee(tokens, [411], "es", langues)).toBe(0);
+  });
+
+  it("un document annoté seul est bien atteignable", () => {
+    expect(_porteeAnnotee(tokens, [411], null, langues)).toBe(24902);
   });
 });

@@ -40,6 +40,35 @@ let _statsLoading = false;
 // fetches from a previous query are silently discarded when they arrive.
 let _statsGeneration = 0;
 
+/** Ce que la recherche grammaticale peut RÉELLEMENT atteindre.
+ *
+ *  Elle ne porte que sur les documents annotés. Mesuré sur le corpus de travail le
+ *  2026-08-21 : **6 documents sur 54**, soit 11 %. Le filtre les listait pourtant
+ *  tous, et le filtre de langue proposait des langues sans un seul token — si bien
+ *  qu'un résultat vide ne disait pas « ce mot est absent » mais peut-être « ce
+ *  document n'est pas annoté », sans moyen de faire la différence. `/documents`
+ *  renvoie `token_count` depuis toujours ; il suffisait de le lire. */
+let _tokensParDoc = new Map<number, number>();
+let _docsTotal = 0;
+
+/** Tokens atteignables par la portée choisie. Zéro = la recherche ne PEUT rien rendre. */
+export function _porteeAnnotee(
+  tokensParDoc: Map<number, number>,
+  docIds: number[],
+  langue: string | null,
+  langueParDoc: Map<number, string>,
+): number {
+  let total = 0;
+  for (const [docId, n] of tokensParDoc) {
+    if (docIds.length > 0 && !docIds.includes(docId)) continue;
+    if (langue && langueParDoc.get(docId) !== langue) continue;
+    total += n;
+  }
+  return total;
+}
+
+let _langueParDoc = new Map<number, string>();
+
 // Collocations (server-side)
 interface _CollocateRow {
   value: string;
@@ -303,6 +332,7 @@ function _renderShell(root: HTMLElement): void {
             <option value="">(tous)</option>
           </select>
         </label>
+        <div class="rech-portee" hidden></div>
         <label class="rech-filter-label">Contexte
           <select class="rech-filter-window">
             <option value="5">5 tokens</option>
@@ -825,9 +855,22 @@ async function _populateDocFilter(root: HTMLElement): Promise<void> {
   if (!_conn) return;
   try {
     const res = await _conn.get("/documents") as {
-      documents?: Array<{ doc_id: number; title?: string; language?: string }>;
+      documents?: Array<{ doc_id: number; title?: string; language?: string; token_count?: number }>;
     };
     const docs = res.documents ?? [];
+
+    // La recherche grammaticale ne porte que sur les documents ANNOTÉS.
+    _tokensParDoc = new Map();
+    _langueParDoc = new Map();
+    _docsTotal = docs.length;
+    for (const d of docs) {
+      const n = d.token_count ?? 0;
+      if (n > 0) _tokensParDoc.set(d.doc_id, n);
+      if (d.language) _langueParDoc.set(d.doc_id, d.language);
+    }
+    const languesAnnotees = new Set(
+      docs.filter(d => (d.token_count ?? 0) > 0).map(d => d.language ?? "").filter(Boolean),
+    );
 
     // Languages
     const langSel = root.querySelector<HTMLSelectElement>(".rech-filter-lang")!;
@@ -836,7 +879,12 @@ async function _populateDocFilter(root: HTMLElement): Promise<void> {
     const langs = [...new Set(docs.map(d => d.language ?? "").filter(Boolean))].sort();
     langs.forEach(lang => {
       const opt = document.createElement("option");
-      opt.value = lang; opt.textContent = lang;
+      opt.value = lang;
+      // Marquer plutôt que masquer : une langue qui disparaît sans explication se lit
+      // comme une perte de données.
+      const annotee = languesAnnotees.has(lang);
+      opt.textContent = annotee ? lang : `${lang} — non annoté`;
+      opt.disabled = !annotee;
       langSel.appendChild(opt);
     });
 
@@ -850,11 +898,24 @@ async function _populateDocFilter(root: HTMLElement): Promise<void> {
     docs.forEach(doc => {
       const opt = document.createElement("option");
       opt.value = String(doc.doc_id);
-      opt.textContent = doc.title ?? `#${doc.doc_id}`;
+      const n = doc.token_count ?? 0;
+      const titre = doc.title ?? `#${doc.doc_id}`;
+      opt.textContent = n > 0 ? `${titre} (${n} tokens)` : `${titre} — non annoté`;
+      opt.disabled = n === 0;
       docSel.appendChild(opt);
     });
     // Make it a reasonable height
     docSel.size = Math.min(docs.length + 1, 4);
+
+    // Dire d'emblée sur quoi la recherche porte, plutôt que de le laisser deviner.
+    const portee = root.querySelector<HTMLElement>(".rech-portee");
+    if (portee) {
+      const annotes = _tokensParDoc.size;
+      portee.textContent = annotes === _docsTotal
+        ? ""
+        : `La recherche grammaticale ne porte que sur les documents annotés : ${annotes} sur ${_docsTotal}.`;
+      portee.hidden = annotes === _docsTotal;
+    }
   } catch { /* non-fatal */ }
 }
 
@@ -982,7 +1043,20 @@ async function _doSearch(root: HTMLElement, loadMore: boolean): Promise<void> {
     const hasAligned = includeAligned && _hits.some(h => h.aligned && h.aligned.length > 0);
     const alignedNote = includeAligned && !hasAligned && _hits.length > 0
       ? " · (aucune traduction alignée trouvée)" : "";
-    _setStatus(root, _total === 0 ? "" : `${_total} occurrence${_total > 1 ? "s" : ""}${alignedNote}`, false);
+    if (_total === 0) {
+      // Distinguer « ce mot est absent » de « cette portée n'est pas annotée » : sans
+      // ça, les deux se présentent identiquement, par un écran vide.
+      const atteignables = _porteeAnnotee(_tokensParDoc, doc_ids ?? [], language, _langueParDoc);
+      _setStatus(
+        root,
+        atteignables === 0
+          ? "Aucun document annoté dans cette sélection — la recherche grammaticale ne peut rien y trouver."
+          : "",
+        atteignables === 0,
+      );
+    } else {
+      _setStatus(root, `${_total} occurrence${_total > 1 ? "s" : ""}${alignedNote}`, false);
+    }
     root.querySelector<HTMLElement>(".rech-empty")!.hidden = _hits.length > 0;
 
     // Persist last successful query so the Publier screen can offer a direct re-export
@@ -2201,6 +2275,12 @@ const MODULE_CSS = `
   display: flex; align-items: center; gap: 4px;
   font-size: 0.78rem; color: var(--color-muted, #888); cursor: pointer;
   white-space: nowrap;
+}
+.rech-portee {
+  flex-basis: 100%;
+  font-size: 0.85em;
+  opacity: 0.75;
+  padding: 2px 0 0 2px;
 }
 .rech-quick-hint {
   font-size: 0.73rem; color: var(--color-muted, #aaa); padding-top: 2px;
