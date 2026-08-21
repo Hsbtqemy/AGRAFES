@@ -524,7 +524,7 @@ export function _messageLisible(msg: string): string {
     // faisait pointer un caractère qui n'est pas le bon.
     const ou = m[3] ? ` (caractère n° ${Number(m[3]) + 1} du motif)` : "";
     return `Expression régulière invalide dans « ${m[1]} »${ou} : ${detail}. `
-      + "Échappez le caractère spécial d'un antislash — par exemple « trois\\) » — "
+      + "Faites précéder le caractère spécial d'un antislash — par exemple « trois\\) » — "
       + "ou utilisez une boîte rapide, qui prend la saisie au pied de la lettre.";
   }
   // FILET, et non chemin vivant : `validateCqlSyntax` intercepte l'attribut inconnu
