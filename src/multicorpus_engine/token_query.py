@@ -142,9 +142,12 @@ def _build_hit(
     mode: str,
     window: int,
     meta: dict[str, Any],
+    text_norm: str,
     stream_tokens: list[dict[str, Any]],
     match: _TokenMatch,
 ) -> dict[str, Any]:
+    """Build one wire hit. ``text_norm`` comes in separately — ``meta`` no longer
+    carries it, see :func:`_stream_groups`."""
     matched_tokens = [_token_public(stream_tokens[i]) for i in match.indices]
     start_tok = stream_tokens[match.start]
     end_tok = stream_tokens[match.end - 1]
@@ -157,7 +160,6 @@ def _build_hit(
     end_sent_id = int(end_tok["sent_id"])
     start_pos = int(start_tok["position"])
     end_pos = int(end_tok["position"])
-    text_norm = meta.get("text_norm") or ""
 
     base_hit: dict[str, Any] = {
         "doc_id": int(meta["doc_id"]),
@@ -211,6 +213,27 @@ def _stream_groups(
     language: Optional[str],
     doc_ids: Optional[list[int]],
 ) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
+    """Group every token of the corpus into per-unit (or per-sentence) streams.
+
+    The returned ``meta`` carries no unit text on purpose. This query is at *token*
+    grain, so any unit column it selects is duplicated once per token the unit
+    contains — a cost quadratic in unit length. Measured on the working corpus
+    (87 300 tokens), where one document had been imported as a single 110 788-char
+    unit bearing 24 902 tokens:
+
+    ==========================================  ========  ===========
+    query                                       time      Python heap
+    ==========================================  ========  ===========
+    with ``text_norm`` + ``text_raw``            81.05 s    11 127 MB
+    with ``text_norm`` only                      25.00 s     5 592 MB
+    no unit text (this one)                       0.63 s        41 MB
+    ==========================================  ========  ===========
+
+    ``text_raw`` was never read by any of the three consumers; ``text_norm`` is read
+    only by :func:`run_token_query_page`, and only for the units of the page it
+    returns — see :func:`_fetch_unit_texts`. ``doc_date`` stays because
+    ``token_stats`` buckets hits by year from it, and it is short.
+    """
     filters = ["u.unit_type = 'line'"]
     params: list[Any] = []
     if language:
@@ -226,8 +249,6 @@ def _stream_groups(
             u.doc_id,
             u.unit_id,
             u.external_id,
-            u.text_norm,
-            u.text_raw,
             u.n AS unit_n,
             d.language,
             d.title,
@@ -269,8 +290,6 @@ def _stream_groups(
                 "unit_id": int(row["unit_id"]),
                 "unit_n": int(row["unit_n"]),
                 "external_id": row["external_id"],
-                "text_norm": row["text_norm"] or "",
-                "text_raw": row["text_raw"] or "",
                 "language": row["language"],
                 "title": row["title"],
                 "doc_date": row["doc_date"],
@@ -294,6 +313,26 @@ def _stream_groups(
         groups.append((current_meta, current_tokens))
 
     return groups
+
+
+def _fetch_unit_texts(
+    conn: sqlite3.Connection,
+    unit_ids: list[int],
+) -> dict[int, str]:
+    """Return ``text_norm`` keyed by unit_id, for the units of one page only.
+
+    Same pattern as :func:`_fetch_aligned` and :func:`_fetch_context_segments`:
+    the stream query stays at token grain and slim, the text is fetched once per
+    unit for the handful of units actually rendered.
+    """
+    if not unit_ids:
+        return {}
+    ph = ",".join("?" * len(unit_ids))
+    rows = conn.execute(
+        f"SELECT u.unit_id, u.text_norm FROM units u WHERE u.unit_id IN ({ph})",
+        unit_ids,
+    ).fetchall()
+    return {int(r["unit_id"]): (r["text_norm"] or "") for r in rows}
 
 
 def _fetch_aligned(
@@ -504,6 +543,10 @@ def run_token_query_page(
     has_more = offset + limit < total
     next_offset = offset + limit if has_more else None
 
+    # The unit text is fetched here, for the units of this page only — never in the
+    # stream query, which is at token grain (see _stream_groups).
+    unit_texts = _fetch_unit_texts(conn, sorted({int(meta["unit_id"]) for meta, _, _ in page_matches}))
+
     hits: list[dict[str, Any]] = []
     for meta, stream_tokens, m in page_matches:
         hits.append(
@@ -511,6 +554,7 @@ def run_token_query_page(
                 mode=mode,
                 window=window,
                 meta=meta,
+                text_norm=unit_texts.get(int(meta["unit_id"]), ""),
                 stream_tokens=stream_tokens,
                 match=m,
             )
