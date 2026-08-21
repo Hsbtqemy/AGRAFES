@@ -540,15 +540,24 @@ describe("SegmentPane — les deux natures de surface (R5)", () => {
     const pane = new SegmentPane(host, () => fakeConn({ units: [unit(1)] }), () => {}, null, () => {});
     await pane.setDocument(1, "fr");
     await flush();
-    const groupes = host.querySelectorAll('[role="tablist"]');
+    // `role="group"` et non `tablist` : ces boutons commutent le mode d'un panneau unique.
+    // Deux `tablist` auraient laissé, à tout instant, l'un des deux sans onglet sélectionné.
+    const groupes = host.querySelectorAll('[role="group"]');
     expect(groupes.length).toBe(2);
+    expect(host.querySelectorAll('[role="tablist"]').length).toBe(0);
     // L'état : la segmentation actuelle et son autre grain. Les générateurs : les aperçus.
-    expect(groupes[0].querySelectorAll('[role="tab"]').length).toBe(2);
-    expect(groupes[1].querySelectorAll('[role="tab"]').length).toBe(3);
+    expect(groupes[0].querySelectorAll(".prep-seg-canvas-surfbtn").length).toBe(2);
+    expect(groupes[1].querySelectorAll(".prep-seg-canvas-surfbtn").length).toBe(3);
+    // Un seul bouton enfoncé dans toute la barre, quel que soit le groupe.
+    expect(host.querySelectorAll('.prep-seg-canvas-surfbtn[aria-pressed="true"]').length).toBe(1);
     expect(groupes[0].querySelector('[data-surface="tours"]')).not.toBeNull();
     expect(groupes[1].querySelector('[data-surface="actuel"]')).toBeNull();
     // Un verbe, et non « Re-découper » : c'est souvent le premier geste sur un import.
     expect(host.querySelector("#prep-seg-canvas-seglabel")?.textContent).toContain("Segmenter");
+    expect(host.querySelector(".prep-seg-canvas-surfsep")).not.toBeNull();
+    // L'indice décrit la surface active dès le montage, sans attendre un premier clic.
+    expect(host.querySelector("#prep-seg-canvas-hint")?.textContent)
+      .toContain("segments actuels");
   });
 });
 

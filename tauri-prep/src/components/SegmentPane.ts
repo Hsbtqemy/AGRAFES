@@ -143,16 +143,23 @@ export class SegmentPane {
     this._root.innerHTML = `
       <div class="prep-seg-canvas-root">
         <div class="prep-seg-canvas-toolbar">
-          <div class="prep-seg-canvas-surface" role="tablist" aria-label="Segments du document">
-            <button type="button" class="prep-seg-canvas-surfbtn active" data-surface="actuel" role="tab" aria-selected="true" title="Les segments tels qu'ils existent aujourd'hui &#8212; la seule vue o&#249; on les modifie">Segmentation actuelle</button>
-            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="tours" role="tab" aria-selected="false" title="Grain grossier : regrouper en tours de parole (parent_n), sans re-d&#233;couper">Tours</button>
+          <!-- role=group et non tablist : ces boutons commutent le MODE d'un panneau
+               unique, ils ne selectionnent pas des panneaux distincts. Le tablist
+               d'origine etait declaratif seulement — aucune navigation aux fleches n'a
+               jamais ete implementee, et un lecteur d'ecran en annonce pourtant une. Les
+               separer en deux tablist aurait aggrave le cas : a tout instant, l'un des
+               deux n'aurait porte AUCUN onglet selectionne. aria-pressed dit exactement
+               ce que fait un commutateur. -->
+          <div class="prep-seg-canvas-surface" role="group" aria-label="Segments du document">
+            <button type="button" class="prep-seg-canvas-surfbtn active" data-surface="actuel" aria-pressed="true" title="Les segments tels qu'ils existent aujourd'hui &#8212; la seule vue o&#249; on les modifie">Segmentation actuelle</button>
+            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="tours" aria-pressed="false" title="Grain grossier : regrouper en tours de parole (parent_n), sans re-d&#233;couper">Tours</button>
           </div>
           <span class="prep-seg-canvas-surfsep" aria-hidden="true"></span>
           <span class="prep-seg-canvas-surflabel" id="prep-seg-canvas-seglabel">Segmenter :</span>
-          <div class="prep-seg-canvas-surface" role="tablist" aria-labelledby="prep-seg-canvas-seglabel">
-            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="phrases" role="tab" aria-selected="false">Phrases</button>
-            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="balises" role="tab" aria-selected="false">Balises [N]</button>
-            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="custom" role="tab" aria-selected="false">Personnalis&#233;</button>
+          <div class="prep-seg-canvas-surface" role="group" aria-labelledby="prep-seg-canvas-seglabel">
+            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="phrases" aria-pressed="false">Phrases</button>
+            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="balises" aria-pressed="false">Balises [N]</button>
+            <button type="button" class="prep-seg-canvas-surfbtn" data-surface="custom" aria-pressed="false">Personnalis&#233;</button>
           </div>
           <button type="button" class="prep-seg-canvas-propbtn btn btn-ghost btn-sm" id="prep-seg-canvas-propagate" hidden
             title="Recouper cette traduction pour qu'elle ait le m&#234;me nombre de segments par section que sa source.">Propager la segmentation</button>
@@ -330,7 +337,7 @@ export class SegmentPane {
     this._root.querySelectorAll<HTMLButtonElement>(".prep-seg-canvas-surfbtn").forEach((b) => {
       const on = b.dataset.surface === s;
       b.classList.toggle("active", on);
-      b.setAttribute("aria-selected", String(on));
+      b.setAttribute("aria-pressed", String(on));
     });
     this._syncHint();
     const customPanel = this._root.querySelector<HTMLElement>("#prep-seg-canvas-custom");
@@ -795,10 +802,15 @@ export class SegmentPane {
       this._lang,
     );
     const flagged = anomalies.shortCount + anomalies.orphanCount > 0;
+    // Aucun segment a juger : « aucune anomalie detectee » serait vrai a la lettre et
+    // absurde a lire sur un document vide ou non segmentable.
+    const chip = resp.segments.length
+      ? `<span class="prep-seg-canvas-anomalies${flagged ? " prep-seg-canvas-anomalies--flagged" : ""}">${
+          esc(anomalySummaryLine(anomalies.shortCount, anomalies.orphanCount))}</span>`
+      : "";
     setHtml(bar, raw(`
       <span class="prep-seg-canvas-summary">${esc(segmentSummaryLine(resp.units_input, resp.units_output))}</span>
-      <span class="prep-seg-canvas-anomalies${flagged ? " prep-seg-canvas-anomalies--flagged" : ""}">${
-        esc(anomalySummaryLine(anomalies.shortCount, anomalies.orphanCount))}</span>
+      ${chip}
       <button type="button" class="btn btn-primary btn-sm" id="prep-seg-canvas-apply">Appliquer la segmentation</button>
     `));
     bar.querySelector("#prep-seg-canvas-apply")?.addEventListener("click", () => void this._apply());

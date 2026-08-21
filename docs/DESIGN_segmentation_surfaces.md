@@ -195,7 +195,19 @@ malentendu, et c'est tout ce que le nom doit porter.
 
 *(Le libellé du second groupe, lui, est tranché : « Segmenter ». Voir §3.1.)*
 
-**Navigation au clavier.** Les cinq boutons forment aujourd'hui un seul groupe d'onglets,
-donc les flèches les parcourent tous. Séparés, ils deviennent **deux groupes
-indépendants** : si la frontière mérite d'être vue, elle mérite d'être franchie exprès.
-Décidé le 2026-08-21, à revoir seulement si l'usage montre le contraire.
+**Navigation au clavier — décidé, puis corrigé en passe adverse le 2026-08-21.**
+Cette note affirmait d'abord que « les cinq boutons forment un seul groupe d'onglets, donc
+les flèches les parcourent tous », et concluait à deux `tablist` indépendants. **Les deux
+moitiés étaient fausses.** Vérifié : aucun `keydown`, aucun `tabindex` mobile — la
+navigation aux flèches n'a jamais été implémentée. Le `role="tablist"` était déclaratif
+seulement, ce qui est en soi un anti-motif : un lecteur d'écran annonce une navigation qui
+n'existe pas.
+
+Et la séparation en deux `tablist` **aggravait** le cas : à tout instant, l'un des deux
+n'aurait porté **aucun** onglet sélectionné, là où il y en avait un avec exactement une
+sélection.
+
+Retenu à la place : `role="group"` et `aria-pressed`. C'est ce que ces boutons sont —
+des **commutateurs de mode** pour un panneau unique, et non des onglets sélectionnant des
+panneaux distincts. Aucune promesse de navigation aux flèches, donc aucune promesse
+trahie, et un seul bouton enfoncé dans toute la barre quel que soit le groupe.
