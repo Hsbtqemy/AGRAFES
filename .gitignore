@@ -72,6 +72,7 @@ externalBin
 tauri-app/tauri-app/
 tauri-shell/tauri-shell/
 tauri-shell/public/demo/.agrafes_sidecar.json
+tauri-shell/public/demo/.agrafes_sidecar.spawning.json
 tauri-shell/public/demo/*.db-shm
 tauri-shell/public/demo/*.db-wal
 tauri-shell/public/demo/runs/

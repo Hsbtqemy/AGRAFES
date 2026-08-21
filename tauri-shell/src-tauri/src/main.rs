@@ -99,6 +99,90 @@ fn read_sidecar_portfile(path: String) -> Result<String, String> {
         .map_err(|e| format!("read_sidecar_portfile: cannot read portfile: {}", e))
 }
 
+/// ─── Verrou de spawn (fuite de sidecars) ────────────────────────────────────
+///
+/// Le binaire onefile met ~35 s (mediane mesuree) a ecrire son portfile : pendant
+/// toute cette fenetre, le repertoire n'en porte AUCUN. La garde « in-flight »
+/// d'`ensureRunning` est de l'etat de module JS, donc balayee par chaque
+/// rechargement de webview — et le contexte suivant, ne voyant pas de portfile,
+/// respawne. Mesure sur le journal du 2026-08-20 : 421 spawns sur 750 ont ete
+/// lances alors qu'un autre demarrait encore, jusqu'a cinq empiles.
+///
+/// Le verrou vit donc sur le DISQUE, a cote du portfile : c'est la seule garde qui
+/// survive a un rechargement comme a un redemarrage complet de l'application.
+
+fn spawn_lock_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let p = std::path::Path::new(path);
+    match p.file_name().and_then(|n| n.to_str()) {
+        Some(".agrafes_sidecar.spawning.json") => Ok(p.to_path_buf()),
+        _ => Err("spawn_lock: only .agrafes_sidecar.spawning.json files may be touched".to_string()),
+    }
+}
+
+/// Vrai si le PID designe un processus vivant. Sur un PID inconnu ou mort, faux —
+/// c'est ce qui empeche un verrou abandonne (spawneur tue) de bloquer a jamais.
+fn pid_is_alive(pid: u32) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let out = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/NH", "/FO", "CSV"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        match out {
+            // tasklist rend « INFO: No tasks... » sur stdout quand le PID n'existe pas.
+            Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&format!("\"{}\"", pid)),
+            Err(_) => false,
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+}
+
+/// Lit le verrou et dit s'il est ENCORE valable. Renvoie toujours un JSON, jamais
+/// une erreur d'absence : un verrou absent est le cas nominal.
+#[tauri::command]
+fn read_spawn_lock(path: String) -> Result<String, String> {
+    let p = spawn_lock_path(&path)?;
+    let Ok(raw) = std::fs::read_to_string(&p) else {
+        return Ok("{\"present\":false}".to_string());
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        // Un verrou illisible ne doit pas bloquer : on le traite comme absent.
+        Err(_) => return Ok("{\"present\":false}".to_string()),
+    };
+    let pid = parsed.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let alive = pid != 0 && pid_is_alive(pid);
+    Ok(serde_json::json!({
+        "present": true,
+        "pid": pid,
+        "alive": alive,
+        "started_at_ms": parsed.get("started_at_ms").and_then(|v| v.as_i64()).unwrap_or(0),
+    })
+    .to_string())
+}
+
+/// Pose le verrou (pid non nul) ou le retire (pid nul).
+#[tauri::command]
+fn write_spawn_lock(path: String, pid: u32, started_at_ms: i64) -> Result<(), String> {
+    let p = spawn_lock_path(&path)?;
+    if pid == 0 {
+        // Retrait : un verrou deja absent n'est pas une erreur.
+        let _ = std::fs::remove_file(&p);
+        return Ok(());
+    }
+    let body = serde_json::json!({ "pid": pid, "started_at_ms": started_at_ms }).to_string();
+    std::fs::write(&p, body).map_err(|e| format!("write_spawn_lock: {}", e))
+}
+
 /// Reads the local telemetry NDJSON file (`.agrafes_telemetry.ndjson`).
 /// Companion of `read_sidecar_portfile` — same pattern, different whitelist.
 /// The NDJSON lives next to the DB. Bounded read (max 5 MiB) to avoid
@@ -252,7 +336,10 @@ struct SidecarEntry {
     base_url: String,
     token: Option<String>,
     /// PID of the spawned sidecar (bootstrap process), used as a reap fallback
-    /// when graceful /shutdown fails (R-01d). None on the portfile-reuse path.
+    /// when graceful /shutdown fails (R-01d). Renseigne sur les DEUX chemins :
+    /// `child.pid` au spawn, le pid du portfile a la reutilisation
+    /// (shared/sidecarCore.ts, `makeConn(..., pfData.pid)`). Le commentaire
+    /// precedent disait « None on the portfile-reuse path » — perime.
     pid: Option<u32>,
 }
 
@@ -389,6 +476,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             sidecar_fetch_loopback,
             read_sidecar_portfile,
+            read_spawn_lock,
+            write_spawn_lock,
             read_telemetry_ndjson,
             write_sidecar_log,
             register_sidecar,

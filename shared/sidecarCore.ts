@@ -317,6 +317,50 @@ export function portfilePath(dbPath: string): string {
   return `${dir}${sep}.agrafes_sidecar.json`;
 }
 
+/** Chemin du verrou de spawn, à côté du portfile.
+ *
+ *  Le binaire onefile met ~35 s (médiane mesurée) à écrire son portfile ; pendant
+ *  toute cette fenêtre le répertoire n'en porte AUCUN. `_ensureInFlight` ne couvre
+ *  pas ce cas : c'est de l'état de module, balayé par chaque rechargement de
+ *  webview, et le contexte suivant respawne. Mesuré sur le journal du 2026-08-20 :
+ *  **421 spawns sur 750** ont été lancés alors qu'un autre démarrait encore,
+ *  jusqu'à cinq empilés. Le verrou vit donc sur le disque — la seule garde qui
+ *  survive à un rechargement comme à un redémarrage de l'application.
+ */
+export function spawnLockPath(dbPath: string): string {
+  return portfilePath(dbPath).replace(/\.agrafes_sidecar\.json$/, ".agrafes_sidecar.spawning.json");
+}
+
+export interface SpawnLock {
+  present: boolean;
+  pid?: number;
+  /** Faux dès que le processus est mort : un verrou abandonné ne bloque pas. */
+  alive?: boolean;
+  started_at_ms?: number;
+}
+
+export async function readSpawnLock(dbPath: string): Promise<SpawnLock> {
+  try {
+    const raw = await invoke<string>("read_spawn_lock", { path: spawnLockPath(dbPath) });
+    return JSON.parse(raw) as SpawnLock;
+  } catch {
+    // Un verrou illisible ne doit jamais empêcher de démarrer.
+    return { present: false };
+  }
+}
+
+/** `pid = 0` retire le verrou. */
+export async function writeSpawnLock(dbPath: string, pid: number, startedAtMs = Date.now()): Promise<void> {
+  try {
+    await invoke("write_spawn_lock", { path: spawnLockPath(dbPath), pid, startedAtMs });
+  } catch (err) {
+    // Répertoire en lecture seule, par exemple. On retombe alors sur le comportement
+    // d'avant le verrou — mais en le DISANT : un échec muet ici ferait chercher la
+    // fuite ailleurs pendant des heures.
+    sidecarLog("warn", "verrou de spawn non posé (la garde anti-empilement est inactive)", errToString(err));
+  }
+}
+
 export async function readPortfile(portfile: string): Promise<Record<string, unknown> | null> {
   try {
     // Use the raw Rust command to bypass Tauri FS scope restrictions.
@@ -698,9 +742,83 @@ async function _ensureRunning(dbPath: string): Promise<Conn> {
     }
   }
 
-  // 3. Spawn new sidecar
+  // 3. Un autre démarrage est-il déjà en vol ? (verrou sur disque)
+  const verrou = await readSpawnLock(dbPath);
+  if (verrou.present && verrou.alive) {
+    const age = Date.now() - (verrou.started_at_ms ?? 0);
+    if (age < SIDECAR_STARTUP_JSON_TIMEOUT_MS) {
+      sidecarLog("info", `un sidecar démarre déjà (pid=${verrou.pid}, ${Math.round(age / 1000)}s) — attente du portfile plutôt qu'un second spawn`);
+      const adopte = await _attendrePortfile(dbPath, SIDECAR_STARTUP_JSON_TIMEOUT_MS - age);
+      if (adopte) return adopte;
+      sidecarLog("warn", "le sidecar en vol n'a pas abouti dans le délai — spawn");
+    } else {
+      sidecarLog("warn", `verrou de spawn périmé (pid=${verrou.pid}, ${Math.round(age / 1000)}s) — spawn`);
+    }
+  }
+  if (verrou.present) await writeSpawnLock(dbPath, 0);
+
+  // 4. Spawn new sidecar
   sidecarLog("info", "spawning new sidecar process");
   return _spawnSidecar(dbPath);
+}
+
+/** Attend qu'un sidecar en vol publie son portfile, et l'adopte. `null` au délai.
+ *
+ *  C'est le pendant du verrou : ne pas spawner ne sert à rien si l'on n'attend pas
+ *  celui qui arrive. Le sondage est volontairement lâche — on attend des dizaines
+ *  de secondes, pas des millisecondes. */
+async function _attendrePortfile(dbPath: string, budgetMs: number): Promise<Conn | null> {
+  const echeance = Date.now() + Math.max(0, budgetMs);
+  const pf = portfilePath(dbPath);
+
+  /** Une tentative d'adoption. `null` tant que le sidecar en vol n'est pas joignable. */
+  const tenter = async (): Promise<Conn | null> => {
+    const data = await readPortfile(pf);
+    if (!data) return null;
+    const dbDuPortfile = typeof data.db_path === "string" ? data.db_path : null;
+    if (dbDuPortfile !== null && dbDuPortfile !== dbPath) return null;
+    const port = data.port as number;
+    if (typeof port !== "number" || port <= 0) return null;
+    const baseUrl = makeBaseUrl((data.host as string) ?? "127.0.0.1", port);
+    try {
+      const res = await sidecarFetch(`${baseUrl}/health`);
+      const json = (await res.json()) as Record<string, unknown>;
+      if (!res.ok || json.ok !== true) return null;
+      const token = parseToken(data.token);
+      if (token === null && json.token_required === true) return null;
+      sidecarLog("info", `sidecar en vol adopte (${baseUrl})`);
+      _conn = makeConn(baseUrl, token, typeof data.pid === "number" ? data.pid : null);
+      _connDbPath = dbPath;
+      _persistSidecarPort(port);
+      _notifyRustRegistry(_conn);
+      return _conn;
+    } catch {
+      return null;   // pas encore pret
+    }
+  };
+
+  while (Date.now() < echeance) {
+    await new Promise((r) => setTimeout(r, 500));
+    const adopte = await tenter();
+    if (adopte) return adopte;
+
+    // Le processus en vol est-il encore la ? Ce controle vaut pour TOUS les echecs
+    // d'adoption, pas seulement pour un portfile absent : dans 32,9 % des cas mesures
+    // le repertoire porte un portfile PERIME, et ne le reverifier que sur l'absence
+    // rendait l'attente aveugle a une mort dans ce cas-la. Sans ce garde-fou, on
+    // attendait les 90 s du budget quand l'ancien code respawnait aussitot.
+    const encore = await readSpawnLock(dbPath);
+    if (!encore.present || !encore.alive) {
+      // Derniere chance : l'ordre d'ecriture du sidecar est portfile PUIS annonce de
+      // demarrage PUIS levee du verrou, donc un verrou leve implique un portfile
+      // publie. Il a pu paraitre entre nos deux lectures.
+      const tardif = await tenter();
+      if (tardif) return tardif;
+      sidecarLog("warn", `le sidecar en vol a disparu (pid=${encore.pid ?? "?"}) — on cesse d'attendre`);
+      return null;
+    }
+  }
+  return null;
 }
 
 export async function _spawnSidecar(dbPath: string): Promise<Conn> {
@@ -779,6 +897,9 @@ export async function _spawnSidecar(dbPath: string): Promise<Conn> {
     });
   });
   sidecarLog("info", `sidecar spawned (pid=${child.pid}) after ${Date.now() - spawnStartedAt}ms`);
+  // Le verrou est posé ICI, dès que le pid existe : c'est ce qui rend la fenêtre
+  // de démarrage visible à un contexte JS qui n'a pas encore été créé.
+  await writeSpawnLock(dbPath, child.pid, spawnStartedAt);
 
   let started: Record<string, unknown>;
   try {
@@ -789,8 +910,10 @@ export async function _spawnSidecar(dbPath: string): Promise<Conn> {
       try { await child.kill(); } catch { /* ignore */ }
       _spawnedChild = null;
     }
+    await writeSpawnLock(dbPath, 0);
     throw err;
   }
+  await writeSpawnLock(dbPath, 0);
   sidecarLog("info", "startup payload selected", started);
 
   const host = (started.host as string) ?? "127.0.0.1";

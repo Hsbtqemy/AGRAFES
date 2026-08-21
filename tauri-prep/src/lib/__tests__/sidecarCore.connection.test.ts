@@ -471,3 +471,193 @@ describe("connection transport", () => {
     expect(dataAttempts).toBe(2); // failed once → reconnect → retried once
   });
 });
+
+/**
+ * Le verrou de spawn — la fuite de sidecars, mesurée puis fermée (2026-08-21).
+ *
+ * Le binaire onefile met ~35 s (médiane mesurée) à écrire son portfile ; pendant
+ * cette fenêtre le répertoire n'en porte AUCUN. `_ensureInFlight` ne couvre pas ce
+ * cas : c'est de l'état de MODULE, balayé par chaque rechargement de webview, et le
+ * contexte suivant respawne. Journal du 2026-08-20 : **421 spawns sur 750** lancés
+ * alors qu'un autre démarrait encore, jusqu'à cinq empilés.
+ *
+ * D'où un verrou sur DISQUE, la seule garde qui survive au rechargement. Ces tests
+ * simulent exactement ça : un module frais (`_ensureInFlight` vide) devant un
+ * verrou posé par un contexte précédent.
+ */
+describe("verrou de spawn — un rechargement ne doit plus empiler les sidecars", () => {
+  function wireAvecVerrou(
+    verrou: Record<string, unknown>,
+    portfile: Record<string, unknown> | null,
+  ): { spawnLockWrites: unknown[] } {
+    const spawnLockWrites: unknown[] = [];
+    // `args` est typé `unknown` et non `Record<string, unknown>` : la signature réelle
+    // d'invoke() accepte aussi des tableaux, et le tsc du SHELL le refuse — celui de
+    // prep, non. C'est le shell que la CI construit.
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "read_spawn_lock") return JSON.stringify(verrou);
+      if (cmd === "write_spawn_lock") { spawnLockWrites.push(args); return undefined; }
+      if (cmd === "read_sidecar_portfile") {
+        if (portfile === null) throw new Error("no portfile");
+        return JSON.stringify(portfile);
+      }
+      if (cmd === "sidecar_fetch_loopback") {
+        return { status: 200, ok: true, body: JSON.stringify({ ok: true, token_required: false }) };
+      }
+      return undefined;
+    });
+    return { spawnLockWrites };
+  }
+
+  it("attend le sidecar en vol au lieu d'en lancer un second", async () => {
+    // LE scénario réel, et le seul qui distingue le correctif : le verrou est frais,
+    // son processus vit — mais le portfile n'existe PAS ENCORE, le binaire onefile
+    // est en plein démarrage. C'est là que l'ancien code spawnait.
+    let lectures = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "read_spawn_lock") {
+        return JSON.stringify({ present: true, pid: 1234, alive: true, started_at_ms: Date.now() - 2000 });
+      }
+      if (cmd === "read_sidecar_portfile") {
+        lectures += 1;
+        if (lectures <= 1) throw new Error("no portfile");   // encore en démarrage
+        return JSON.stringify(PORTFILE);                      // il vient d'aboutir
+      }
+      if (cmd === "sidecar_fetch_loopback") {
+        return { status: 200, ok: true, body: JSON.stringify({ ok: true, token_required: false }) };
+      }
+      return undefined;
+    });
+    const spawn = vi.fn();
+    vi.mocked(Command).sidecar = vi.fn(() => ({ spawn })) as never;
+
+    const conn = await ensureRunning("/data/corpus.db");
+
+    expect(conn.baseUrl).toBe("http://127.0.0.1:8765");
+    expect(spawn).not.toHaveBeenCalled();   // ← RED sans le verrou : il spawnait
+  });
+
+  it("ignore un verrou dont le processus est mort", async () => {
+    // Le spawneur a été tué : le verrou survit sur le disque et bloquerait à jamais.
+    const { spawnLockWrites } = wireAvecVerrou(
+      { present: true, pid: 9999, alive: false, started_at_ms: Date.now() - 1000 },
+      null,
+    );
+    const fake = makeFakeCommand({
+      status: "listening", host: "127.0.0.1", port: 8765,
+      token: "abc", db_path: "/data/corpus.db",
+    });
+    vi.mocked(Command).sidecar = vi.fn(() => fake) as never;
+
+    await ensureRunning("/data/corpus.db").catch(() => { /* le chemin complet importe peu */ });
+
+    expect(fake.spawn).toHaveBeenCalled();
+    // …et le verrou mort est retiré (pid = 0) avant d'en poser un neuf.
+    expect(spawnLockWrites.some((a) => (a as { pid: number }).pid === 0)).toBe(true);
+  });
+
+  it("ignore un verrou plus vieux que le délai de démarrage", async () => {
+    const { spawnLockWrites } = wireAvecVerrou(
+      { present: true, pid: 1234, alive: true, started_at_ms: Date.now() - SIDECAR_STARTUP_JSON_TIMEOUT_MS - 1000 },
+      null,
+    );
+    const fake = makeFakeCommand({
+      status: "listening", host: "127.0.0.1", port: 8765,
+      token: "abc", db_path: "/data/corpus.db",
+    });
+    vi.mocked(Command).sidecar = vi.fn(() => fake) as never;
+
+    await ensureRunning("/data/corpus.db").catch(() => { /* idem */ });
+
+    expect(fake.spawn).toHaveBeenCalled();
+    expect(spawnLockWrites.some((a) => (a as { pid: number }).pid === 0)).toBe(true);
+  });
+
+  it("pose le verrou dès que le pid existe, et le lève au démarrage réussi", async () => {
+    const { spawnLockWrites } = wireAvecVerrou({ present: false }, null);
+    const fake = makeFakeCommand({
+      status: "listening", host: "127.0.0.1", port: 8765,
+      token: "abc", db_path: "/data/corpus.db",
+    });
+    vi.mocked(Command).sidecar = vi.fn(() => fake) as never;
+
+    await ensureRunning("/data/corpus.db").catch(() => { /* idem */ });
+
+    const pids = spawnLockWrites.map((a) => (a as { pid: number }).pid);
+    // 4242 = le pid du faux enfant ; 0 = la levée.
+    expect(pids).toContain(4242);
+    expect(pids[pids.length - 1]).toBe(0);
+    expect(pids.indexOf(4242)).toBeLessThan(pids.lastIndexOf(0));
+  });
+});
+
+describe("verrou de spawn — la régression que l'attente pouvait introduire", () => {
+  it("cesse d'attendre dès que le processus en vol meurt", async () => {
+    // Sans ce garde-fou, une mort en cours de démarrage bloquait 90 s
+    // (SIDECAR_STARTUP_JSON_TIMEOUT_MS sous Windows) là où l'ancien code respawnait
+    // aussitôt. Le correctif ne doit pas coûter une minute et demie d'attente.
+    // La bascule est indexée sur les lectures du VERROU, pas du portfile : l'étape 2
+    // d'ensureRunning en consomme déjà une, et indexer sur le portfile faisait voir un
+    // verrou mort dès l'entrée — l'attente n'était alors jamais atteinte et le test ne
+    // prouvait rien.
+    let regards = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "read_spawn_lock") {
+        const vivant = regards === 0;   // vivant à l'entrée, mort au tour suivant
+        regards += 1;
+        return JSON.stringify({ present: true, pid: 1234, alive: vivant, started_at_ms: Date.now() });
+      }
+      if (cmd === "read_sidecar_portfile") throw new Error("no portfile");
+      if (cmd === "sidecar_fetch_loopback") {
+        return { status: 200, ok: true, body: JSON.stringify({ ok: true, token_required: false }) };
+      }
+      return undefined;
+    });
+    const fake = makeFakeCommand({
+      status: "listening", host: "127.0.0.1", port: 8765,
+      token: "abc", db_path: "/data/corpus.db",
+    });
+    vi.mocked(Command).sidecar = vi.fn(() => fake) as never;
+
+    const debut = Date.now();
+    await ensureRunning("/data/corpus.db").catch(() => { /* le chemin complet importe peu */ });
+
+    expect(fake.spawn).toHaveBeenCalled();               // on a bien repris la main
+    expect(Date.now() - debut).toBeLessThan(5000);       // …et pas au bout de 90 s
+  });
+
+  it("cesse aussi d'attendre quand un portfile PÉRIMÉ masque la mort", async () => {
+    // La moitié oubliée du garde-fou : 32,9 % des spawns mesurés partent d'un portfile
+    // périmé. Tant que la revérification du verrou ne se faisait que sur l'ABSENCE de
+    // portfile, ce cas-là attendait encore les 90 s.
+    // Deux ports distincts : 8765 est le portfile PÉRIMÉ, dont le sidecar est mort ;
+    // 8899 est celui que le spawn de secours doit finir par ouvrir. Une doublure qui
+    // ferait échouer les DEUX ne testerait que le délai de vitest.
+    let regards = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "read_spawn_lock") {
+        const vivant = regards === 0;
+        regards += 1;
+        return JSON.stringify({ present: true, pid: 1234, alive: vivant, started_at_ms: Date.now() });
+      }
+      if (cmd === "read_sidecar_portfile") return JSON.stringify(PORTFILE);   // périmé, port 8765
+      if (cmd === "sidecar_fetch_loopback") {
+        const url = String((args as { url?: string })?.url ?? "");
+        if (url.includes(":8765")) throw new Error("connection refused");
+        return { status: 200, ok: true, body: JSON.stringify({ ok: true, token_required: false }) };
+      }
+      return undefined;
+    });
+    const fake = makeFakeCommand({
+      status: "listening", host: "127.0.0.1", port: 8899,
+      token: "abc", db_path: "/data/corpus.db",
+    });
+    vi.mocked(Command).sidecar = vi.fn(() => fake) as never;
+
+    const debut = Date.now();
+    await ensureRunning("/data/corpus.db").catch(() => { /* idem */ });
+
+    expect(fake.spawn).toHaveBeenCalled();
+    expect(Date.now() - debut).toBeLessThan(5000);
+  });
+});
