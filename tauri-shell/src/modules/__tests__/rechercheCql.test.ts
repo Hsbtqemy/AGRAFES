@@ -76,8 +76,15 @@ describe("le message d'erreur parle de la requête", () => {
     expect(lisible).not.toContain("Invalid regex in predicate");
   });
 
-  it("nomme les attributs acceptés quand l'attribut est inconnu", () => {
-    expect(_messageLisible("Unsupported CQL attribute: 'mot'")).toContain("word, lemma, pos");
+  it("nomme les attributs acceptés sur un prédicat non reconnu", () => {
+    // Le message RÉELLEMENT rendu par le moteur, vérifié sur le sidecar vivant.
+    // « Unsupported CQL attribute » existe dans cql_parser.py mais est inatteignable :
+    // _PRED_RE n'accepte déjà que les six attributs valides. Ma première traduction
+    // visait donc une branche morte.
+    const lisible = _messageLisible(`Invalid predicate syntax in token clause: 'mot="chat"'`);
+    expect(lisible).toContain("Prédicat non reconnu");
+    expect(lisible).toContain('mot="chat"');
+    expect(lisible).toContain("word, lemma, pos, upos, xpos, feats");
   });
 
   it("laisse passer tout le reste sans le déguiser", () => {

@@ -517,8 +517,15 @@ export function _messageLisible(msg: string): string {
       + "Échappez le caractère spécial d'un antislash — par exemple « trois\\) » — "
       + "ou utilisez une boîte rapide, qui prend la saisie au pied de la lettre.";
   }
-  if (/Unsupported CQL attribute/i.test(msg)) {
-    return `${msg}. Attributs acceptés : word, lemma, pos, upos, xpos, feats.`;
+  // C'est CE message que le moteur rend sur un attribut inconnu — « [mot=… ] », la
+  // faute la plus probable en français. `Unsupported CQL attribute` existe dans
+  // `cql_parser.py` mais est INATTEIGNABLE : `_PRED_RE` n'accepte déjà que les six
+  // attributs valides, donc le contrôle qui suit ne voit jamais rien d'autre.
+  const attr = /Invalid predicate syntax in token clause: '([^']*)'/.exec(msg);
+  if (attr) {
+    return `Prédicat non reconnu : « ${attr[1]} ». `
+      + "Attributs acceptés : word, lemma, pos, upos, xpos, feats — "
+      + 'par exemple [word = "chat"] ou [lemma = "aller"].';
   }
   return `Erreur : ${msg}`;
 }

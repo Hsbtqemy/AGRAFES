@@ -75,9 +75,11 @@ promet qu'un wildcard `.*` ; c'est désormais exactement ce qu'il tient, le rest
       ne commence pas par « liber », et le corpus annoté ne porte qu'un seul token en
       liber-, `libertad`. Le constat coché reste valable, seul l'exemple était mauvais.
       Corrigé le 2026-08-21 sur mesure en base.)*
-- [ ] `chat|chien` cherche désormais la chaîne littérale, plus une alternance
-- [ ] En mode **CQL**, une regex fautive donne un message qui parle de la requête,
-      pas un `Invalid regex in predicate '…' at position 7`
+- [x] `chat|chien` cherche désormais la chaîne littérale, plus une alternance
+- [ ] En mode **CQL** (sélecteur de mode), saisir `[word="trois)"]` : le message parle
+      de la requête, pas d'un `Invalid regex in predicate '…' at position 5`
+- [ ] Toujours en mode CQL, `[mot="chat"]` — la faute la plus probable en français —
+      nomme les six attributs acceptés
 
 **Un piège de lecture, mesuré le 2026-08-21** : seuls **6 documents sur 54** sont
 annotés — Asimov-Foundation_FR, Lodge-Nice_FR, Lodge-Small_ES, Hagena_Apfel_AL,
@@ -87,9 +89,20 @@ distinction, alors que `/documents` renvoie déjà `token_count` et `annotation_
 Un résultat vide ne dit donc pas « ce mot est absent du corpus » : il dit peut-être
 « ce document n'est pas annoté ».
 
-- [ ] Sélectionner un document **non annoté** (ex. `Rankin-Naming_FR`) et chercher
-      n'importe quoi : constater que rien ne signale pourquoi c'est vide
-- [ ] Le filtre de langue propose des langues sans aucun token annoté (ro, de…)
+*(Ces deux points décrivaient le défaut ; ils décrivent maintenant le correctif —
+`603e158`.)*
+
+- [ ] Dans le filtre de documents, `Rankin-Naming_FR.docx` porte « — non annoté » et
+      n'est **pas** sélectionnable ; `Asimov-Foundation_FR.docx` porte son nombre de
+      tokens (24902)
+- [ ] Une ligne sous les filtres annonce la portée : « … ne porte que sur les documents
+      annotés : 6 sur 54 »
+- [ ] Le filtre de langue grise `ro` — seule langue du corpus sans aucun token annoté
+      *(l'item disait « ro, de… » : `de` n'existe pas dans ce corpus. Les cinq langues
+      présentes sont fr, es, al, en, ro, et seule `ro` est à zéro token. Corrigé le
+      2026-08-21 sur mesure en base.)*
+- [ ] Croiser une portée vide — document `Lodge-Small_ES.docx` **et** langue `fr` —
+      donne « Aucun document annoté dans cette sélection » au lieu d'un écran vide
 
 ### Le mode « proximité » du constructeur de requête
 
