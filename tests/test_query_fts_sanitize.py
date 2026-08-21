@@ -11,8 +11,12 @@ chinois, japonais, coréen, grec, cyrillique, hébreu, devanagari — ponctuatio
 comprise (« », ，。, le maqaf hébreu, l'apostrophe courbe). Ces tests le verrouillent :
 si quelqu'un durcit la règle jusqu'à toucher au non-ASCII, ils tombent.
 
-Ampleur mesurée sur le corpus de travail avant correctif : 14,7 % des lignes contenaient
-une séquence qui fait échouer la requête (21,5 % en français, 29,8 % en roumain).
+Ampleur mesurée sur le corpus de travail : 14,7 % des lignes portent un trait d'union
+espacé (21,5 % en français, 29,8 % en roumain) — **et 47,9 % une virgule**. Ce second
+chiffre est arrivé plus tard : la première mesure avait été faite sur des tokens découpés
+à l'espace, ce qui excluait par construction `,` `(` `)`, délimiteurs du balayage. D'où
+les deux vagues de correctif que ce fichier couvre, et la leçon : mesurer un
+assainissement de requête sur des **requêtes entières**, jamais sur ses propres tokens.
 """
 from __future__ import annotations
 
@@ -199,3 +203,165 @@ def test_le_surlignage_ne_prend_aucune_ponctuation_pour_un_terme() -> None:
     for texte, q in [("你好，世界。", "你好，世界。"), ("שלום, עולם", "שלום, עולם")]:
         marque = _highlight_segment(texte, q)
         assert "<<,>>" not in marque and "<<，>>" not in marque and "<<。>>" not in marque
+
+
+# --- les trois caractères ambigus : syntaxe ici, texte là ------------------------
+#
+# Trou trouvé le 2026-08-21, en préparant une passe de QA sur les écritures non
+# latines : `κόσμε,` levait `fts5: syntax error near ","`. Le correctif du 2026-08-20
+# ne fermait que sept caractères — la mesure avait été faite sur des tokens découpés à
+# l'espace, ce qui excluait par construction `,` `(` `)`, délimiteurs du balayage.
+#
+# Portée réelle mesurée sur le corpus de travail : 47,9 % des lignes portent une
+# virgule, 48,3 % une virgule ou une parenthèse. Coller une ligne du concordancier —
+# le geste même qui avait révélé le défaut d'origine — échouait donc une fois sur deux.
+
+@pytest.mark.parametrize("q", [
+    "bonjour, le monde",       # prose française
+    "il dit, puis se tut",     # une ligne collée du concordancier
+    "18,5",                    # un nombre décimal
+    "κόσμε,",                  # la même chose en grec
+    "chat, chien",
+    "le chat (noir) dort",     # parenthèse de prose
+    "trois)",                  # parenthèse orpheline
+    "(((",                     # rien de cherchable
+])
+def test_la_virgule_et_la_parenthese_de_prose_ne_font_plus_tomber_la_recherche(
+    fts: sqlite3.Connection, q: str
+) -> None:
+    """RED sur le code du 2026-08-20 : chacun de ces cas levait une OperationalError."""
+    _cherche(fts, q)  # ne lève pas
+
+
+def test_la_virgule_de_prose_reste_cherchable(fts: sqlite3.Connection) -> None:
+    """Ne pas lever ne suffit pas : la ligne doit encore être trouvée.
+
+    Le mot porteur devient une phrase — `"Mi,"` — et `unicode61` écarte la ponctuation
+    à l'indexation, donc la phrase se réduit au mot. C'est ce qui rend le geste « je
+    colle ce que je vois » fidèle.
+    """
+    assert sanitize_fts_query("Mi, ar face") == '"Mi," ar face'
+    assert _cherche(fts, "Mi, ar") == 1
+
+
+def test_la_virgule_reste_de_la_syntaxe_dans_un_NEAR() -> None:
+    """La règle : une virgule n'est syntaxe QUE dans un `NEAR(...)` — et seulement
+    celle qui porte la distance.
+
+    La STRUCTURE du groupe est préservée à l'octet près ; ses TERMES, eux, sont
+    assainis comme n'importe quel mot (cf. le mode proximité, plus bas).
+    """
+    assert sanitize_fts_query("NEAR(chat chien, 3)") == "NEAR(chat chien, 3)"
+    # …et une virgule de prose à côté d'un NEAR reste, elle, du texte.
+    assert sanitize_fts_query("NEAR(a b, 3) AND mot,") == 'NEAR(a b, 3) AND "mot,"'
+
+
+def test_les_parentheses_restent_de_la_syntaxe_quand_il_y_a_un_operateur() -> None:
+    """La règle : une parenthèse n'est syntaxe que si la requête porte un opérateur.
+
+    FTS5 n'accepte les opérateurs qu'en capitales ; c'est ce qui permet de distinguer
+    `(chat OR chien)` d'une parenthèse de prose sans rien parser.
+    """
+    assert sanitize_fts_query("(chat OR chien) AND noir") == "(chat OR chien) AND noir"
+    assert sanitize_fts_query("le chat (noir) dort") == 'le chat "(noir)" dort'
+    # « or » en minuscules est un mot français, pas un opérateur.
+    assert sanitize_fts_query("(chat or chien)") == '"(chat" or "chien)"'
+
+
+def test_un_NEAR_fautif_remonte_toujours_en_erreur(fts: sqlite3.Connection) -> None:
+    """Choix délibéré, et c'est pour lui qu'on n'a PAS pris la voie du repli.
+
+    Assainir après échec aurait tout fait passer, y compris les syntaxes que
+    l'utilisateur voulait écrire et a mal écrites : `NEAR()` serait devenu une
+    recherche littérale rendant zéro, au lieu d'un message qui parle de la requête.
+    """
+    with pytest.raises(sqlite3.OperationalError):
+        _cherche(fts, "NEAR()")
+
+
+# --- le mode « proximité » du concordancier -------------------------------------
+#
+# Trouvé le 2026-08-21 en passe adverse, en cherchant qui d'autre fabrique une requête
+# FTS. `tauri-app/src/features/search.ts` en fabrique : le mode proximité construit
+# `NEAR(<mots collés à l'espace>, N)` à partir de la saisie brute, sans rien assainir.
+# Tant que le moteur traitait un `NEAR(...)` comme un bloc opaque, ce mode tombait sur
+# `peut-être` et `l'homme` — deux mots français des plus courants.
+#
+# Le correctif tient dans la distinction structure/termes : le front n'a pas eu à
+# changer, et tout autre client (CLI, script) en profite du même coup.
+
+@pytest.mark.parametrize("saisie", [
+    "dit, puis",        # une virgule dans un terme
+    "peut-être bien",   # un trait d'union
+    "l'homme libre",    # une apostrophe
+    "18:30 heures",     # deux-points
+    "chat chien",       # le cas déjà sain, qui ne doit pas bouger
+])
+def test_le_mode_proximite_survit_a_la_ponctuation(
+    fts: sqlite3.Connection, saisie: str
+) -> None:
+    """RED sur le code du matin : chacun levait une OperationalError.
+
+    On reconstruit ici exactement ce que le front envoie — `tokens.join(" ")` entre
+    `NEAR(` et `, N)` — plutôt que d'imaginer la requête.
+    """
+    _cherche(fts, f"NEAR({' '.join(saisie.split())}, 2)")  # ne lève pas
+
+
+def test_le_mode_proximite_trouve_vraiment(fts: sqlite3.Connection) -> None:
+    """Ne pas lever ne suffit pas : le terme ponctué doit rester cherchable."""
+    assert sanitize_fts_query("NEAR(Mi, ar, 3)") == 'NEAR("Mi," ar, 3)'
+    assert _cherche(fts, "NEAR(Mi, ar, 3)") == 1
+
+
+def test_la_borne_de_distance_ne_bouge_pas() -> None:
+    """La seule virgule de syntaxe d'un groupe est celle qui porte la distance ; et
+    un `NEAR(...)` sans distance est une forme valide qu'il ne faut pas mutiler."""
+    assert sanitize_fts_query("NEAR(chat chien, 3)") == "NEAR(chat chien, 3)"
+    assert sanitize_fts_query("NEAR(chat chien)") == "NEAR(chat chien)"
+    assert sanitize_fts_query("NEAR(a b, 2) OR NEAR(c d, 2)") == "NEAR(a b, 2) OR NEAR(c d, 2)"
+
+
+@pytest.mark.parametrize("q", ["near(the door)", "Near(the door)"])
+def test_near_en_minuscules_est_un_mot_et_non_un_operateur(
+    fts: sqlite3.Connection, q: str
+) -> None:
+    """FTS5 n'accepte ses opérateurs qu'en capitales, et `near` est un mot anglais
+    courant. Le reconnaître sans tenir compte de la casse faisait tomber la recherche
+    — le défaut même que ce module ferme."""
+    _cherche(fts, q)  # ne lève pas
+    assert sanitize_fts_query(q).startswith('"')
+
+
+def test_un_groupe_que_le_motif_ne_reconnait_pas_reste_une_erreur(
+    fts: sqlite3.Connection,
+) -> None:
+    """`NEAR(a (b), 3)` n'est pas une forme valide ; la faire passer en la réécrivant
+    masquerait une intention mal écrite au lieu de la signaler."""
+    with pytest.raises(sqlite3.OperationalError):
+        _cherche(fts, "NEAR(a (b), 3)")
+
+
+def test_les_operateurs_ne_sont_pas_surlignes_comme_des_termes() -> None:
+    """Défaut antérieur, trouvé en passe adverse le 2026-08-21.
+
+    Il ne se voyait guère en français — « and », « or », « near » n'y sont pas des
+    mots — et crevait les yeux en anglais : chaque « and » du segment était marqué
+    comme un résultat, et le chiffre de la distance `NEAR(…, 3)` avec.
+    """
+    from multicorpus_engine.query import _highlight_segment
+
+    texte = "the cat and the dog, near the door"
+    assert _highlight_segment(texte, "cat AND dog") == "the <<cat>> and the <<dog>>, near the door"
+    assert _highlight_segment(texte, "NEAR(cat dog, 3)") == "the <<cat>> and the <<dog>>, near the door"
+    # …et la distance ne doit pas marquer les chiffres du texte.
+    assert "<<2>>" not in _highlight_segment("il y a 2 chats", "NEAR(chat chien, 2)")
+
+
+def test_le_surlignage_reconnait_les_operateurs_en_CAPITALES_seulement() -> None:
+    """Sinon on n'affiche plus les résultats d'une recherche sur le mot « or » ou
+    « near », qui sont des mots ordinaires en français comme en anglais."""
+    from multicorpus_engine.query import _highlight_segment
+
+    assert _highlight_segment("l'or et l'argent", "or") == "l'<<or>> et l'argent"
+    assert _highlight_segment("he sat near me", "near") == "he sat <<near>> me"

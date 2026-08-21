@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.72"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.73"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -435,6 +435,41 @@ API_VERSION = CONTRACT_VERSION
 #         rendait un 500 avec pile d'appel -- une faute de frappe passait pour une panne.
 #         Les deux routes rendent desormais 400 « Requete de recherche invalide ». Les deux
 #         codes etaient deja declares, donc aucun schema ne bouge.
+
+# 1.6.73: la virgule, la parenthese et le mode « proximite ». CORRIGE UNE MESURE FAUSSE de
+#         1.6.72 : « sept caracteres ASCII cassent » avait ete mesure sur des tokens
+#         decoupes a l'espace, ce qui excluait par construction `,` `(` `)` -- justement les
+#         delimiteurs du balayage. Mesure refaite sur des requetes entieres : 47,9 % des
+#         lignes du corpus portent une virgule, 48,3 % une virgule ou une parenthese. Coller
+#         une ligne du concordancier echouait donc une fois sur DEUX, et non une sur sept.
+#         Ces trois caracteres sont ambigus : syntaxe FTS5 et prose a la fois. Deux regles
+#         les departagent, sans rien parser. Une VIRGULE n'est syntaxe que dans un NEAR(...),
+#         et seulement celle qui porte la distance. Une PARENTHESE ne l'est que si la requete
+#         porte un operateur -- FTS5 ne les accepte qu'en CAPITALES, ce qui suffit a separer
+#         `(chat OR chien)` d'une parenthese de prose. Personne n'y perd : `(chat)` levait une
+#         erreur et rend desormais une recherche litterale.
+#         AUSSI, trouve en passe adverse : le front fabrique lui-meme des requetes FTS
+#         (tauri-app/src/features/search.ts). Son mode « proximite » construit
+#         NEAR(<mots colles a l'espace>, N) sans rien assainir -- donc NEAR(peut-etre bien, 2)
+#         ou NEAR(l'homme libre, 2), que FTS5 refuse. Traiter un NEAR(...) en bloc OPAQUE
+#         maintenait ce mode casse sur deux des mots francais les plus courants. La regle
+#         retenue separe la STRUCTURE du groupe (parentheses, virgule de distance : preservees
+#         a l'octet pres) de ses TERMES (assainis comme partout ailleurs). Le front n'a pas eu
+#         a changer, et tout autre client en profite.
+#         `near` en minuscules redevient un MOT : FTS5 n'accepte ses operateurs qu'en
+#         capitales, et les reconnaitre sans tenir compte de la casse faisait tomber
+#         « near(the door) » -- le defaut meme qu'on ferme.
+#         PRESERVE A DESSEIN : une forme non reconnue (NEAR() vide, NEAR(a (b), 3)) reste une
+#         erreur -> 400 lisible. C'est pourquoi on n'a PAS pris la voie du repli-apres-echec,
+#         qui aurait fait passer toute syntaxe mal ecrite pour une recherche litterale.
+#         Aucun changement de forme de reponse -> snapshot inchange ; openapi (version) et .md.
+#         ENFIN, defaut ANTERIEUR trouve dans la meme passe : les operateurs etaient
+#         surlignes comme des termes dans les hits. Invisible en francais, criant en anglais
+#         -- « cat AND dog » marquait chaque « and » du segment, « NEAR(cat dog, 3) » marquait
+#         « near » ET le chiffre 3 partout ou il apparaissait. Le groupe NEAR est desormais
+#         reduit a ses termes, sa distance ecartee, les booleens retires -- en CAPITALES
+#         uniquement, donc chercher le MOT « or » le surligne toujours. Le CONTENU des
+#         marqueurs << >> change sur ces requetes ; la forme de la reponse, non.
 
 # Error code catalog (stable machine-readable values).
 ERR_BAD_REQUEST = "BAD_REQUEST"

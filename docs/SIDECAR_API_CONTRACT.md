@@ -994,24 +994,43 @@ contrat. Schémas req/resp détaillés dans `docs/openapi.json` ; résumé ici.
 **Statistiques lexicales & facettes** (lecture, sans token)
 - `POST /query/facets` — résumé de facettes d'une requête (compteurs + top docs, sans contenu des hits).
 
-> **Assainissement de la requête FTS5 (1.6.72).** `POST /query` et `POST /query/facets` reçoivent la
-> saisie de l'utilisateur, dont une partie de la ponctuation est de la **syntaxe** pour FTS5. Chaque
-> mot nu contenant de la ponctuation **ASCII** est donc mis entre guillemets avant d'atteindre le
-> moteur — il devient une phrase, ce que veut précisément quelqu'un qui colle une ligne du
-> concordancier. Le cas qui l'a révélé : « Mi - ar face plăcere. » (roumain) rendait
-> `no such column: ar`, FTS5 lisant `- ar` comme un filtre de colonne négatif ; **14,7 %** des lignes
-> du corpus de travail portent une séquence de ce genre.
+> **Assainissement de la requête FTS5 (1.6.72, complété en 1.6.73).** `POST /query` et
+> `POST /query/facets` reçoivent la saisie de l'utilisateur, dont une partie de la ponctuation est
+> de la **syntaxe** pour FTS5. Chaque mot nu contenant de la ponctuation **ASCII** est donc mis
+> entre guillemets avant d'atteindre le moteur — il devient une phrase, ce que veut précisément
+> quelqu'un qui colle une ligne du concordancier. Le cas qui l'a révélé : « Mi - ar face plăcere. »
+> (roumain) rendait `no such column: ar`, FTS5 lisant `- ar` comme un filtre de colonne négatif.
 >
-> **Le périmètre est mesuré, et il est confiné à l'ASCII** : sept caractères cassent (`' - : . + & /`)
-> tandis que **tous** les scripts non latins passent — arabe, chinois, japonais, coréen, grec,
-> cyrillique, hébreu, devanagari — ponctuation non-ASCII comprise (`« »`, `，。`, le maqaf `־`,
-> l'apostrophe courbe `’`). La règle ne connaît donc aucune langue, et des tests verrouillent
-> qu'elle ne s'y mette pas. Restent intactes : les phrases `"…"`, la troncature `mot*`, l'ancre
-> `^mot`, `NEAR(…)`, `AND`/`OR`/`NOT` et les parenthèses de groupement.
+> **Trois caractères sont ambigus** — `,` `(` `)` — parce qu'ils appartiennent à la fois à la
+> syntaxe et à la prose. Deux règles les départagent, sans rien parser : une **virgule** n'est de la
+> syntaxe que dans un `NEAR(…)`, et seulement celle qui porte la distance ; une **parenthèse** ne
+> l'est que si la requête porte un opérateur — FTS5 ne les accepte qu'en **capitales**, ce qui
+> suffit à distinguer `(chat OR chien)` d'une parenthèse de prose. Personne n'y perd : `(chat)`
+> levait une erreur et rend désormais une recherche littérale.
 >
-> Une syntaxe FTS5 **réellement** fautive (un `NEAR()` vide, une parenthèse orpheline) n'est pas
-> rattrapable : les deux routes rendent alors **`400`** « Requête de recherche invalide », là où
-> elles rendaient un `500` avec pile d'appel — une faute de frappe passait pour une panne.
+> Dans un `NEAR(…)`, la **structure** est préservée à l'octet près, mais les **termes** sont
+> assainis comme partout ailleurs. C'est ce qui fait marcher le mode « proximité » du
+> concordancier, qui construit `NEAR(<mots collés à l'espace>, N)` sans rien assainir : il tombait
+> sur `peut-être` et `l'homme`.
+>
+> **Ampleur, mesurée sur des requêtes entières.** 47,9 % des lignes du corpus de travail portent une
+> virgule, 48,3 % une virgule ou une parenthèse : coller une ligne du concordancier échouait une
+> fois sur **deux**. (La mesure de 1.6.72 — « sept caractères », « une fois sur sept » — était
+> fausse : elle avait été faite sur des tokens découpés à l'espace, ce qui excluait par construction
+> les trois délimiteurs du balayage.)
+>
+> **Le périmètre reste confiné à l'ASCII**, et c'est ce qui rend la règle tenable en multilingue :
+> **tous** les scripts non latins passent — arabe, chinois, japonais, coréen, grec, cyrillique,
+> hébreu, devanagari — ponctuation non-ASCII comprise (`« »`, `，。`, le maqaf `־`, l'apostrophe
+> courbe `’`). La règle ne connaît aucune langue, et des tests verrouillent qu'elle ne s'y mette
+> pas. Restent intactes : les phrases `"…"`, la troncature `mot*`, l'ancre `^mot`, `NEAR(…)`,
+> `AND`/`OR`/`NOT` et les parenthèses de groupement.
+>
+> Une syntaxe FTS5 **réellement** fautive (un `NEAR()` vide, un `NEAR(a (b), 3)`) n'est pas
+> rattrapable, et ne doit pas l'être : les deux routes rendent **`400`** « Requête de recherche
+> invalide », là où elles rendaient un `500` avec pile d'appel. C'est pour ces cas qu'on n'assainit
+> **pas** en repli après échec — cela ferait passer une intention mal écrite pour une recherche
+> littérale rendant zéro.
 - `POST /stats/lexical` — stats de fréquence lexicale pour un *slot* (jeu de filtres).
 - `POST /stats/compare` — comparaison des distributions de deux slots A et B.
 

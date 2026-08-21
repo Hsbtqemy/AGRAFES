@@ -54,18 +54,24 @@ def _validate_user_regex(pattern: str) -> None:
 # ── Assainissement de la requête FTS5 ────────────────────────────────────────
 #
 # FTS5 reçoit la saisie brute de l'utilisateur, et une partie de la ponctuation y est
-# de la SYNTAXE. Mesuré le 2026-08-20 sur un échantillon multilingue : sept caractères
-# ASCII font échouer la requête — `' - : . + & /` — tandis que TOUS les scripts non
+# de la SYNTAXE. Le problème est confiné à la ponctuation ASCII : TOUS les scripts non
 # latins passent (arabe, chinois, japonais, coréen, grec, cyrillique, hébreu, devanagari),
 # ponctuation non-ASCII comprise (« », ，。, le maqaf hébreu ־, l'apostrophe courbe ’).
-# Le problème est donc confiné à la ponctuation ASCII, et la règle n'a pas besoin de
-# connaître les langues — ce qui est la seule façon tenable pour un corpus multilingue.
+# La règle n'a donc pas besoin de connaître les langues — la seule façon tenable pour un
+# corpus multilingue.
 #
 # Le cas qui l'a révélé : « Mi - ar face plăcere. » (roumain) → `no such column: ar`,
-# FTS5 lisant `- ar` comme un filtre de colonne négatif. Sur le corpus de travail,
-# 14,7 % des lignes contiennent une séquence de ce genre — 21,5 % en français, 29,8 %
-# en roumain. Autrement dit : copier-coller une ligne du concordancier pour la
-# retrouver échouait une fois sur sept.
+# FTS5 lisant `- ar` comme un filtre de colonne négatif. 14,7 % des lignes du corpus de
+# travail portent un trait d'union espacé de ce genre (21,5 % en français, 29,8 % en
+# roumain) — ET 47,9 % portent une virgule, 48,3 % une virgule ou une parenthèse.
+# Copier-coller une ligne du concordancier pour la retrouver échouait donc une fois sur
+# DEUX.
+#
+# Ce second chiffre est arrivé en second, et la leçon vaut d'être gardée : la première
+# mesure — « sept caractères cassent » — avait été faite sur des tokens découpés à
+# l'espace, ce qui excluait par construction `,` `(` `)`, c'est-à-dire les délimiteurs du
+# balayage lui-même. Un assainissement de requête se mesure sur des REQUÊTES ENTIÈRES,
+# jamais sur ses propres tokens.
 #
 # Ce qui est PRÉSERVÉ, parce que c'est la syntaxe que l'écran promet : les phrases
 # entre guillemets, la troncature `mot*`, l'ancre `^mot`, `NEAR(...)`, `AND`/`OR`/`NOT`
@@ -78,11 +84,39 @@ _FTS_MOT_SUR = re.compile(r"^[A-Za-z0-9_]+$")
 _FTS_MOTS_CLES = frozenset({"AND", "OR", "NOT", "NEAR"})
 
 # Balayage : soit une phrase déjà entre guillemets (qu'on laisse telle quelle), soit un
-# mot nu. Tout ce qui n'est capturé par NI l'un NI l'autre — espaces, parenthèses de
-# groupement, virgule de NEAR() — reste en place, à l'octet près. C'est ce qui garantit
-# que `NEAR(chat chien, 3)` traverse intact : la structure n'est jamais reconstruite,
-# seuls les mots qui posent problème sont réécrits sur place.
-_FTS_BALAYAGE = re.compile(r'"[^"]*"|[^\s()",]+')
+# mot nu. Tout ce qui n'est capturé par NI l'un NI l'autre — espaces, et selon le cas les
+# parenthèses de groupement — reste en place, à l'octet près : la structure n'est jamais
+# reconstruite, seuls les mots qui posent problème sont réécrits sur place.
+#
+# Deux variantes, parce que `,` `(` `)` sont tantôt de la syntaxe, tantôt du texte, et
+# que les traiter toujours comme de la syntaxe faisait tomber la recherche sur 48,3 %
+# des lignes du corpus de travail (« bonjour, le monde » → syntax error near ","). Les
+# règles qui les départagent sont dans :func:`sanitize_fts_query`.
+_FTS_BALAYAGE_GROUPES = re.compile(r'"[^"]*"|[^\s()"]+')  # parenthèses = syntaxe
+_FTS_BALAYAGE_PLAT = re.compile(r'"[^"]*"|[^\s"]+')       # tout est du texte
+
+#: Dans un `NEAR(...)`, la STRUCTURE est de la syntaxe — parenthèses et virgule de
+#: distance — mais les TERMES sont du texte, et doivent être assainis comme ailleurs.
+#: Les traiter en bloc opaque laissait le mode « proximité » du concordancier tomber sur
+#: `peut-être` et `l'homme` : le front construit `NEAR(peut-être bien, 2)`, et FTS5
+#: répondait `syntax error near "-"`.
+#:
+#: Une forme que ce motif ne reconnaît pas — `NEAR()`, `NEAR(a (b), 3)` — continue de
+#: remonter en 400 lisible, ce qui est voulu : c'est une requête que l'utilisateur a
+#: voulu écrire et a mal écrite.
+#:
+#: **Capitales exigées**, comme pour les booléens ci-dessous : `near` est un mot anglais
+#: courant, et le lire comme un opérateur faisait tomber « near(the door) » en
+#: `syntax error` — le défaut même qu'on est en train de fermer.
+_FTS_NEAR = re.compile(r"\bNEAR\s*\(([^()]*)\)")
+
+#: La borne de distance finale d'un `NEAR(termes, N)` : la seule virgule du groupe qui
+#: soit de la syntaxe. Toutes les autres appartiennent aux termes.
+_FTS_NEAR_DISTANCE = re.compile(r",\s*(\d+)\s*$")
+
+#: Opérateurs FTS5, que le moteur n'accepte qu'en capitales — d'où la casse imposée ici :
+#: le « or » d'une phrase française ne doit pas faire passer la requête pour structurée.
+_FTS_BOOLEENS = re.compile(r"\b(?:AND|OR|NOT|NEAR)\b")
 
 
 def _token_a_besoin_de_guillemets(token: str) -> bool:
@@ -119,6 +153,19 @@ def sanitize_fts_query(q: str) -> str:
     devient une phrase, ce qui est précisément ce que veut quelqu'un qui colle une ligne
     du concordancier. Le reste de la requête est laissé intact, à l'octet près.
 
+    **Trois caractères sont ambigus** — `,` `(` `)` — parce qu'ils appartiennent à la
+    fois à la syntaxe FTS5 et à la prose. Deux règles les départagent :
+
+    - une **virgule** n'est de la syntaxe que dans un `NEAR(...)` ; partout ailleurs elle
+      appartient au mot ;
+    - une **parenthèse** n'est de la syntaxe que si la requête porte un opérateur
+      (`AND`/`OR`/`NOT`/`NEAR`) ; sinon elle appartient au mot.
+
+    Personne n'y perd : `(chat)` sans opérateur levait une erreur et rend désormais une
+    recherche littérale, et `chat, chien` n'a aucune lecture FTS5 valide. Mesuré sur le
+    corpus de travail, 48,3 % des lignes portent une virgule ou une parenthèse : sans ces
+    règles, une ligne collée sur deux tombait en `syntax error`.
+
     Renvoie `'""'` — une phrase vide, que FTS5 accepte et qui ne correspond à rien —
     quand la requête ne contenait aucun mot cherchable. Rendre la saisie brute
     relancerait l'erreur qu'on vient d'éviter ; rendre une chaîne vide ferait planter
@@ -138,7 +185,32 @@ def sanitize_fts_query(q: str) -> str:
         tok = m.group(0)
         return tok if tok.startswith('"') else _assainir_token(tok)
 
-    assaini = _FTS_BALAYAGE.sub(_remplacer, q)
+    balayage = _FTS_BALAYAGE_GROUPES if _FTS_BOOLEENS.search(q) else _FTS_BALAYAGE_PLAT
+
+    def _assainir_near(m: re.Match[str]) -> str:
+        """Garde la structure du groupe, assainit ses termes."""
+        termes = m.group(1)
+        queue = ""
+        borne = _FTS_NEAR_DISTANCE.search(termes)
+        if borne:
+            termes, queue = termes[: borne.start()], f", {borne.group(1)}"
+        # Les termes ne peuvent pas contenir de parenthèses (le motif les exclut) :
+        # le balayage plat est donc toujours le bon, quel que soit le reste de la requête.
+        return f"NEAR({_FTS_BALAYAGE_PLAT.sub(_remplacer, termes)}{queue})"
+
+    # Les `NEAR(...)` sont traités à part, puis recollés sans repasser au balayage
+    # général — leurs parenthèses ne doivent jamais être relues comme du texte.
+    morceaux: list[tuple[str, bool]] = []
+    fin = 0
+    for m in _FTS_NEAR.finditer(q):
+        morceaux.append((q[fin:m.start()], False))
+        morceaux.append((_assainir_near(m), True))
+        fin = m.end()
+    morceaux.append((q[fin:], False))
+
+    assaini = "".join(
+        part if deja else balayage.sub(_remplacer, part) for part, deja in morceaux
+    )
     if not assaini.strip(" ()\",^*"):
         return '""'
     if assaini != q:
@@ -208,8 +280,19 @@ def _highlight_segment(text: str, query: str) -> str:
 
     `\w+` est unicode par défaut : la découpe vaut pour tous les scripts, et la
     ponctuation — de toute origine — n'est jamais prise pour un terme.
+
+    **Les opérateurs ne sont pas des termes.** Ils étaient surlignés comme tels, ce qui
+    ne se voyait guère en français mais crevait les yeux en anglais : `cat AND dog`
+    marquait chaque « and » du segment, et `NEAR(cat dog, 3)` marquait « near » — plus le
+    chiffre 3 partout où il apparaissait. Le groupe `NEAR(...)` est donc réduit à ses
+    termes, sa distance écartée, et les booléens retirés. La reconnaissance se fait en
+    CAPITALES uniquement, comme dans FTS5 : le « and » d'une phrase reste un mot.
     """
-    mots = [w for t in query.split() for w in re.findall(r"\w+", t.strip('"'))]
+    sans_syntaxe = _FTS_NEAR.sub(
+        lambda m: _FTS_NEAR_DISTANCE.sub("", m.group(1)), query
+    )
+    sans_syntaxe = _FTS_BOOLEENS.sub(" ", sans_syntaxe)
+    mots = [w for t in sans_syntaxe.split() for w in re.findall(r"\w+", t.strip('"'))]
     terms = [re.escape(w) for w in mots]
     if not terms:
         return text
