@@ -1063,3 +1063,34 @@ describe("AlignMatrixView — bandeau d'annulation (ALI-20, D-3)", () => {
     expect(document.querySelector<HTMLElement>(".prep-align-undo")!.style.display).toBe("none");
   });
 });
+
+describe("AlignMatrixView — quitter l'écran pendant un chargement", () => {
+  it("ne lève pas quand la vue est démontée pendant que les familles arrivent", async () => {
+    // Vu en QA le 2026-08-20, console de l'inspecteur :
+    //   « Cannot read properties of null (reading 'querySelector') » dans _loadFamilies.
+    // Le garde `!this._root` est posé AVANT l'aller-retour ; `dispose()` met `_root` à
+    // null, et rien n'empêche de quitter l'écran pendant que `getFamilies` est en vol —
+    // ce qui arrive dès que le sidecar est occupé. TypeScript ne le rattrape pas : il
+    // conserve le rétrécissement d'une propriété de classe à travers un `await`.
+    const calls: Array<{ path: string; body: unknown }> = [];
+    let libere!: () => void;
+    const enVol = new Promise<void>((r) => { libere = r; });
+
+    const conn = makeConn(calls);
+    const lent: typeof conn = {
+      ...conn,
+      get: async (path: string) => {
+        if (path === "/families") { await enVol; return conn.get(path); }
+        return conn.get(path);
+      },
+    };
+
+    const view = new AlignMatrixView(() => lent, { toast: () => {} });
+    document.body.appendChild(view.render());
+    const chargement = (view as unknown as { _loadFamilies(): Promise<void> })._loadFamilies();
+
+    view.dispose();          // l'écran est quitté : _root passe à null
+    libere();                // …et seulement ensuite la réponse arrive
+    await expect(chargement).resolves.toBeUndefined();
+  });
+});

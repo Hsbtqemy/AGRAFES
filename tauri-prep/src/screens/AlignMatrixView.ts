@@ -333,7 +333,14 @@ export class AlignMatrixView {
     } catch {
       this._families = [];
     }
-    const sel = this._root.querySelector<HTMLSelectElement>("#matrix-family");
+    // Le garde du début vaut pour AVANT l'aller-retour ; il faut le reposer après.
+    // `dispose()` met `_root` à null, et rien n'empêche l'écran d'être quitté pendant
+    // que `getFamilies` est en vol — c'est ce qui arrive quand le sidecar est occupé.
+    // TypeScript ne le rattrape pas : il conserve le rétrécissement d'une propriété de
+    // classe à travers un `await`, ce qui est commode et faux.
+    const root = this._root;
+    if (!root) return;
+    const sel = root.querySelector<HTMLSelectElement>("#matrix-family");
     if (!sel) return;
     const prev = this._selectedFamilyId;
     sel.innerHTML = '<option value="">— choisir —</option>';
@@ -353,7 +360,7 @@ export class AlignMatrixView {
     // that no longer exists (revue tranche 5).
     const none = this._selectedFamilyId === null;
     for (const id of ["#matrix-load", "#matrix-align", "#matrix-align-adv-toggle"]) {
-      const btn = this._root.querySelector<HTMLButtonElement>(id);
+      const btn = root.querySelector<HTMLButtonElement>(id);
       if (btn) btn.disabled = none;
     }
     if (none) this._closeAlignStrip();
