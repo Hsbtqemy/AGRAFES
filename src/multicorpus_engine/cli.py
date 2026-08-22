@@ -984,6 +984,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     server = None
     try:
+        unclaimed = resolve_unclaimed_delay(getattr(args, "exit_if_unclaimed", 0.0))
         state = inspect_sidecar_state(db_path)
         if state.get("state") == "running":
             update_run_stats(conn, run_id, {
@@ -1034,7 +1035,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
         token = resolve_token_mode(token_mode)
         server = CorpusServer(
             db_path=db_path, host=host, port=port, token=token,
-            exit_if_unclaimed=resolve_unclaimed_delay(getattr(args, "exit_if_unclaimed", 0.0)),
+            exit_if_unclaimed=unclaimed,
         )
         server.start()
         update_run_stats(conn, run_id, {
@@ -1047,6 +1048,14 @@ def cmd_serve(args: argparse.Namespace) -> None:
             "token_required": bool(server.token),
         })
         log.info("Sidecar listening on %s:%d", host, server.actual_port)
+        # La veille de non-réclamation (T-05) est journalisée ICI et pas seulement dans
+        # son module : `setup_run_logger` ne capte pas les loggers de `multicorpus_engine`,
+        # donc rien n'aurait dit à un opérateur — ni à une vérification — si elle est
+        # armée. Un garde-fou dont on ne peut pas constater la présence n'en est pas un.
+        log.info(
+            "Veille de non-reclamation : %s",
+            f"{unclaimed:.0f} s" if unclaimed > 0 else "desactivee",
+        )
         _ok({
             "run_id": run_id,
             "status": "listening",
