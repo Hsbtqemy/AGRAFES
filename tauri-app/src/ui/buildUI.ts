@@ -6,6 +6,7 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { state } from "../state";
 import { elt, injectStyles } from "./dom";
+import { clampAnchoredMenu } from "../../../shared/anchorMenu";
 import { showToast } from "./status";
 import { renderResults } from "../features/query";
 import { doSearch } from "../features/query";
@@ -289,6 +290,7 @@ export function buildUI(container: HTMLElement): () => void {
   langBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     langDropdown.classList.toggle("hidden");
+    if (!langDropdown.classList.contains("hidden")) clampAnchoredMenu(langDropdown);
   });
   onDoc("click", (e) => {
     if (!fg1.contains(e.target as Node)) langDropdown.classList.add("hidden");
@@ -847,6 +849,8 @@ export function buildUI(container: HTMLElement): () => void {
     exportMenu.classList.remove("app-open");
     helpPopover.classList.remove("app-open");
     histPanel.classList.toggle("app-open");
+    // Le recadrage vit dans renderHistPanel : ce rendu est aussi rejoue panneau
+    // ouvert (vider / epingler), et le corriger ici seul laisserait ces cas dehors.
     if (histPanel.classList.contains("app-open")) renderHistPanel(histPanel, searchInput);
   });
 
@@ -856,6 +860,7 @@ export function buildUI(container: HTMLElement): () => void {
     histPanel.classList.remove("app-open");
     exportMenu.classList.remove("app-open");
     helpPopover.classList.toggle("app-open");
+    if (helpPopover.classList.contains("app-open")) clampAnchoredMenu(helpPopover);
   });
 
   helpPopover.querySelector("#help-close-btn")?.addEventListener("click", (e) => {
@@ -881,6 +886,7 @@ export function buildUI(container: HTMLElement): () => void {
     e.stopPropagation();
     histPanel.classList.remove("app-open");
     exportMenu.classList.toggle("app-open");
+    if (exportMenu.classList.contains("app-open")) clampAnchoredMenu(exportMenu);
   });
 
   exportJsonlSimpleBtn.addEventListener("click", () => {

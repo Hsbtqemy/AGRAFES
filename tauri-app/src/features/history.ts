@@ -4,6 +4,7 @@
 
 import { state } from "../state";
 import { elt } from "../ui/dom";
+import { clampAnchoredMenu } from "../../../shared/anchorMenu";
 import { doSearch } from "./query";
 import { renderChips, clearDocSelector } from "./filters";
 import { syncDocSelectorUI, saveDocSelectorState } from "./docSelector";
@@ -226,4 +227,9 @@ export function renderHistPanel(panel: HTMLElement, searchInput: HTMLInputElemen
     }
   }
   panel.appendChild(list);
+
+  // Recadrer ICI et pas chez l'appelant : ce rendu est rejoué panneau OUVERT par
+  // « Vider », « Tout effacer » et l'épinglage. Une correction calculée à la seule
+  // ouverture serait périmée dès le premier de ces gestes.
+  clampAnchoredMenu(panel);
 }
