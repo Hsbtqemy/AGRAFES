@@ -35,7 +35,7 @@ conserve (sessionStorage), un redémarrage non — c'est voulu.
 
 ### Version et contrat
 
-- [ ] Le panneau Diagnostic annonce contrat **1.6.75** et engine **0.4.0**
+- [x] Le panneau Diagnostic annonce contrat **1.6.75** et engine **0.4.0**
 - [x] Le panneau Diagnostic ne dit plus « Running : no » alors que l'application dialogue
 - [x] Le bouton **🔍 Inspecteur** ouvre bien la console du webview
 
@@ -60,31 +60,31 @@ conserve (sessionStorage), un redémarrage non — c'est voulu.
 
 ### Segmentation — ce qui est détruit, et ce qui revient
 
-- [ ] Fusionner deux segments alignés annonce le nombre de liens retirés
-- [ ] Le message ne fait aucune promesse quand aucun lien n'était en jeu (silence)
-- [ ] « Annuler » après cette fusion rend l'alignement, pas seulement les unités
-- [ ] Scinder un segment aligné annonce de la même façon
-- [ ] Une resegmentation annonce si elle est annulable ou **définitive**, et la formulation correspond à ce que l'on peut faire ensuite
+- [x] Fusionner deux segments alignés annonce le nombre de liens retirés
+- [x] Le message ne fait aucune promesse quand aucun lien n'était en jeu (silence)
+- [x] « Annuler » après cette fusion rend l'alignement, pas seulement les unités
+- [x] Scinder un segment aligné annonce de la même façon
+- [x] Une resegmentation annonce si elle est annulable ou **définitive**, et la formulation correspond à ce que l'on peut faire ensuite
 
 ### Alignement — annuler un run
 
-- [ ] Après un alignement de famille, la bande propose **↺ Annuler ce run** et annonce le nombre de paires
-- [ ] L'offre survit à un rechargement de page (F5)
-- [ ] L'offre **n'apparaît pas** après un run qui n'a rien créé ni rien supprimé
-- [ ] L'annulation rend le compte exact (retirés / rendus / validés conservés / non rendus)
-- [ ] Le libellé du « Compléter » donne l'ordre de grandeur de ce qu'il peut ajouter par-dessus
+- [x] Après un alignement de famille, la bande propose **↺ Annuler ce run** et annonce le nombre de paires
+- [x] L'offre survit à un rechargement de page (F5)
+- [x] L'offre **n'apparaît pas** après un run qui n'a rien créé ni rien supprimé
+- [x] L'annulation rend le compte exact (retirés / rendus / validés conservés / non rendus)
+- [x] Le libellé du « Compléter » donne l'ordre de grandeur de ce qu'il peut ajouter par-dessus
 
 ### Alignement — le ⭙ et son retour
 
-- [ ] Le modal du ⭙ porte une note « Pour revenir » nommant le geste inverse
-- [ ] La note dit ce qui ne reviendra pas (le run d'origine, l'état de révision)
-- [ ] La note met en garde contre ＝ Rattacher comme réparation
-- [ ] Refaire un ⭙ depuis le voisin reprend bien la phrase absorbée
+- [x] Le modal du ⭙ porte une note « Pour revenir » nommant le geste inverse
+- [x] La note dit ce qui ne reviendra pas (le run d'origine, l'état de révision)
+- [x] La note met en garde contre ＝ Rattacher comme réparation
+- [x] Refaire un ⭙ depuis le voisin reprend bien la phrase absorbée
 
 ### Performance
 
-- [ ] L'ouverture de la matrice Modiano reste supportable (ANALYZE lancé, ALI-19)
-- [ ] Un geste de cellule ne fige pas la grille plus de deux secondes (ALI-18, non corrigé — mesurer, pas corriger)
+- [x] L'ouverture de la matrice Modiano reste supportable (ANALYZE lancé, ALI-19)
+- [x] Un geste de cellule ne fige pas la grille plus de deux secondes (ALI-18, non corrigé — mesurer, pas corriger)
 
 ### Cycle de vie
 
