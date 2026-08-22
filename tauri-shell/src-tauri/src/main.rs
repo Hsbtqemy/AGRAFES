@@ -388,6 +388,18 @@ fn _kill_pid(pid: Option<u32>) {
 /// 2026-08-16 a buté sur un panneau blanc dont l'erreur JS n'était consultable nulle
 /// part. Le clic droit → Inspecter reste disponible ; ce bouton le rend trouvable, dans
 /// le panneau Diagnostic, c'est-à-dire à l'endroit où l'on va quand quelque chose cloche.
+/// Tue le sidecar qu'un renoncement de verrou vient d'abandonner (T-05).
+///
+/// Le chemin d'expiration du verrou effacait le verrou et spawnait un remplacant sans
+/// toucher au processus qu'il venait de declarer perdu — alors qu'il en tient le pid et
+/// vient de l'evaluer vivant. Mesure le 2026-08-22 sur un cas reel : le desavoue arrive
+/// 19 s trop tard, publie un socket que plus personne n'attend, et garde le binaire
+/// verrouille. `_kill_pid` fait l'arbre (/T) : le bootloader onefile ET son enfant Python.
+#[tauri::command]
+fn reap_sidecar_pid(pid: u32) {
+    _kill_pid(Some(pid));
+}
+
 #[tauri::command]
 fn open_devtools(window: tauri::WebviewWindow) {
     window.open_devtools();
@@ -487,6 +499,7 @@ fn main() {
             keyring_set,
             keyring_delete,
             open_devtools,
+            reap_sidecar_pid,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AGRAFES Shell application");

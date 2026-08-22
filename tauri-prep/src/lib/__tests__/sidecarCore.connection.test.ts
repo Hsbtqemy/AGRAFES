@@ -602,6 +602,53 @@ describe("verrou de spawn — un rechargement ne doit plus empiler les sidecars"
     expect(spawnLockWrites.some((a) => (a as { pid: number }).pid === 0)).toBe(true);
   });
 
+  /** Renoncer, c'est tuer — pas oublier.
+   *
+   *  Mesuré sur un cas vivant le 2026-08-22 : un `multicorpus.exe` a été trouvé six
+   *  heures après sa naissance, écoutant 127.0.0.1:53716, bootloader mort, sans
+   *  portfile, et son port n'apparaissait PAS UNE FOIS dans le journal du shell —
+   *  jamais adopté, jamais interrogé. Le journal donne la séquence : le verrou attend
+   *  (il fait son travail), son délai de 90 s expire, le code spawne un remplaçant, et
+   *  le processus désavoué sort son enfant 19 s plus tard, pour personne.
+   *
+   *  Or `verrou.alive` vient d'être évalué à VRAI et `verrou.pid` est en main : le code
+   *  sait que le processus vit, et le laisse partir. Les deux branches de renoncement
+   *  sont pinnées séparément — un correctif posé sur une seule laisse l'autre fuir. */
+  it("tue le sidecar qu'il abandonne — branche « verrou périmé »", async () => {
+    wireAvecVerrou(
+      { present: true, pid: 29308, alive: true, started_at_ms: Date.now() - SIDECAR_STARTUP_JSON_TIMEOUT_MS - 5000 },
+      null,
+    );
+    const fake = makeFakeCommand({
+      status: "listening", host: "127.0.0.1", port: 8765,
+      token: "abc", db_path: "/data/corpus.db",
+    });
+    vi.mocked(Command).sidecar = vi.fn(() => fake) as never;
+
+    await ensureRunning("/data/corpus.db").catch(() => { /* idem */ });
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("reap_sidecar_pid", { pid: 29308 });
+  });
+
+  it("tue le sidecar qu'il abandonne — branche « n'a pas abouti dans le délai » (le cas mesuré)", async () => {
+    // Le verrou est FRAIS : on passe par l'attente, qui échoue faute de portfile. Budget
+    // ramené à ~600 ms (une itération du sondage) pour que le test reste instantané.
+    wireAvecVerrou(
+      { present: true, pid: 29308, alive: true, started_at_ms: Date.now() - SIDECAR_STARTUP_JSON_TIMEOUT_MS + 600 },
+      null,
+    );
+    const fake = makeFakeCommand({
+      status: "listening", host: "127.0.0.1", port: 8765,
+      token: "abc", db_path: "/data/corpus.db",
+    });
+    vi.mocked(Command).sidecar = vi.fn(() => fake) as never;
+
+    await ensureRunning("/data/corpus.db").catch(() => { /* idem */ });
+
+    expect(fake.spawn).toHaveBeenCalled();            // il a bien renoncé
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("reap_sidecar_pid", { pid: 29308 });
+  });
+
   it("pose le verrou dès que le pid existe, et le lève au démarrage réussi", async () => {
     const { spawnLockWrites } = wireAvecVerrou({ present: false }, null);
     const fake = makeFakeCommand({

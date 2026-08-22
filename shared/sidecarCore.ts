@@ -760,8 +760,10 @@ async function _ensureRunning(dbPath: string): Promise<Conn> {
       const adopte = await _attendrePortfile(dbPath, SIDECAR_STARTUP_JSON_TIMEOUT_MS - age);
       if (adopte) return adopte;
       sidecarLog("warn", "le sidecar en vol n'a pas abouti dans le délai — spawn");
+      await _reaperDesavoue(verrou);
     } else {
       sidecarLog("warn", `verrou de spawn périmé (pid=${verrou.pid}, ${Math.round(age / 1000)}s) — spawn`);
+      await _reaperDesavoue(verrou);
     }
   }
   if (verrou.present) await writeSpawnLock(dbPath, 0);
@@ -769,6 +771,36 @@ async function _ensureRunning(dbPath: string): Promise<Conn> {
   // 4. Spawn new sidecar
   sidecarLog("info", "spawning new sidecar process");
   return _spawnSidecar(dbPath);
+}
+
+/** Tue le sidecar qu'un renoncement vient d'abandonner.
+ *
+ *  Les deux sorties du verrou — délai d'attente écoulé, verrou périmé — spawnaient un
+ *  remplaçant sans toucher au processus désavoué. Mesuré le 2026-08-22 : un
+ *  `multicorpus.exe` trouvé six heures après sa naissance, écoutant pour personne,
+ *  bootloader mort, sans portfile — donc introuvable par le prochain démarrage, qui en
+ *  ajoutait un de plus, et binaire verrouillé au passage.
+ *
+ *  Tuer plutôt qu'attendre encore est le bon geste ICI, et seulement ici : on est sur le
+ *  point de spawner un remplaçant de toute façon, donc laisser vivre le désavoué ne peut
+ *  que faire deux sidecars pour une base. Le geste est au mieux : un pid déjà mort rend
+ *  une erreur sans conséquence.
+ *
+ *  ⚠ Ce correctif ne ferme QUE la fuite. Il ne touche pas au seuil de 90 s
+ *  (`SIDECAR_STARTUP_JSON_TIMEOUT_MS`), et c'est délibéré : la distribution des
+ *  démarrages lue au journal est CENSURÉE par ce seuil — un démarrage plus lent n'est
+ *  jamais compté comme abouti — donc elle ne peut pas dire de combien le relever. Voir
+ *  `pilotage/T-05.md`. */
+async function _reaperDesavoue(verrou: SpawnLock): Promise<void> {
+  if (typeof verrou.pid !== "number" || verrou.pid <= 0) return;
+  try {
+    await invoke("reap_sidecar_pid", { pid: verrou.pid });
+    sidecarLog("info", `sidecar désavoué tué (pid=${verrou.pid})`);
+  } catch (err) {
+    // Un shell plus ancien n'a pas la commande : on le DIT, sinon la fuite se cherche
+    // ailleurs pendant des heures — la leçon du verrou non posé, juste au-dessus.
+    sidecarLog("warn", `sidecar désavoué NON tué (pid=${verrou.pid}) — il écoute peut-être encore`, errToString(err));
+  }
 }
 
 /** Attend qu'un sidecar en vol publie son portfile, et l'adopte. `null` au délai.
