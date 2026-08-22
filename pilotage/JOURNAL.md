@@ -25,10 +25,12 @@ statut: interrompu
 
 ### Le dossier à tenir
 
-- [ ] Les 9 points de `smoke-u02` sous « À recadrer » visent des écrans supprimés en R6.5 — les recadrer vers le canvas ou les supprimer
-- [ ] Élaguer les notes du 16 août dans `pilotage/qa/shell-v040.md` : l'énoncé doit porter le protocole, la preuve va dans le rapport
+- [ ] Les exceptions de curation du canvas (R6.5-B Lot A, livrées) ne sont couvertes par **aucune passe** — vérifié le 22 août : le mot « exception » n'apparaît dans aucun fichier de `pilotage/qa/`. Trouvé en retirant les 5 points legacy de `smoke-u02`, qui masquaient le trou en le nommant sur un écran supprimé
 
 ### Soldés
+
+- [x] Les 9 points de `smoke-u02` sous « À recadrer » — tranchés **module par module** le 22 août plutôt qu'à vue : 8 retirés (`seqDiff` et le constructeur de contexte de curation ont été supprimés avec leur écran, les points ne vérifiaient plus rien), 1 déplacé vers la couche Annotation du canvas (`annotationSpacing` a survécu et sert `AnnotationPane`). Passe de 22 à 14 points
+- [x] Élaguer les notes du 16 août dans `pilotage/qa/shell-v040.md` — fait le 22 août : item le plus long 1 161 → 655 caractères, 34 faits atomiques descendus dans `REVIEW_QA_SHELL_2026-08-16.md` (présence de chacun vérifiée avant retrait). Deux items ressuscités au passage : 5.3 et 5.4, abandonnés en août sous QA-09, que la correction d'ALI-01 rend à nouveau jouables
 
 - [x] `pilotage/qa/smoke-u02.md` porte `chantier: U-02`, qui n'a pas de fiche — clos : `pilotage/U-02.md` existe, la passe est rattachée
 - [x] `journal.mjs` : le compteur `commits` n'applique pas la garde `fourretout` alors que `dernierCommit` le fait — R2 et R4 comptent quelques commits de trop

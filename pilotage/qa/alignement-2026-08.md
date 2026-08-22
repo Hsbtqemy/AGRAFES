@@ -17,10 +17,12 @@ qu'il édite. Fusion et scission annoncent les liens qu'elles retirent. Un run
 d'alignement s'annule. Une segmentation de famille laisse une trace.
 
 **Contexte d'exécution.** Shell dev (`npm --prefix tauri-shell run tauri -- dev`) avec le
-sidecar reconstruit le 2026-08-20 à 18h46. Contrat live attendu **1.6.71**, engine
-**0.4.0**. La passe a été écrite quand 1.6.69 était courant ; la campagne a livré deux
-contrats depuis (1.6.70 = gestes annulables, 1.6.71 = `apply_propagated` journalisé), et
-la version attendue les suit. Corrigé le 2026-08-20 en cours de passe.
+sidecar reconstruit le 2026-08-21 à 16h34. Contrat live attendu **1.6.75**, engine
+**0.4.0**. La passe a été écrite quand 1.6.69 était courant ; la campagne alignement a
+livré 1.6.70 (gestes annulables) puis 1.6.71 (`apply_propagated` journalisé). Les quatre
+suivantes — 1.6.72 à 1.6.75, assainisseur de requête puis pivot KWIC — viennent du
+chantier recherche et **ne touchent rien de ce que cette passe vérifie** ; c'est
+simplement le numéro que le panneau affichera. Recalé le 2026-08-21.
 Base servie : une WORKCOPY, jamais le corpus réel.
 
 **Préalable** : ouvrir l'inspecteur et le garder ouvert — panneau Diagnostic → bouton
@@ -33,7 +35,7 @@ conserve (sessionStorage), un redémarrage non — c'est voulu.
 
 ### Version et contrat
 
-- [x] Le panneau Diagnostic annonce contrat **1.6.71** et engine **0.4.0**
+- [ ] Le panneau Diagnostic annonce contrat **1.6.75** et engine **0.4.0**
 - [x] Le panneau Diagnostic ne dit plus « Running : no » alors que l'application dialogue
 - [x] Le bouton **🔍 Inspecteur** ouvre bien la console du webview
 
