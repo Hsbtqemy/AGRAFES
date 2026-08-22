@@ -24,6 +24,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ShellContext } from "./context.ts";
 import { isCloudSyncedPath } from "./cloudSync.ts";
 import { setHtml, raw as rawHtml, safeHtml } from "../../tauri-prep/src/lib/safeHtml.ts";
+import { clampAnchoredMenu } from "../../shared/anchorMenu.ts";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 
@@ -1270,6 +1271,10 @@ function _rebuildMruMenu(): void {
   if (!menu) return;
   const section = menu.querySelector(".shell-mru-section");
   if (section) section.replaceWith(_buildMruSection());
+  // La section MRU change de hauteur, et _checkMruMissing la reconstruit de facon
+  // asynchrone — donc potentiellement menu ouvert. Recadrer a la seule ouverture
+  // laisserait la correction perimee.
+  if (menu.classList.contains("open")) clampAnchoredMenu(menu);
 }
 
 function _buildMruSection(): HTMLElement {
@@ -1674,7 +1679,10 @@ function _injectCSS(): void {
 // ─── Support menu ─────────────────────────────────────────────────────────────
 
 function _toggleSupportMenu(): void {
-  document.getElementById("shell-support-menu")?.classList.toggle("open");
+  const menu = document.getElementById("shell-support-menu");
+  if (!menu) return;
+  menu.classList.toggle("open");
+  if (menu.classList.contains("open")) clampAnchoredMenu(menu);
 }
 
 function _closeSupportMenu(): void {
@@ -2369,7 +2377,10 @@ function _updateDbBadge(): void {
 // ─── DB menu helpers ──────────────────────────────────────────────────────────
 
 function _toggleDbMenu(): void {
-  document.getElementById("shell-db-menu")?.classList.toggle("open");
+  const menu = document.getElementById("shell-db-menu");
+  if (!menu) return;
+  menu.classList.toggle("open");
+  if (menu.classList.contains("open")) clampAnchoredMenu(menu);
 }
 
 function _closeDbMenu(): void {

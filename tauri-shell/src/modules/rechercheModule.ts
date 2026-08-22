@@ -18,6 +18,7 @@ import {
   type YearMetric,
 } from "./yearChart.ts";
 import { cqlToHtml } from "./cqlHighlight.ts";
+import { clampFixedMenu } from "../../../shared/anchorMenu.ts";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -1679,17 +1680,16 @@ function _showTokenPopover(anchor: HTMLElement, tok: _Token): void {
     pop.appendChild(btn);
   }
 
-  // Position below anchor
+  // Sous le declencheur, puis recadre. Les coordonnees sont relatives au viewport
+  // (le popover est en position:fixed) : pas de scrollX/scrollY a ajouter, c'etait
+  // un idiome de positionnement absolu qui trainait ici.
   document.body.appendChild(pop);
   const rect = anchor.getBoundingClientRect();
-  pop.style.left = `${rect.left + window.scrollX}px`;
-  pop.style.top  = `${rect.bottom + window.scrollY + 4}px`;
-
-  // Adjust if off-screen right
-  const popRect = pop.getBoundingClientRect();
-  if (popRect.right > window.innerWidth - 8) {
-    pop.style.left = `${window.innerWidth - popRect.width - 8 + window.scrollX}px`;
-  }
+  pop.style.left = `${rect.left}px`;
+  pop.style.top  = `${rect.bottom + 4}px`;
+  // Recadre les QUATRE bords : l'ancienne garde ne traitait que la droite, si bien
+  // qu'un token en bas de liste ouvrait un popover ampute et inatteignable.
+  clampFixedMenu(pop);
 
   // Close on outside click
   _popoverCloseHandler = (e: MouseEvent) => {
@@ -1783,15 +1783,12 @@ function _showTokenContextMenu(
     menu.appendChild(posBtn);
   }
 
-  // Position
+  // Meme regle que le popover ci-dessus : viewport, quatre bords, pas de scroll.
   document.body.appendChild(menu);
   const rect = anchor.getBoundingClientRect();
-  menu.style.left = `${rect.left + window.scrollX}px`;
-  menu.style.top  = `${rect.bottom + window.scrollY + 2}px`;
-  const mr = menu.getBoundingClientRect();
-  if (mr.right > window.innerWidth - 8) {
-    menu.style.left = `${window.innerWidth - mr.width - 8 + window.scrollX}px`;
-  }
+  menu.style.left = `${rect.left}px`;
+  menu.style.top  = `${rect.bottom + 2}px`;
+  clampFixedMenu(menu);
 
   // Close handlers
   _ctxMenuCloseHandler = (e: MouseEvent) => {
@@ -2680,6 +2677,49 @@ const MODULE_CSS = `
 .rech-tok-popover-btn:hover {
   background: #f0f4ff;
   color: #7b3fa0;
+}
+
+/* ── Menu contextuel de token (clic droit) ──
+   Ces trois classes existaient dans le DOM depuis l'origine sans aucune règle
+   en face : le menu se calculait donc en position:static, ses left/top restaient
+   inertes, et il atterrissait sans fond ni bordure derrière #app (min-height:100vh),
+   hors de la fenêtre. Le position:fixed ci-dessous est ce qui rend effectives les
+   coordonnées calculées dans _showTokenContextMenu. Pas de backtick ici : ce bloc
+   vit dans un template literal TypeScript. */
+.rech-ctx-menu {
+  position: fixed;
+  z-index: 99999;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 7px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.16);
+  padding: 4px 0;
+  min-width: 200px;
+  max-width: 340px;
+}
+.rech-ctx-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  color: #1a1a2e;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.1s;
+}
+.rech-ctx-item:hover {
+  background: #f0f4ff;
+  color: #7b3fa0;
+}
+.rech-ctx-sep {
+  height: 1px;
+  background: #e9ecef;
+  margin: 4px 0;
 }
 
 /* ── Toggle traductions ── */
