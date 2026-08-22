@@ -353,7 +353,10 @@ def test_cmd_serve_tolerates_stale_portfile_unlink_race(
     stale_portfile.write_text("{}", encoding="utf-8")
 
     class _DummyServer:
-        def __init__(self, db_path: Path, host: str, port: int, token: str | None) -> None:
+        # `**_` : ce double intercepte le CONSTRUCTEUR, il n'a pas vocation à en épingler
+        # la signature — sans quoi tout paramètre ajouté à CorpusServer casse ce test
+        # sans rien dire du comportement testé (arrivé le 2026-08-22 avec exit_if_unclaimed).
+        def __init__(self, db_path: Path, host: str, port: int, token: str | None, **_) -> None:
             self.actual_port = 44111
             self.pid = 424242
             self.started_at = "2026-04-09T00:00:00Z"

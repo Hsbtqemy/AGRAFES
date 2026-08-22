@@ -13,8 +13,25 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { resolveResource } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
 
+/** Secondes sans AUCUNE requête après quoi un sidecar non réclamé s'arrête (T-05).
+ *
+ *  Doit couvrir toute la séquence d'adoption avec de la marge, sinon la veille tuerait
+ *  un sidecar sain que le front n'a pas encore trouvé : démarrage (jusqu'à 90 s sous
+ *  Windows) + sondage de santé (45 s) = 135 s au pire. 300 s laisse plus du double,
+ *  parce que se tromper dans ce sens coûte une session de travail, alors qu'attendre
+ *  trois minutes de trop ne coûte qu'un processus de 22 Mo. */
+export const SIDECAR_UNCLAIMED_EXIT_S = 300;
+
 export const SIDECAR_SPAWN_OPTIONS = {
-  env: { PYTHONUNBUFFERED: "1" },
+  env: {
+    PYTHONUNBUFFERED: "1",
+    // T-05 second étage — passé par l'ENVIRONNEMENT et non par argv, délibérément.
+    // Un argument inconnu TUE le sidecar (argparse : « unrecognized arguments », exit 1,
+    // vérifié le 2026-08-22 sur le binaire du 21), et shell et sidecar ne sont solidaires
+    // qu'en release : en dev, `binaries/` peut précéder ce fichier. Une variable inconnue
+    // est ignorée — c'est le seul canal sans négociation de version.
+    AGRAFES_EXIT_IF_UNCLAIMED: String(SIDECAR_UNCLAIMED_EXIT_S),
+  },
 };
 
 export function utf8DecodeStream(chunk: Uint8Array, decoder: TextDecoder): string {
@@ -54,6 +71,7 @@ export const SIDECAR_HEALTH_INITIAL_DELAY_MS = IS_WINDOWS_RUNTIME ? 1200 : 0;
 export const SIDECAR_HEALTH_POLL_INTERVAL_MS = 350;
 
 export const SIDECAR_STARTUP_JSON_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 90000 : 12000;
+
 
 export type LoopbackHttpBackendMode = "auto" | "global_this_only" | "tauri_only";
 

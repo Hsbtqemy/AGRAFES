@@ -43,6 +43,8 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+
+from .sidecar_watchdog import arm_unclaimed_watchdog
 from pathlib import Path
 from typing import Optional
 from urllib.error import URLError
@@ -728,6 +730,13 @@ def _post_requires_write_token(path: str) -> bool:
 
 class _CorpusHandler(BaseHTTPRequestHandler):
     """Request handler for the corpus sidecar API."""
+
+    def handle_one_request(self) -> None:  # type: ignore[override]
+        # T-05 — « réclamé » = une requête est arrivée, n'importe laquelle. Le crochet est
+        # ici et non dans do_GET/do_POST/do_PUT : /health, que le front sonde pour adopter,
+        # passe par le même chemin, et trois crochets se seraient désynchronisés.
+        self.server.claimed = True  # type: ignore[attr-defined]
+        super().handle_one_request()
 
     def log_message(self, format: str, *args) -> None:  # type: ignore[override]
         logger.debug("HTTP %s", format % args)
@@ -9454,6 +9463,7 @@ class CorpusServer:
         host: str = "127.0.0.1",
         port: int = 8765,
         token: str | None = None,
+        exit_if_unclaimed: float = 0.0,
     ) -> None:
         if host not in self._ALLOWED_HOSTS:
             raise ValueError(
@@ -9464,6 +9474,7 @@ class CorpusServer:
         self._host = host
         self._port = port
         self._token = token if token else None
+        self._exit_if_unclaimed = float(exit_if_unclaimed or 0.0)
         self._conn: Optional[sqlite3.Connection] = None
         self._httpd: Optional[HTTPServer] = None
         self._thread: Optional[threading.Thread] = None
@@ -9509,6 +9520,7 @@ class CorpusServer:
         self._httpd.db_path = str(self._db_path)  # type: ignore[attr-defined]
         self._httpd.portfile = str(self._portfile_path)  # type: ignore[attr-defined]
         self._httpd.token = self._token  # type: ignore[attr-defined]
+        self._httpd.claimed = False  # type: ignore[attr-defined]
         self._httpd.request_shutdown = self.request_shutdown  # type: ignore[attr-defined]
 
         self._thread = threading.Thread(
@@ -9518,6 +9530,11 @@ class CorpusServer:
         )
         self._thread.start()
         self._write_portfile()
+        arm_unclaimed_watchdog(
+            self._exit_if_unclaimed,
+            lambda: bool(getattr(self._httpd, "claimed", False)),
+            self.request_shutdown,
+        )
         logger.info(
             "CorpusServer started on %s:%d (db=%s)",
             self._host,

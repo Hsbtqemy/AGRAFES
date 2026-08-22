@@ -340,6 +340,34 @@ describe("ensureRunning (spawn / cold start)", () => {
     });
   });
 
+  /** Le second étage de T-05 ne vaut que s'il est effectivement demandé.
+   *
+   *  Le moteur porte la veille (`--exit-if-unclaimed`), mais elle est OPT-IN — sans le
+   *  drapeau, `multicorpus serve` attend indéfiniment, ce qui est le bon comportement
+   *  pour un lancement à la main. Rien du côté moteur ne peut donc détecter que le shell
+   *  a cessé de le passer : ce test est le seul endroit où l'oubli se verrait. */
+  it("demande au sidecar de s'arrêter s'il n'est jamais réclamé (T-05, 2ᵉ étage)", async () => {
+    wireSidecar(null);
+    const cmd = makeFakeCommand({ host: "127.0.0.1", port: 8765, token: "abc" });
+    vi.mocked(Command.sidecar).mockReturnValue(cmd as never);
+
+    await ensureRunning("/data/corpus.db");
+
+    const [, args, options] = vi.mocked(Command.sidecar).mock.calls[0] as unknown as
+      [string, string[], { env: Record<string, string> }];
+
+    // Par l'ENVIRONNEMENT, et surtout pas par argv : un argument inconnu TUE un sidecar
+    // antérieur (argparse, exit 1 — vérifié le 2026-08-22 sur le binaire du 21), alors
+    // qu'une variable inconnue est ignorée. C'est cette assertion-là, et non la présence
+    // du réglage, qui garde la compatibilité shell neuf ↔ sidecar ancien.
+    expect(args).not.toContain("--exit-if-unclaimed");
+    const budget = Number(options.env.AGRAFES_EXIT_IF_UNCLAIMED);
+
+    // Le budget doit couvrir toute l'adoption (démarrage + sondage de santé) : une valeur
+    // trop courte tuerait un sidecar sain, et c'est le seul risque du dispositif.
+    expect(budget).toBeGreaterThan((SIDECAR_STARTUP_JSON_TIMEOUT_MS + 45_000) / 1000);
+  });
+
   it("kills a previously-spawned child before spawning a new one", async () => {
     const cmd1 = makeFakeCommand({ host: "127.0.0.1", port: 8765, token: "a", portfile: "/a/.agrafes_sidecar.json" });
     const cmd2 = makeFakeCommand({ host: "127.0.0.1", port: 8766, token: "b", portfile: "/b/.agrafes_sidecar.json" });

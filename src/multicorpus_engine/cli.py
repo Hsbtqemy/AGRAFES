@@ -960,6 +960,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .sidecar import CorpusServer, inspect_sidecar_state, resolve_token_mode
+    from .sidecar_watchdog import resolve_unclaimed_delay
 
     db_path = Path(args.db)
     host = getattr(args, "host", "127.0.0.1")
@@ -1031,7 +1032,10 @@ def cmd_serve(args: argparse.Namespace) -> None:
             )
 
         token = resolve_token_mode(token_mode)
-        server = CorpusServer(db_path=db_path, host=host, port=port, token=token)
+        server = CorpusServer(
+            db_path=db_path, host=host, port=port, token=token,
+            exit_if_unclaimed=resolve_unclaimed_delay(getattr(args, "exit_if_unclaimed", 0.0)),
+        )
         server.start()
         update_run_stats(conn, run_id, {
             "status": "listening",
@@ -1833,6 +1837,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--token",
         default="auto",
         help="Local auth token mode: auto|off|<token> (default: auto)",
+    )
+    p_serve.add_argument(
+        "--exit-if-unclaimed", type=float, default=0.0, metavar="SECONDS",
+        help="Exit if NO request has arrived within SECONDS of listening "
+             "(0 = never, the default). Guards against a sidecar whose launcher "
+             "dies before it can be adopted — see pilotage/T-05.md. Disarmed "
+             "permanently by the first request, so an idle-but-adopted sidecar "
+             "is never affected.",
     )
     p_serve.set_defaults(func=cmd_serve)
 
