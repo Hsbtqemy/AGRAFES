@@ -14,7 +14,26 @@
 
 import { describe, expect, it } from "vitest";
 
-import { type Diag, formatDiagnosticsText, redactPath } from "../diagnostics";
+import { type Diag, formatDiagnosticsText, isTauriRuntime, redactPath } from "../diagnostics";
+
+describe("isTauriRuntime", () => {
+  it("reconnaît le global de Tauri v2 — celui que l'application utilise vraiment", () => {
+    // `__TAURI_INTERNALS__` porte l'invoke de @tauri-apps/api/core. C'est LE cas qui
+    // rendait « no » : l'ancien test ne regardait que le global v1, absent en v2 tant
+    // que `withGlobalTauri` n'est pas activé — et il ne l'est pas ici.
+    expect(isTauriRuntime({ __TAURI_INTERNALS__: {} })).toBe(true);
+  });
+
+  it("reconnaît encore le global v1, en repli", () => {
+    expect(isTauriRuntime({ __TAURI__: {} })).toBe(true);
+  });
+
+  it("rend faux hors de Tauri", () => {
+    expect(isTauriRuntime({})).toBe(false);
+    expect(isTauriRuntime(undefined)).toBe(false);
+    expect(isTauriRuntime(null)).toBe(false);
+  });
+});
 
 describe("redactPath", () => {
   it("returns (none) for empty inputs", () => {

@@ -38,6 +38,29 @@ export interface EnvDiag {
   locale: string;
 }
 
+/** Le runtime Tauri est-il présent ?
+ *
+ *  **Le test précédent ne pouvait jamais rendre vrai.** Il interrogeait
+ *  `window.__TAURI__`, qui est le global de Tauri **v1**. En v2 — la version de cette
+ *  application (`@tauri-apps/api ^2.0.0`) — ce global n'est injecté que si
+ *  `withGlobalTauri: true` figure dans `tauri.conf.json`, et il en est absent : le
+ *  défaut est `false`. Le panneau Diagnostic affichait donc « Tauri runtime : no » en
+ *  toutes circonstances, y compris pendant que l'application invoquait des commandes
+ *  Rust. Constaté à l'écran le 2026-08-23, et déjà dans le rapport du 20 août — où il
+ *  se lisait comme un incident ponctuel alors qu'il est permanent.
+ *
+ *  Ce que v2 injecte réellement est `__TAURI_INTERNALS__`, sur quoi repose l'`invoke`
+ *  de `@tauri-apps/api/core` : sa présence est donc la mesure honnête de « le pont est
+ *  là ». `__TAURI__` reste testé en repli, pour une build qui activerait le global.
+ *
+ *  Paramétré plutôt que lisant `window` en dur : c'est ce qui le rend testable sans DOM. */
+export function isTauriRuntime(
+  win: unknown = typeof window !== "undefined" ? window : undefined,
+): boolean {
+  if (win === null || typeof win !== "object") return false;
+  return "__TAURI_INTERNALS__" in win || "__TAURI__" in win;
+}
+
 export interface Diag {
   collected_at: string;
   app_version: string;
@@ -222,7 +245,7 @@ export async function collectDiagnostics(opts: {
   const env: EnvDiag = {
     platform: navigator.platform ?? "unknown",
     user_agent: navigator.userAgent ?? "unknown",
-    tauri_available: typeof window !== "undefined" && "__TAURI__" in window,
+    tauri_available: isTauriRuntime(),
     window_size: { w: window.innerWidth, h: window.innerHeight },
     locale: navigator.language ?? "unknown",
   };
