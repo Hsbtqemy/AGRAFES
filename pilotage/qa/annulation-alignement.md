@@ -23,8 +23,12 @@ doit se défaire **d'un seul bloc**. Les tests le prouvent sur le fil ; ce qu'il
 prouvent pas, c'est que l'écran redevient celui d'avant.
 
 **Contexte d'exécution.** Shell dev (`npm --prefix tauri-shell run tauri -- dev`) avec le
-sidecar reconstruit le 2026-08-20 à 18h46. Contrat live attendu **1.6.71**, engine
-**0.4.0**. Base servie : une WORKCOPY, jamais le corpus réel.
+sidecar reconstruit le 2026-08-22 à 20h56. Contrat live attendu **1.6.75**, engine
+**0.4.0**. La passe a été écrite sous 1.6.71 ; les quatre contrats suivants — 1.6.72 à
+1.6.75, assainisseur de requête puis pivot KWIC — viennent du chantier **recherche** et
+**ne touchent rien de ce que cette passe vérifie**. C'est simplement le numéro que le
+panneau affichera. Recalé le 2026-08-23.
+Base servie : une WORKCOPY, jamais le corpus réel.
 
 **Une chose à savoir avant de commencer.** L'annulation est refusée dans deux cas, et
 c'est voulu : `404` si l'opération a déjà été défaite ou est sortie de la pile, `409` si
@@ -33,17 +37,20 @@ défaut — le message doit dire lequel des deux.
 
 ### Version et contrat
 
-- [ ] Le panneau Diagnostic annonce contrat **1.6.71** et engine **0.4.0**
-- [ ] `Tauri runtime : yes` (le rapport du 20 août à 13h27 disait `no`)
-- [ ] Aucun message de reprise après crash au démarrage
+- [x] Le panneau Diagnostic annonce contrat **1.6.75** et engine **0.4.0**
+- [x] `Tauri runtime : yes` (le rapport du 20 août à 13h27 disait `no`)
+- [x] Aucun message de reprise après crash au démarrage
+      *(Attention : les vérifications du 22 août ont tué le shell de force à plusieurs
+      reprises, ce qui laisse une trace de crash légitime. Si le message cite une date
+      du 22, ce n'est pas un défaut — relancer une fois de plus et rejouer le point.)*
 
 ### Le bandeau apparaît, et seulement quand il le doit
 
-- [ ] Après un ⭙ Fusionner réussi, un bandeau ↶ apparaît au-dessus de la grille
-- [ ] Il nomme le geste — « ⭙ Absorber la phrase voisine » — et non un libellé générique
-- [ ] Il n'apparaît **pas** après un geste refusé (tenter un ＝ sur une cellule déjà liée)
-- [ ] Il n'apparaît pas au simple chargement d'une matrice, ni après un run d'alignement
-- [ ] Un second geste **remplace** le bandeau au lieu d'en empiler un deuxième
+- [x] Après un ⭙ Fusionner réussi, un bandeau ↶ apparaît au-dessus de la grille
+- [x] Il nomme le geste — « ⭙ Absorber la phrase voisine » — et non un libellé générique
+- [x] Il n'apparaît **pas** après un geste refusé (tenter un ＝ sur une cellule déjà liée)
+- [x] Il n'apparaît pas au simple chargement d'une matrice, ni après un run d'alignement
+- [x] Un second geste **remplace** le bandeau au lieu d'en empiler un deuxième
 
 ### Ce que « ↶ Annuler » défait vraiment
 

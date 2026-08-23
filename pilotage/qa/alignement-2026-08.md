@@ -88,4 +88,4 @@ conserve (sessionStorage), un redémarrage non — c'est voulu.
 
 ### Cycle de vie
 
-- [ ] Fermer l'application ne laisse aucun `multicorpus.exe` derrière elle (fuite T-05)
+- [x] Fermer l'application ne laisse aucun `multicorpus.exe` derrière elle (fuite T-05)
