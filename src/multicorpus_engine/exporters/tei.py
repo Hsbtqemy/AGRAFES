@@ -146,8 +146,12 @@ def _get_alignment_links(
         SELECT al.link_id, al.pivot_unit_id, al.target_unit_id, al.external_id,
                al.pivot_doc_id, al.target_doc_id, al.status
         FROM alignment_links al
+        JOIN units pu ON pu.unit_id = al.pivot_unit_id
         WHERE {where}
-        ORDER BY al.external_id
+        -- L'ordre des <link> émis est celui du TEXTE : une séquence exportée dans le
+        -- désordre affirme une fausse linéarité de l'œuvre, pas seulement de l'outil.
+        -- `external_id` est un numéro de paire que D-W13 fait hériter aux gestes (ALI-23).
+        ORDER BY pu.n, al.target_char_start, al.link_id
         """,
         params,
     ).fetchall()

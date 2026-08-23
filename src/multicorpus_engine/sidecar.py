@@ -3539,7 +3539,16 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
             WHERE {base_where}
-            ORDER BY al.external_id, al.link_id
+            -- L'ordre d'un alignement rendu est celui du TEXTE, pas celui de l'aligneur.
+            -- `external_id` est un numéro de PAIRE, et D-W13 (1.6.55) le fait volontairement
+            -- hériter par un lien créé au geste « pour qu'il se trie à côté de sa famille ».
+            -- À numéro égal le départage tombait alors sur `link_id`, c'est-à-dire l'ordre de
+            -- CRÉATION — l'inverse de l'ordre du texte quand une coupe donne la tranche
+            -- initiale au segment antérieur. Mesuré le 2026-08-23 : 2 paires du corpus de
+            -- travail rendues à l'envers. Trier sur la position du pivot répare aussi les
+            -- liens DÉJÀ en base, là où corriger l'attribution ne l'aurait pas fait (ALI-23).
+            -- Ordre TOTAL (`link_id` en dernier) : la liste est paginée.
+            ORDER BY pu.n, al.target_char_start, al.link_id
             LIMIT ? OFFSET ?
             """,
             params + [limit + 1, offset],
@@ -7722,7 +7731,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             JOIN units tu ON tu.unit_id = al.target_unit_id
             WHERE al.pivot_doc_id = ? AND al.target_doc_id = ?
               AND (al.status IS NULL OR al.status != 'rejected')
-            ORDER BY al.external_id, al.link_id
+            -- Ordre du texte, pas de l'aligneur — cf. la note du Contrôle (ALI-23).
+            ORDER BY pu.n, al.target_char_start, al.link_id
             """,
             (pivot_doc_id, target_doc_id),
         ).fetchall()
@@ -7997,7 +8007,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
             {where}
-            ORDER BY al.pivot_doc_id, al.target_doc_id, al.external_id
+            -- Ordre du texte (ALI-23).
+            ORDER BY al.pivot_doc_id, al.target_doc_id, pu.n, al.target_char_start, al.link_id
             """,
             params,
         ).fetchall()
@@ -8772,7 +8783,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             JOIN units tu ON tu.unit_id = al.target_unit_id
             WHERE al.target_doc_id IN ({ph})
               AND al.source_changed_at IS NOT NULL
-            ORDER BY al.target_doc_id, al.external_id
+            -- Ordre du texte (ALI-23).
+            ORDER BY al.target_doc_id, pu.n, al.target_char_start, al.link_id
             """,
             child_ids,
         ).fetchall()
@@ -10285,7 +10297,8 @@ class CorpusServer:
                     JOIN units pu ON pu.unit_id = al.pivot_unit_id
                     JOIN units tu ON tu.unit_id = al.target_unit_id
                     {where_clause}
-                    ORDER BY al.pivot_doc_id, al.external_id, al.link_id
+                    -- Ordre du texte (ALI-23).
+                    ORDER BY al.pivot_doc_id, pu.n, al.target_char_start, al.link_id
                     """,
                     sql_params,
                 ).fetchall()

@@ -60,6 +60,7 @@ conclusions** des §8 et §10.
 | ALI-20 | 🟡 | P2 | Pas de bandeau d'annulation dans l'Alignement, **y compris pour les deux gestes qui sont journalisés** (✎, ¶). **Moitié livrée** (§12.10) : la matrice porte un bandeau pour les gestes de lien, et un geste multi-requêtes s'y défait d'un bloc. **Reste ouvert** pour les deux gestes visés par le libellé — ✎ et ¶ passent par `/prep/undo`, une mécanique différente — et pour le panneau Alignement, l'autre surface. |
 | ALI-21 | 🟡 | P2 | Gestes de cellule invisibles au repos, glyphe ↻ ≠ ↺ annoncé, et refus `_cutBusy` totalement muet. |
 | ALI-22 | ✅ | ~~P1~~ | Le ⭙ n'a pas d'inverse ; la réparation intuitive (＝) laisse la cible sur **deux** segments, masquée par le bead. **Démontré en base.** (a) **payé** (§12.10) : le ⭙ a désormais son inverse — un bouton qui défait les trois requêtes du geste d'un seul bloc. |
+| ALI-23 | ✅ | ~~P1~~ | **Ajouté le 2026-08-23, trouvé à l'usage et non à l'audit.** Le Contrôle, le TEI, le TMX/bilingue, le CSV et la liste de curation triaient sur `external_id` — un numéro de **paire** que D-W13 (1.6.55) fait volontairement hériter à un lien créé au geste. À numéro égal le départage tombait sur `link_id`, l'ordre de **création** : une coupe qui donne la tranche initiale au segment antérieur rendait les deux à l'envers. Mesuré : 2 paires du corpus de travail sur 14 575 liens. **Clos** en triant sur la position du pivot (`pu.n, target_char_start, link_id`) aux 6 sites — ce qui répare aussi les liens déjà en base ; `external_id` est laissé intact. |
 
 > ALI-13 est traité en §5 (passe beads) ; ALI-14 à ALI-22 en §7 à §10 (passes du 2026-08-19) ; §10 chiffre le correctif d'ALI-10/ALI-17 ; le **§11** approfondit la famille « données
 > détruites » (ALI-03/10/17/22 + QA-06) et tranche ses décisions de conception.
@@ -1063,6 +1064,45 @@ révèle *quels* gestes, pas *qu'il y en a* ; (b) tracer le refus `_cutBusy` (to
 cours » ou simple `console.debug`), pour qu'un clic sans effet cesse d'être indiscernable d'un
 bouton mort.
 *Test* : `_cellGestureCtx` refusé pour cause de `_cutBusy` émet un signal observable.
+
+### ALI-23 ✅ P1 — l'ordre rendu était celui de l'aligneur, pas celui du texte
+
+> **Trouvé à l'usage le 2026-08-23**, en jouant `qa/annulation-alignement.md` : après avoir
+> coupé la cible du segment 3 et donné sa première tranche au segment 2, le Contrôle
+> affichait « le 2 devient 3 et le 3 devient 2 ». La matrice, elle, était juste.
+
+**Ce n'était pas un oubli mais une décision.** D-W13 / contrat 1.6.55 fait hériter à un lien
+créé par un geste l'`external_id` de son frère, avec un motif écrit dans le code : « pour que
+la Révision fine le trie à côté de sa famille, au lieu d'un `[§0]` errant ». L'objectif est
+atteint — le lien est bien adjacent — mais **adjacent n'est pas ordonné** : à `external_id`
+égal, le départage tombait sur `link_id`, c'est-à-dire l'ordre de création, qui est l'inverse
+de l'ordre du texte dès que la coupe donne la tranche initiale au segment antérieur.
+
+**Mesuré avant de corriger**, sur le corpus de travail : 14 575 liens, 8 coupes, 7 liens
+manuels, 3 `external_id` partagés par plusieurs pivots — et **2 paires seulement** où l'ordre
+par `external_id` contredit l'ordre du texte (379→378 et 371→370, une inversion chacune).
+Trier par la position du pivot donne donc **exactement le même résultat partout ailleurs** :
+le correctif ne change rien sauf là où l'ordre était faux, ce qui a été vérifié sur toutes les
+paires du corpus et non supposé.
+
+**Pourquoi les six sites et pas seulement l'écran.** L'ordre d'un bitexte porte du sens : il
+dit la linéarité de l'œuvre. Une séquence émise dans le désordre affirme quelque chose de faux
+sur le texte, pas seulement sur l'outil. Le tri est donc corrigé partout où une séquence est
+rendue : `_handle_align_audit` (le Contrôle), `exporters/tei.py` (l'export que Parcolab lit —
+la requête ne joignait même pas le pivot, la jointure a été ajoutée), `_fetch_aligned_pairs`
+(TMX et bilingue), `_handle_export_align_csv`, `_handle_family_curation_status` et l'export
+asynchrone. Ordre **total** (`link_id` en dernier) : la liste du Contrôle est paginée, et un
+tri non total y ferait se recouvrir deux pages.
+
+**Ce qui n'a pas été touché, et pourquoi.** `external_id` reste tel quel. Corriger le tri
+répare les liens **déjà en base** ; corriger l'attribution ne les aurait pas réparés et aurait
+demandé de trancher ce que vaut le numéro de paire d'une tranche — une question ouverte, qui
+n'a pas à être répondue pour rendre l'ordre juste.
+
+Tests : `tests/contracts/test_align_reading_order.py`, prouvés RED sur l'ancien tri (le
+Contrôle rendait `[1, 2, 3, 4, 2, 5]`) puis GREEN. Le test d'export passe par le vrai
+`POST /export/bilingual` et compare la **séquence entière** — chercher la première occurrence
+de chaque segment aurait laissé passer le défaut, le pivot fautif apparaissant deux fois.
 
 ### ALI-22 🟠 P1 — le ⭙ n'a pas d'inverse, et la tentative naturelle laisse un doublon (démontré)
 
