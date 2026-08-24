@@ -8,6 +8,15 @@
  * cheval » → create link + atomic pair (compensated by delete on refusal). The
  * pure pieces (resolvers, suggestion, panels HTML) are covered in
  * lib/__tests__/alignCellCut.test.ts — this exercises the wiring.
+ *
+ * **Le corps de `/align/link/create` ne porte PLUS `external_id` (1.6.76).** Trois
+ * assertions de ce fichier épinglaient l'héritage du numéro de paire (D-W13 / 1.6.55) ;
+ * elles épinglaient en fait un défaut. Ce numéro devait faire trier le lien neuf à côté
+ * de sa famille — c'est l'ORDER BY de `/align/audit` qui s'en charge depuis ALI-23 — et
+ * l'hériter faisait mentir le champ : mesuré le 2026-08-24 sur le corpus de travail,
+ * 6 des 7 liens créés au geste portaient un numéro qui n'était pas leur position, contre
+ * 0 des 14 568 liens créés par un run. Sans `external_id`, le moteur écrit la position
+ * du pivot. Le numéro AFFICHÉ, lui, ne vient plus de ce champ du tout (`pivot_segment`).
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { AlignMatrixView } from "../AlignMatrixView.ts";
@@ -214,10 +223,11 @@ describe("AlignMatrixView — « ⭙ Fusionner » (D-W16)", () => {
       expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
     });
 
-    // The link is re-created on THIS hub unit, inheriting the pair number…
+    // The link is re-created on THIS hub unit — SANS numéro de paire (1.6.76 : plus
+    // d'héritage, le moteur écrit la position du pivot ; voir l'en-tête du fichier).
     const create = calls.find((c) => c.path === "/align/link/create");
     expect(create?.body).toEqual({
-      pivot_unit_id: 101, target_unit_id: 901, external_id: 2, label: "⭙ Absorber la phrase voisine",
+      pivot_unit_id: 101, target_unit_id: 901, label: "⭙ Absorber la phrase voisine",
     });
     // …the neighbour's link is deleted ATOMICALLY (the gesture itself)…
     const batches = calls.filter((c) => c.path === "/align/links/batch_update");
@@ -499,11 +509,11 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     await vi.waitFor(() => {
       expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2); // re-projected
     });
-    // The missing link goes to the NEIGHBOUR hub unit (FR deux = 102), same target,
-    // and inherits the sibling's pair number (D-W13, 1.6.55).
+    // The missing link goes to the NEIGHBOUR hub unit (FR deux = 102), same target —
+    // et SANS `external_id` (1.6.76, voir l'en-tête du fichier).
     const create = calls.find((c) => c.path === "/align/link/create");
     expect(create?.body).toEqual({
-      pivot_unit_id: 102, target_unit_id: 900, external_id: 1, label: "✂ Couper la cellule",
+      pivot_unit_id: 102, target_unit_id: 900, label: "✂ Couper la cellule",
     });
     // "down": the cell keeps the head, the created link takes the tail — atomically.
     // Suggested boundary on "As far back" (hubs "FR un"/"FR deux") = 3.
@@ -567,10 +577,11 @@ describe("AlignMatrixView — « ✂ couper à cheval » (D-W12)", () => {
     await vi.waitFor(() => {
       expect(calls.filter((c) => c.path === "/align/matrix")).toHaveLength(2);
     });
-    // The whole sentence is re-created on the NEXT hub unit (seg 70 = 103), pair inherited…
+    // The whole sentence is re-created on the NEXT hub unit (seg 70 = 103) — sans numéro
+    // de paire hérité (1.6.76, voir l'en-tête du fichier).
     const create = calls.find((c) => c.path === "/align/link/create");
     expect(create?.body).toEqual({
-      pivot_unit_id: 103, target_unit_id: 902, external_id: 2, label: "✂ Couper la cellule",
+      pivot_unit_id: 103, target_unit_id: 902, label: "✂ Couper la cellule",
     });
     const batches = calls.filter((c) => c.path === "/align/links/batch_update");
     // …the original link is DELETED atomically — NO set_target_span: nothing is sliced.

@@ -664,11 +664,21 @@ Response:
   "limit": 50, "offset": 0, "has_more": false, "next_offset": null,
   "stats": { "links_returned": 12 },
   "links": [
-    { "link_id": 1, "external_id": 1, "pivot_unit_id": 10, "target_unit_id": 20,
+    { "link_id": 1, "external_id": 1, "pivot_segment": 1,
+      "pivot_unit_id": 10, "target_unit_id": 20,
       "pivot_text": "Bonjour monde.", "target_text": "Hello world." }
   ]
 }
 ```
+
+> **`pivot_segment` (1.6.76) est le numéro à AFFICHER** — le rang du pivot parmi les lignes
+> de son document, c'est-à-dire la colonne « segment » de la matrice. Il est **dérivé**, pas
+> stocké. `external_id`, lui, est **la clé qui a apparié** : le marqueur `[N]` du pivot pour
+> `external_id` / phase 1 d'`external_id_then_position`, sa position `n` pour `position`,
+> `similarity`, `length_bounded` / phase 2 — un même run mélange les deux. L'afficher comme
+> un numéro de segment était le défaut ALI-24. Champ additif et nullable : absent d'un
+> sidecar antérieur (retomber alors sur `external_id`), `null` quand le pivot n'est pas une
+> ligne.
 
 ### POST /align/quality (V1.1 — read-only, no token required)
 

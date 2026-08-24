@@ -862,7 +862,13 @@ export interface AlignAuditOptions {
 
 export interface AlignLinkRecord {
   link_id: number;
+  /** La CLÉ QUI A APPARIÉ — le marqueur [N] du pivot ou sa position `n` selon la
+   *  stratégie —, PAS un numéro de segment. Ne pas l'afficher : voir `pivot_segment`. */
   external_id: number | null;
+  /** 1.6.76 : le rang du pivot parmi les lignes de son document — le numéro même que
+   *  la matrice affiche dans sa colonne « segment ». Dérivé côté moteur, jamais stocké.
+   *  Absent sur un sidecar antérieur : retomber alors sur `external_id`. */
+  pivot_segment?: number | null;
   pivot_unit_id: number;
   target_unit_id: number;
   pivot_text: string;
@@ -1001,7 +1007,11 @@ export interface AlignLinkCreateOptions {
   pivot_unit_id: number;
   target_unit_id: number;
   status?: "accepted" | "rejected" | null;
-  /** 1.6.55 (D-W13): pair number to inherit (sorts next to its sibling in audit views). */
+  /** 1.6.55 (D-W13) : numéro de paire à hériter du frère. VESTIGIAL — son objet, trier
+   *  le lien à côté de sa famille, est assuré depuis ALI-23 par l'ORDER BY de
+   *  /align/audit, et l'hériter faisait mentir le champ (6 liens sur 7 créés au geste,
+   *  mesure du 2026-08-24). Ne plus l'envoyer : sans lui le moteur écrit la position du
+   *  pivot (1.6.76), ce qu'écrivent trois des cinq stratégies. */
   external_id?: number;
 }
 
@@ -2563,7 +2573,11 @@ export async function exportApplyHistory(
 
 export interface CurationPendingLink {
   link_id: number;
+  /** La clé qui a apparié, PAS un numéro de segment — ne pas l'afficher (ALI-24). */
   external_id: number;
+  /** 1.6.76 : le rang du pivot parmi les lignes du moyeu — le numéro que la matrice
+   *  affiche. Absent sur un sidecar antérieur : retomber alors sur `external_id`. */
+  pivot_segment?: number | null;
   pivot_unit_id: number;
   pivot_text: string;
   target_unit_id: number;

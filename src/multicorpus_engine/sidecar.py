@@ -3487,7 +3487,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         }))
 
     def _handle_align_audit(self, body: dict) -> None:
-        """Read-only audit of alignment_links for a pivot↔target pair."""
+        """Read-only audit of alignment_links for a pivot↔target pair.
+
+        Chaque lien porte `pivot_segment` : le rang de son pivot parmi les lignes du
+        document, c'est-à-dire **le numéro que la matrice affiche**. C'est lui que le
+        Contrôle doit montrer — `external_id` est une clé d'appariement, pas un numéro
+        de segment (voir la CTE `seg`).
+        """
         import json as _json
 
         pivot_doc_id = body.get("pivot_doc_id")
@@ -3531,27 +3537,48 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         conn = self._conn()
         rows = conn.execute(
             f"""
+            WITH seg AS (
+                -- Le numero de segment AFFICHE se calcule, il ne se stocke pas.
+                -- `alignment_links.external_id` n'est PAS un numero de segment : c'est la
+                -- cle qui a apparie. Selon la strategie elle vaut le marqueur [N] du pivot
+                -- (align_by_external_id, phase 1 de external_id_then_position) ou sa
+                -- position `n` (position / similarity / length_bounded, phase 2) -- un meme
+                -- run peut donc melanger les deux. Et meme quand elle vaut `n`, `n` compte
+                -- TOUTES les unites du document, structure comprise, la ou la matrice
+                -- numerote les seules lignes (matrix_export_service : `row = [para_label,
+                -- i + 1, ...]` sur `unit_type='line' ORDER BY n`). Deux facons pour le
+                -- badge de mentir, sans qu'aucune regle d'attribution puisse les fermer.
+                -- On calcule donc ici LE MEME rang que la matrice : le Controle et le
+                -- canvas nomment le meme segment du meme nom. Mesure le 2026-08-24 sur le
+                -- corpus de travail : 6 liens sur 14 575 affichaient un autre numero que
+                -- leur position, tous nes d'un geste ; l'ecart rang/`n` etait nul faute de
+                -- documents a unites de structure -- il ne le restera pas.
+                SELECT unit_id, ROW_NUMBER() OVER (ORDER BY n) AS segment_n
+                FROM units WHERE doc_id = ? AND unit_type = 'line'
+            )
             SELECT al.link_id, al.external_id, al.pivot_unit_id, al.target_unit_id,
                    pu.text_norm AS pivot_text, tu.text_norm AS target_text,
                    al.status, al.run_id, al.bead_id,
-                   tu.text_raw AS target_text_raw, al.target_char_start, al.target_char_end
+                   tu.text_raw AS target_text_raw, al.target_char_start, al.target_char_end,
+                   seg.segment_n AS pivot_segment
             FROM alignment_links al
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
+            LEFT JOIN seg ON seg.unit_id = al.pivot_unit_id
             WHERE {base_where}
             -- L'ordre d'un alignement rendu est celui du TEXTE, pas celui de l'aligneur.
-            -- `external_id` est un numéro de PAIRE, et D-W13 (1.6.55) le fait volontairement
-            -- hériter par un lien créé au geste « pour qu'il se trie à côté de sa famille ».
-            -- À numéro égal le départage tombait alors sur `link_id`, c'est-à-dire l'ordre de
-            -- CRÉATION — l'inverse de l'ordre du texte quand une coupe donne la tranche
-            -- initiale au segment antérieur. Mesuré le 2026-08-23 : 2 paires du corpus de
-            -- travail rendues à l'envers. Trier sur la position du pivot répare aussi les
-            -- liens DÉJÀ en base, là où corriger l'attribution ne l'aurait pas fait (ALI-23).
-            -- Ordre TOTAL (`link_id` en dernier) : la liste est paginée.
+            -- On triait sur `external_id` — le champ decrit ci-dessus —, que D-W13 (1.6.55)
+            -- faisait heriter par un lien cree au geste « pour qu'il se trie a cote de sa
+            -- famille ». A numero egal le departage tombait alors sur `link_id`, c'est-a-dire
+            -- l'ordre de CREATION : l'inverse de l'ordre du texte des qu'une coupe donne la
+            -- tranche initiale au segment anterieur. Mesure le 2026-08-23 : 2 paires du corpus
+            -- de travail rendues a l'envers. Trier sur la position du pivot repare aussi les
+            -- liens DEJA en base, la ou corriger l'attribution ne l'aurait pas fait (ALI-23).
+            -- Ordre TOTAL (`link_id` en dernier) : la liste est paginee.
             ORDER BY pu.n, al.target_char_start, al.link_id
             LIMIT ? OFFSET ?
             """,
-            params + [limit + 1, offset],
+            [pivot_doc_id] + params + [limit + 1, offset],
         ).fetchall()
 
         has_more = len(rows) > limit
@@ -3621,6 +3648,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 "target_text_raw": r[9],
                 "target_char_start": r[10],
                 "target_char_end": r[11],
+                # Le numero que le Controle affiche — le rang du pivot parmi les lignes de
+                # son document, c'est-a-dire exactement la colonne « segment » de la
+                # matrice. Derive, jamais stocke : cf. la CTE `seg` ci-dessus.
+                "pivot_segment": r[12],
             }
             explain = _make_explain(r[7], r[1])
             if explain is not None:
@@ -8459,7 +8490,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         conn = self._conn()
         pivot_unit = conn.execute(
-            "SELECT unit_id, doc_id, external_id FROM units WHERE unit_id = ?", (pivot_unit_id,)
+            "SELECT unit_id, doc_id, external_id, n FROM units WHERE unit_id = ?", (pivot_unit_id,)
         ).fetchone()
         if pivot_unit is None:
             self._send_error(f"pivot_unit_id={pivot_unit_id} does not exist", code=ERR_NOT_FOUND, http_status=404)
@@ -8472,15 +8503,28 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         pivot_doc_id = pivot_unit["doc_id"]
         target_doc_id = target_unit["doc_id"]
-        # 1.6.55 (D-W13): an explicit external_id lets a gesture-created link inherit
-        # its sibling's pair number (so the Révision fine sorts it next to its family
-        # instead of a stray [§0]). Fallback: the pivot unit's external_id, else 0.
+        # `external_id` est la CLE QUI A APPARIE, pas un numero de segment. Un geste
+        # n'apparie sur rien : il n'a donc pas de valeur propre a mettre. Les trois
+        # branches successives qu'a connues cette ligne ont chacune invente la leur, et
+        # chacune s'est retrouvee dans la base — mesure le 2026-08-24 sur le corpus de
+        # travail, 6 des 7 liens crees au geste portaient un numero faux, contre 0 des
+        # 14 568 liens crees par un run :
+        #   [§0]          — l'ancien repli, quand le pivot n'a pas de marqueur [N] ;
+        #   le marqueur   — l'autre repli, qui n'est pas la position du pivot ;
+        #   celui du frere — D-W13 / 1.6.55, « pour que la Revision fine le trie a cote
+        #                    de sa famille ». Ce tri est desormais assure par l'ORDER BY
+        #                    de /align/audit (ALI-23) : l'heritage n'a plus d'objet.
+        # On ecrit donc ce qu'ecrivent `position`, `similarity` et `length_bounded` : la
+        # position `n` du pivot. La colonne est NOT NULL (mig 003), sinon l'absence de
+        # cle serait mieux dite par NULL. L'affichage, lui, ne lit plus ce champ.
+        # Le parametre reste honore : il est documente depuis 1.6.55 et un front ancien
+        # peut encore l'envoyer. Le notre ne l'envoie plus.
         external_id = body.get("external_id")
         if external_id is not None and (not isinstance(external_id, int) or isinstance(external_id, bool) or external_id < 0):
             self._send_error("external_id must be a non-negative integer", code=ERR_VALIDATION, http_status=400)
             return
         if external_id is None:
-            external_id = pivot_unit["external_id"] if pivot_unit["external_id"] is not None else 0
+            external_id = pivot_unit["n"]
         created_at = dt.datetime.now(dt.timezone.utc).isoformat()
         from multicorpus_engine.services import align_ops_service
         from multicorpus_engine.services.align_cell_status_service import (
@@ -8726,7 +8770,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
               "pending": [
                 {
                   "link_id": int,
-                  "external_id": int,
+                  "external_id": int,       -- la cle qui a apparie, PAS un numero de segment
+                  "pivot_segment": int,     -- le rang du pivot = le numero de la matrice (1.6.76)
                   "pivot_unit_id": int,
                   "pivot_text": str,
                   "target_unit_id": int,
@@ -8769,9 +8814,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         # Fetch all pending links (source_changed_at IS NOT NULL) for these children
         pending_rows = conn.execute(
             f"""
+            WITH seg AS (
+                -- Meme numero que la matrice, calcule et non stocke : `external_id` est la
+                -- cle qui a apparie, pas un numero de segment (ALI-24, contrat 1.6.76).
+                -- Le pivot de ces liens est toujours le moyeu de la famille.
+                SELECT unit_id, ROW_NUMBER() OVER (ORDER BY n) AS segment_n
+                FROM units WHERE doc_id = ? AND unit_type = 'line'
+            )
             SELECT
                 al.link_id,
                 al.external_id,
+                seg.segment_n AS pivot_segment,
                 al.pivot_unit_id,
                 pu.text_norm AS pivot_text,
                 al.target_unit_id,
@@ -8781,12 +8834,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             FROM alignment_links al
             JOIN units pu ON pu.unit_id = al.pivot_unit_id
             JOIN units tu ON tu.unit_id = al.target_unit_id
+            LEFT JOIN seg ON seg.unit_id = al.pivot_unit_id
             WHERE al.target_doc_id IN ({ph})
               AND al.source_changed_at IS NOT NULL
             -- Ordre du texte (ALI-23).
             ORDER BY al.target_doc_id, pu.n, al.target_char_start, al.link_id
             """,
-            child_ids,
+            [family_root_id, *child_ids],
         ).fetchall()
 
         # Group by child doc
@@ -8796,6 +8850,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             by_child[row["target_doc_id"]].append({
                 "link_id": row["link_id"],
                 "external_id": row["external_id"],
+                # Le numero a AFFICHER (ALI-24) — cf. la CTE `seg`.
+                "pivot_segment": row["pivot_segment"],
                 "pivot_unit_id": row["pivot_unit_id"],
                 "pivot_text": row["pivot_text"] or "",
                 "target_unit_id": row["target_unit_id"],

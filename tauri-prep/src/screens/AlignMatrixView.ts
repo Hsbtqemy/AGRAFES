@@ -1143,9 +1143,12 @@ export class AlignMatrixView {
     if (!conn) return;
     okBtn.disabled = true;
     const createdIds: number[] = [];
-    // Inherit the sibling's pair number so audit views sort the new link with its family.
-    const inherit = (l: MatrixCellLink) =>
-      typeof l.external_id === "number" ? { external_id: l.external_id } : {};
+    // Le lien neuf n'hérite PLUS du numéro de paire de son frère (D-W13 / 1.6.55). Ce
+    // numéro devait le faire trier à côté de sa famille ; c'est l'ORDER BY de
+    // /align/audit qui s'en charge depuis ALI-23, et l'hériter faisait mentir le champ —
+    // 6 des 7 liens créés au geste portaient un numéro qui n'était pas leur position
+    // (mesure du 2026-08-24). Sans `external_id`, le moteur écrit la position du pivot
+    // (1.6.76), ce qu'écrivent trois des cinq stratégies.
     // D-3 : la PREMIÈRE requête du geste ouvre l'opération, toutes les suivantes la
     // rejoignent. Ne défaire que la moitié « batch » ressusciterait le lien supprimé en
     // laissant les liens créés — le doublon d'ALI-22, sous un bouton qui a l'air complet.
@@ -1157,7 +1160,7 @@ export class AlignMatrixView {
       if (plan.split) {
         const c = await createAlignLink(conn, {
           pivot_unit_id: neighborHubUnitId, target_unit_id: plan.split.link.target_unit_id,
-          ...inherit(plan.split.link), op_id: opId, label: LABEL,
+          op_id: opId, label: LABEL,
         });
         splitCreatedId = c.link_id;
         createdIds.push(c.link_id);
@@ -1166,7 +1169,7 @@ export class AlignMatrixView {
       const moveCreatedIds: number[] = [];
       for (const m of plan.moves) {
         const c = await createAlignLink(conn, {
-          pivot_unit_id: neighborHubUnitId, target_unit_id: m.target_unit_id, ...inherit(m),
+          pivot_unit_id: neighborHubUnitId, target_unit_id: m.target_unit_id,
           op_id: opId, label: LABEL,
         });
         moveCreatedIds.push(c.link_id);
@@ -1471,8 +1474,7 @@ export class AlignMatrixView {
       const created = await createAlignLink(conn, {
         pivot_unit_id: hubUnitId,
         target_unit_id: neighborLink.target_unit_id,
-        ...(typeof neighborLink.external_id === "number"
-          ? { external_id: neighborLink.external_id } : {}),
+        // Pas d'héritage du numéro de paire — voir le commentaire de la coupe ci-dessus.
         label: MERGE_LABEL,
       });
       createdId = created.link_id;

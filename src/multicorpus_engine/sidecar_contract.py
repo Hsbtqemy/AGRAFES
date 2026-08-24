@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.75"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.76"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -435,6 +435,36 @@ API_VERSION = CONTRACT_VERSION
 #         rendait un 500 avec pile d'appel -- une faute de frappe passait pour une panne.
 #         Les deux routes rendent desormais 400 « Requete de recherche invalide ». Les deux
 #         codes etaient deja declares, donc aucun schema ne bouge.
+
+# 1.6.76: le Controle nomme le segment comme la matrice le nomme. `AlignLinkRecord`
+#         (POST /align/audit) gagne `pivot_segment` : le rang 1-base du pivot parmi les
+#         lignes de son document -- exactement la colonne « segment » de la matrice
+#         (matrix_export_service, `row = [para_label, i + 1, ...]`). DERIVE, jamais
+#         stocke. Additif et nullable : un sidecar anterieur ne le rend pas, le front
+#         retombe sur `external_id`.
+#         POURQUOI. Le badge [§N] du Controle affichait `alignment_links.external_id`,
+#         qui n'est pas un numero de segment mais LA CLE QUI A APPARIE : le marqueur [N]
+#         du pivot pour `external_id` et la phase 1 de `external_id_then_position`, sa
+#         position `n` pour `position`, `similarity`, `length_bounded` et la phase 2 --
+#         un meme run melange donc les deux. Et meme quand elle vaut `n`, `n` compte
+#         toutes les unites du document, structure comprise, la ou la matrice numerote
+#         les seules lignes. Deux facons de mentir qu'aucune regle d'attribution ne
+#         ferme, d'ou le calcul.
+#         Mesure le 2026-08-24 sur le corpus de travail (14 575 liens, 10 runs, 3
+#         strategies) : 14 568 liens crees par un run portent la position du pivot, sans
+#         exception ; 6 des 7 liens crees au geste portent autre chose -- [§0], le
+#         marqueur, ou le numero du frere. L'ecart rang/`n` etait nul, faute de document
+#         pivot a unites de structure ; il ne le restera pas.
+#         AUSSI, meme version : /align/link/create ecrit desormais la position `n` du
+#         pivot quand aucun `external_id` n'est fourni, au lieu du marqueur ou de 0 --
+#         ce qu'ecrivent trois des cinq strategies. Le parametre `external_id` reste
+#         accepte et honore (1.6.55 / D-W13), mais son objet -- trier le lien a cote de
+#         sa famille -- est assure depuis ALI-23 par l'ORDER BY de /align/audit ; notre
+#         front ne l'envoie plus. Aucune signature ne change de ce cote.
+#         AUSSI : GET /families/{id}/curation_status (reponse NON schematisee) gagne le
+#         meme `pivot_segment` sur ses items `pending` -- la liste « traductions a
+#         relire » composait le meme badge a partir du meme champ, et l'ecrivait sans
+#         repli (litteralement « [§null] » sur un corpus sans marqueurs).
 
 # 1.6.75: le pivot suit le repliement des diacritiques de l'index, et la troncature de
 #         locution garde son prefixe. Reliquat de 1.6.74, mesure apres coup : l'index
@@ -4629,7 +4659,8 @@ def openapi_spec() -> dict[str, Any]:
                     "required": ["link_id", "pivot_unit_id", "target_unit_id", "pivot_text", "target_text"],
                     "properties": {
                         "link_id": {"type": "integer"},
-                        "external_id": {"type": "integer", "nullable": True},
+                        "external_id": {"type": "integer", "nullable": True, "description": "The key that MATCHED, not a segment number: the pivot's [N] marker (external_id strategies) or its position n (position/similarity/length_bounded). Display pivot_segment instead."},
+                        "pivot_segment": {"type": "integer", "nullable": True, "description": "1-based rank of the pivot among its document's line units — the very number the matrix shows in its `segment` column. Derived, never stored (1.6.76). Null on a pre-1.6.76 sidecar."},
                         "pivot_unit_id": {"type": "integer"},
                         "target_unit_id": {"type": "integer"},
                         "pivot_text": {"type": "string"},

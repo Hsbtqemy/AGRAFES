@@ -13,8 +13,9 @@
  *   stays fused among itself and is re-cut by the next gesture (N-1 = N-1 gestures).
  * - **Straddle cut** (« couper à cheval ») : any single-link cell — cut or not —
  *   spills part of its window over the neighbouring hub segment; the missing link
- *   is created (inheriting the sibling's external_id) then both get complementary
- *   sub-windows.
+ *   is created — SANS hériter du numéro de paire du frère depuis 1.6.76 (ALI-24 :
+ *   ce numéro n'est pas celui du segment, et le tri qu'il servait est assuré par
+ *   l'ORDER BY d'ALI-23) — puis les deux reçoivent des fenêtres complémentaires.
  * - **Cell ↺** : the target becomes whole again — clear every cut on that target
  *   across the column, deleting the gesture-created (`manual`) links, never the
  *   aligner's. The exact inverse of any cut sequence, in one atomic batch.

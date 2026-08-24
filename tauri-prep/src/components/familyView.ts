@@ -20,6 +20,7 @@ import type {
 } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import { truncateMid } from "../lib/textTruncate.ts";
+import { segmentBadge } from "../lib/segmentBadge.ts";
 import { completionTier } from "../lib/completionTier.ts";
 
 
@@ -219,7 +220,7 @@ export function curationStatusHtml(children: CurationChildStatus[], familyRootId
     .map(c => {
       const rows = c.pending.map(p => `
           <tr class="prep-curation-pending-row">
-            <td class="prep-curation-ext-id">[§${esc(String(p.external_id))}]</td>
+            <td class="prep-curation-ext-id">${segmentBadge(p)}</td>
             <td class="prep-curation-pivot-text" title="${esc(p.pivot_text)}">${esc(truncateMid(p.pivot_text, 60))}</td>
             <td class="prep-curation-target-text" title="${esc(p.target_text)}">${esc(truncateMid(p.target_text, 60))}</td>
             <td class="prep-curation-changed-at" title="${esc(p.source_changed_at)}">${p.source_changed_at.slice(0, 10)}</td>

@@ -61,6 +61,7 @@ conclusions** des §8 et §10.
 | ALI-21 | 🟡 | P2 | Gestes de cellule invisibles au repos, glyphe ↻ ≠ ↺ annoncé, et refus `_cutBusy` totalement muet. |
 | ALI-22 | ✅ | ~~P1~~ | Le ⭙ n'a pas d'inverse ; la réparation intuitive (＝) laisse la cible sur **deux** segments, masquée par le bead. **Démontré en base.** (a) **payé** (§12.10) : le ⭙ a désormais son inverse — un bouton qui défait les trois requêtes du geste d'un seul bloc. |
 | ALI-23 | ✅ | ~~P1~~ | **Ajouté le 2026-08-23, trouvé à l'usage et non à l'audit.** Le Contrôle, le TEI, le TMX/bilingue, le CSV et la liste de curation triaient sur `external_id` — un numéro de **paire** que D-W13 (1.6.55) fait volontairement hériter à un lien créé au geste. À numéro égal le départage tombait sur `link_id`, l'ordre de **création** : une coupe qui donne la tranche initiale au segment antérieur rendait les deux à l'envers. Mesuré : 2 paires du corpus de travail sur 14 575 liens. **Clos** en triant sur la position du pivot (`pu.n, target_char_start, link_id`) aux 6 sites — ce qui répare aussi les liens déjà en base ; `external_id` est laissé intact. |
+| ALI-24 | ✅ | ~~P1~~ | **Ajouté le 2026-08-24, suite d'ALI-23.** Le badge `[§N]` du Contrôle affichait `alignment_links.external_id`, qui n'est pas un numéro de segment mais **la clé qui a apparié** : le marqueur `[N]` du pivot pour deux stratégies, sa position `n` pour les trois autres — et `external_id → position` écrit les deux dans un même run. Deux façons de mentir : le geste, qui n'apparie sur rien (6 des 7 liens manuels du corpus portaient un numéro faux, contre 0 des 14 568 liens de run) ; et les unités de structure, qui décalent `n` du rang que la matrice affiche (0 cas aujourd'hui, aucune garantie demain). **Clos** en calculant le numéro au lieu de le stocker : `/align/audit` rend `pivot_segment`, le rang du pivot parmi les lignes de son document — celui-là même que la matrice affiche (contrat 1.6.76). Le geste cesse d'hériter et écrit la position du pivot. |
 
 > ALI-13 est traité en §5 (passe beads) ; ALI-14 à ALI-22 en §7 à §10 (passes du 2026-08-19) ; §10 chiffre le correctif d'ALI-10/ALI-17 ; le **§11** approfondit la famille « données
 > détruites » (ALI-03/10/17/22 + QA-06) et tranche ses décisions de conception.
@@ -1064,6 +1065,58 @@ révèle *quels* gestes, pas *qu'il y en a* ; (b) tracer le refus `_cutBusy` (to
 cours » ou simple `console.debug`), pour qu'un clic sans effet cesse d'être indiscernable d'un
 bouton mort.
 *Test* : `_cellGestureCtx` refusé pour cause de `_cutBusy` émet un signal observable.
+
+### ALI-24 ✅ P1 — le badge `[§N]` nommait le segment autrement que la matrice
+
+> **Trouvé à l'usage le 2026-08-23**, dans le même geste qu'ALI-23 : le Contrôle nommait
+> `[§3]` le segment que le canvas nomme 2. Le tri corrigé, le numéro restait faux — deux
+> défauts empilés sous une seule observation.
+
+**`external_id` n'est pas un numéro de segment.** C'est **la clé qui a apparié**, et elle n'a
+pas la même nature selon la stratégie : le marqueur `[N]` du pivot pour `align_by_external_id`
+et la phase 1 d'`external_id_then_position`, sa position `n` pour `position`, `similarity`,
+`length_bounded` et la phase 2. Un même run mélange donc les deux natures dans la même colonne.
+Le badge affichait cette colonne telle quelle.
+
+**Deux façons de mentir, indépendantes.** La première est le geste : il n'apparie sur rien et
+doit bien écrire *quelque chose*. Les trois branches successives de `_handle_align_link_create`
+ont chacune inventé la leur, et les trois sont en base — `[§0]` (l'ancien repli), le marqueur
+du pivot (l'autre repli), le numéro du frère (D-W13 / 1.6.55). La seconde ne met aucun lien en
+cause : `n` compte **toutes** les unités du document, structure comprise, là où la matrice
+numérote les seules lignes (`row = [para_label, i + 1, …]`). Un pivot importé en TEI ou en docx
+structuré décale donc le badge d'autant, même si chaque lien porte exactement ce qu'il doit.
+
+**Mesuré avant de corriger**, sur le corpus de travail (14 575 liens, 10 runs, 3 stratégies) :
+les 14 568 liens créés par un run portent la position de leur pivot, **sans une exception** ;
+6 des 7 liens créés au geste portent autre chose. L'écart rang/`n` était nul — 0 document pivot
+à unités de structure. C'est une propriété du corpus d'aujourd'hui, pas du défaut : le
+correctif couvre le cas quand même, parce que rien n'empêche le prochain import de le produire.
+
+**Pourquoi calculer plutôt que réparer l'attribution.** Aucune règle d'attribution ne ferme les
+deux modes de panne à la fois : la seconde n'a pas de lien fautif à corriger. Et une règle ne
+répare pas ce qui est déjà en base. Le numéro affiché se **dérive** donc : `/align/audit` rend
+`pivot_segment`, calculé par la même définition que la matrice, ce qui répare du même coup tous
+les liens existants — les 6 fautifs comme les 14 568 justes qu'un futur import de structure
+aurait rendus faux.
+
+**Ce qui change quand même côté attribution.** Le geste n'hérite plus (les deux sites de
+`AlignMatrixView`) et, sans `external_id`, le moteur écrit la position du pivot au lieu du
+marqueur ou de 0. L'objet de l'héritage — trier le lien à côté de sa famille — est assuré par
+l'ORDER BY d'ALI-23. Le paramètre `external_id` reste accepté : il est documenté depuis 1.6.55
+et un front ancien peut encore l'envoyer.
+
+**Ce qui n'a pas été touché.** Les 6 liens déjà en base gardent leur `external_id`. Le champ
+n'est plus affiché, et le réécrire supposerait de trancher ce que vaut la clé d'appariement
+d'un lien qui n'a apparié sur rien — la même question qu'ALI-23 avait laissée ouverte, et qui
+n'a toujours pas besoin d'être répondue. Seul l'export CSV d'audit expose encore la colonne,
+sous son nom technique.
+
+Tests : `tests/contracts/test_align_segment_number.py`, prouvés RED sur l'ancien code (le geste
+écrivait le marqueur, « 3 != 4 ») puis GREEN. L'assertion porte contre `build_alignment_matrix`
+lui-même et non contre une reformulation de sa formule — sinon le test ne prouverait que sa
+propre copie. Côté front, `AlignPanel.segmentBadge.test.ts` épingle la règle de repli, qui a
+trois cas et non deux : champ absent (sidecar ancien → on affiche l'ancien numéro) ≠ champ à
+`null` (le moteur refuse de donner un rang → on n'affiche rien).
 
 ### ALI-23 ✅ P1 — l'ordre rendu était celui de l'aligneur, pas celui du texte
 

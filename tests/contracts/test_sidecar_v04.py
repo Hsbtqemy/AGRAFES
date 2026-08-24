@@ -1018,8 +1018,14 @@ def test_align_link_create_with_status(v04_sidecar) -> None:
 
 
 def test_align_link_create_inherits_explicit_external_id(v04_sidecar) -> None:
-    """1.6.55 (D-W13): an explicit external_id is stored so audit views sort the
-    gesture-created link next to its sibling instead of a stray [§0]."""
+    """1.6.55 (D-W13): an explicit external_id is still STORED — but no longer shown.
+
+    Le paramètre reste honoré : il est documenté depuis 1.6.55 et un front antérieur peut
+    encore l'envoyer. Ce qu'il ne fait plus, c'est décider du numéro AFFICHÉ. Son objet
+    d'origine — trier le lien à côté de sa famille — est assuré depuis ALI-23 par
+    l'ORDER BY de /align/audit, et le badge vient désormais de `pivot_segment` (ALI-24,
+    1.6.76). Le nôtre ne l'envoie plus.
+    """
     base_url = v04_sidecar["base_url"]
     token = v04_sidecar["token"]
     pivot_uid, target_uid = _get_unlinked_unit_ids(v04_sidecar)
@@ -1038,6 +1044,11 @@ def test_align_link_create_inherits_explicit_external_id(v04_sidecar) -> None:
     })
     created = next(lnk for lnk in audit["links"] if lnk["link_id"] == payload["link_id"])
     assert created["external_id"] == 42
+    # …mais le numéro affiché ne le suit plus : c'est le rang du pivot, pas la valeur
+    # qu'on a poussée. Sans cette ligne, rien n'empêcherait le badge de redevenir un
+    # champ que l'appelant contrôle.
+    assert created["pivot_segment"] != 42
+    assert created["pivot_segment"] is not None
 
 
 def test_align_link_create_invalid_external_id_is_400(v04_sidecar) -> None:

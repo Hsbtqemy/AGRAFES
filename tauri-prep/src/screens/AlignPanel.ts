@@ -47,6 +47,7 @@ import {
   groupLinksIntoBeads, isMultiBead, beadIsCut, linkTargetDisplay,
   cutOffsets, buildCutActions, buildClearCutActions, codePointLength,
 } from "../lib/alignBeads.ts";
+import { segmentOf } from "../lib/segmentBadge.ts";
 import { buildCutPickerHtml } from "../lib/alignCutPicker.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { alignPanelTemplate } from "../lib/alignPanelTemplate.ts";
@@ -628,7 +629,9 @@ export class AlignPanel {
 
   private _buildFamilyRows(fam: FamilyRecord): Array<{
     pivot_unit_id: number;
-    external_id: number | null;
+    /** Le numéro AFFICHÉ : le rang du pivot parmi les lignes de son document, celui-là
+     *  même que la matrice montre. Règle de choix dans `lib/segmentBadge.ts`. */
+    segment: number | null;
     pivot_text: string;
     cells: Map<number, AlignLinkRecord[]>;
   }> {
@@ -645,17 +648,17 @@ export class AlignPanel {
     }
     return orderedPivotIds.map(pid => {
       let pivot_text = "";
-      let external_id: number | null = null;
+      let segment: number | null = null;
       const cells = new Map<number, AlignLinkRecord[]>();
       for (const cid of childIds) {
         const links = (this._familyAudits.get(cid) ?? []).filter(l => l.pivot_unit_id === pid);
         cells.set(cid, links);
         if (!pivot_text && links.length > 0) {
           pivot_text = links[0].pivot_text ?? "";
-          external_id = links[0].external_id ?? null;
+          segment = segmentOf(links[0]);
         }
       }
-      return { pivot_unit_id: pid, external_id, pivot_text, cells };
+      return { pivot_unit_id: pid, segment, pivot_text, cells };
     });
   }
 
@@ -681,8 +684,8 @@ export class AlignPanel {
     }).join("");
 
     const rowsHtml = rows.map(row => {
-      const extId = row.external_id != null
-        ? `<span class="prep-align-row-extid">[§${_esc(String(row.external_id))}]</span> ` : "";
+      const extId = row.segment != null
+        ? `<span class="prep-align-row-extid">[§${_esc(String(row.segment))}]</span> ` : "";
 
       const cellsHtml = childIds.map(cid => {
         const links = row.cells.get(cid) ?? [];
@@ -1337,8 +1340,9 @@ export class AlignPanel {
       group.links.forEach((lk, idx) => {
         const first = idx === 0;
         const checked = this._selectedLinkIds.has(lk.link_id);
-        const extId = lk.external_id != null
-          ? `<span class="prep-align-row-extid">[§${_esc(String(lk.external_id))}]</span> ` : "";
+        const seg = segmentOf(lk);
+        const extId = seg != null
+          ? `<span class="prep-align-row-extid">[§${_esc(String(seg))}]</span> ` : "";
         // R3.2/K3 — a link in an N-M bead carries a bead_id; keep the violet accent on
         // every bead row so the group reads as one block.
         const isBeadLink = lk.bead_id != null;
@@ -1406,7 +1410,7 @@ export class AlignPanel {
         const l = group.links;
         rows.push(`<div class="prep-align-cut-picker" role="row">
           <div class="prep-align-cut-picker-inner" role="cell">
-            <span class="prep-align-cut-hint">Cliquez &#9986; o&#249; couper la cible &#8212; [§${_esc(String(l[0].external_id ?? "?"))}] puis [§${_esc(String(l[1].external_id ?? "?"))}] :</span>
+            <span class="prep-align-cut-hint">Cliquez &#9986; o&#249; couper la cible &#8212; [§${_esc(String(segmentOf(l[0]) ?? "?"))}] puis [§${_esc(String(segmentOf(l[1]) ?? "?"))}] :</span>
             ${buildCutPickerHtml(cutTargetText)}
             <button type="button" class="prep-align-cut-cancel" data-cut-cancel="1">Annuler</button>
           </div>

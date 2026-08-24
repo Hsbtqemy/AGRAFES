@@ -331,10 +331,16 @@
             "type": "object"
           },
           "external_id": {
+            "description": "The key that MATCHED, not a segment number: the pivot's [N] marker (external_id strategies) or its position n (position/similarity/length_bounded). Display pivot_segment instead.",
             "nullable": true,
             "type": "integer"
           },
           "link_id": {
+            "type": "integer"
+          },
+          "pivot_segment": {
+            "description": "1-based rank of the pivot among its document's line units — the very number the matrix shows in its `segment` column. Derived, never stored (1.6.76). Null on a pre-1.6.76 sidecar.",
+            "nullable": true,
             "type": "integer"
           },
           "pivot_text": {
@@ -4479,8 +4485,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.75",
-    "x-contract-version": "1.6.75"
+    "version": "1.6.76",
+    "x-contract-version": "1.6.76"
   },
   "openapi": "3.0.3",
   "paths": {
