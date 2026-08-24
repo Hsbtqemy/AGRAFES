@@ -5,6 +5,8 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 
+import pytest
+
 
 from multicorpus_engine.importers.rich_text import (
     _NS,
@@ -144,6 +146,158 @@ class TestParaToRichText:
             _make_run("visible"),
         )
         assert para_to_rich_text(para) == "visible"
+
+
+# ---------------------------------------------------------------------------
+# Character-style inheritance (Word "Emphasis" / "Accentuation", "Strong")
+# ---------------------------------------------------------------------------
+
+def _make_style(name="Emphasis", base=None, **flags) -> object:
+    """Build a mock python-docx character style carrying font flags."""
+    font = SimpleNamespace(
+        italic=flags.get("italic"),
+        bold=flags.get("bold"),
+        underline=flags.get("underline"),
+        strike=flags.get("strike"),
+        superscript=flags.get("superscript"),
+        subscript=flags.get("subscript"),
+    )
+    return SimpleNamespace(name=name, font=font, base_style=base)
+
+
+def _make_styled_run(text: str, style=None, **direct) -> object:
+    """Build a mock Run whose formatting may come from its character style."""
+    run = _make_run(text, **direct)
+    run.style = style
+    return run
+
+
+class TestCharacterStyleInheritance:
+    """Word applies its built-in emphasis through a *character style*, not through
+    a direct <w:i/> toggle: the run then reports ``italic=None`` and the styling was
+    dropped.  Measured on the project corpus: 835 such runs across 58 .docx files,
+    33 of which carry no direct italic at all."""
+
+    def test_italic_from_character_style(self):
+        para = _make_para(
+            _make_styled_run("Kaira", style=_make_style("Emphasis", italic=True))
+        )
+        assert para_to_rich_text(para) == '<hi rend="italic">Kaira</hi>'
+
+    def test_bold_from_character_style(self):
+        para = _make_para(
+            _make_styled_run("titre", style=_make_style("Strong", bold=True))
+        )
+        assert para_to_rich_text(para) == '<hi rend="bold">titre</hi>'
+
+    def test_style_flag_resolved_through_base_style_chain(self):
+        """A style that sets nothing itself inherits from the style it is based on."""
+        base = _make_style("Emphasis", italic=True)
+        derived = _make_style("EmphaseMaison", base=base)
+        para = _make_para(_make_styled_run("mot", style=derived))
+        assert para_to_rich_text(para) == '<hi rend="italic">mot</hi>'
+
+    def test_direct_off_beats_italic_style(self):
+        """<w:i w:val="0"/> inside an italic style: the run is NOT italic."""
+        para = _make_para(
+            _make_styled_run(
+                "droit", style=_make_style("Emphasis", italic=True), italic=False
+            )
+        )
+        assert para_to_rich_text(para) == "droit"
+
+    def test_direct_on_beats_non_italic_style(self):
+        para = _make_para(
+            _make_styled_run(
+                "penche", style=_make_style("Corps", italic=False), italic=True
+            )
+        )
+        assert para_to_rich_text(para) == '<hi rend="italic">penche</hi>'
+
+    def test_style_without_the_flag_leaves_run_plain(self):
+        """The default character style sets nothing — no false positive."""
+        para = _make_para(
+            _make_styled_run("neutre", style=_make_style("Police par defaut"))
+        )
+        assert para_to_rich_text(para) == "neutre"
+
+    def test_font_level_flags_also_resolve_through_the_style(self):
+        para = _make_para(
+            _make_styled_run("ex", style=_make_style("Exposant", superscript=True))
+        )
+        assert para_to_rich_text(para) == '<hi rend="superscript">ex</hi>'
+
+    def test_direct_and_style_italic_merge_into_one_hi(self):
+        """Same resolved style set on adjacent runs → a single <hi>, whatever the
+        route each run took to being italic."""
+        para = _make_para(
+            _make_run("un ", italic=True),
+            _make_styled_run("deux", style=_make_style("Emphasis", italic=True)),
+        )
+        assert para_to_rich_text(para) == '<hi rend="italic">un deux</hi>'
+
+    def test_cyclic_base_style_chain_terminates(self):
+        """A malformed styles.xml must not hang the import."""
+        a = _make_style("A")
+        b = _make_style("B", base=a)
+        a.base_style = b  # cycle
+        para = _make_para(_make_styled_run("texte", style=a))
+        assert para_to_rich_text(para) == "texte"
+
+    def test_run_without_style_attribute_unchanged(self):
+        """Mocks (and any object) lacking ``.style`` keep the historical behaviour."""
+        para = _make_para(_make_run("simple", italic=True))
+        assert para_to_rich_text(para) == '<hi rend="italic">simple</hi>'
+
+
+class TestCharacterStyleOnRealDocx:
+    """The tests above use doubles, which bypass ``_run_has_char_style`` — the cheap
+    ``<w:rPr><w:rStyle>`` probe that decides whether the (costly) style resolution is
+    worth doing at all.  These build a genuine python-docx document so the probe, the
+    style chain and Word's own built-in styles are all exercised for real."""
+
+    def _para(self, build):
+        docx = pytest.importorskip("docx")
+        document = docx.Document()
+        para = document.add_paragraph()
+        build(document, para)
+        return para
+
+    def test_emphasis_character_style_yields_italic(self):
+        def build(document, para):
+            run = para.add_run("Le Monde")
+            run.style = document.styles["Emphasis"]
+        assert para_to_rich_text(self._para(build)) == '<hi rend="italic">Le Monde</hi>'
+
+    def test_strong_character_style_yields_bold(self):
+        def build(document, para):
+            run = para.add_run("titre")
+            run.style = document.styles["Strong"]
+        assert para_to_rich_text(self._para(build)) == '<hi rend="bold">titre</hi>'
+
+    def test_run_without_character_style_stays_plain(self):
+        """The default character style must not be read as emphasis — this is what the
+        rStyle probe skips, so a false positive here would mean the probe is wrong."""
+        def build(document, para):
+            para.add_run("texte courant")
+        assert para_to_rich_text(self._para(build)) == "texte courant"
+
+    def test_direct_off_beats_the_style_on_a_real_run(self):
+        def build(document, para):
+            run = para.add_run("droit")
+            run.style = document.styles["Emphasis"]
+            run.italic = False
+        assert para_to_rich_text(self._para(build)) == "droit"
+
+    def test_mixed_paragraph_keeps_plain_and_styled_apart(self):
+        def build(document, para):
+            para.add_run("elle lisait ")
+            run = para.add_run("Le Monde")
+            run.style = document.styles["Emphasis"]
+            para.add_run(" au matin")
+        assert para_to_rich_text(self._para(build)) == (
+            'elle lisait <hi rend="italic">Le Monde</hi> au matin'
+        )
 
 
 # ---------------------------------------------------------------------------

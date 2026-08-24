@@ -79,23 +79,84 @@ def _render_segments(
 # python-docx support
 # ---------------------------------------------------------------------------
 
+# Depth guard for the character-style chain walk (a malformed styles.xml could
+# otherwise loop; Word's own chains are two or three levels deep at most).
+_MAX_STYLE_DEPTH = 8
+
+
+def _run_has_char_style(run: object) -> bool:
+    """Cheap test for "does this run apply a character style at all?".
+
+    ``run.style`` triggers a full style resolution in python-docx (~0.3 ms per call
+    measured on a 6 200-run document) — ruinous when asked for six flags on every
+    run, and pointless for the ~99 % of runs that apply no character style: the
+    underlying ``<w:rPr><w:rStyle>`` answers ~500x faster.  Objects that are not
+    real python-docx Runs (test doubles) fall back to the duck-typed attribute.
+    """
+    element = getattr(run, "_element", None)
+    if element is None:
+        return getattr(run, "style", None) is not None
+    rpr = getattr(element, "rPr", None)
+    return rpr is not None and getattr(rpr, "style", None) is not None
+
+
+def _style_flag(run: object, attr: str) -> object:
+    """Resolve one formatting flag through the run's *character style* chain.
+
+    python-docx only reports **direct** formatting on the run: ``run.italic`` is
+    ``None`` when the italic comes from the applied character style — which is how
+    Word applies its built-in *Emphasis* style (``Accentuation`` in a French UI),
+    and *Strong* for bold.  Such a run carries ``<w:rStyle w:val="Accentuation"/>``
+    and no ``<w:i/>``, so reading the run alone silently drops the styling.
+
+    Walks ``style.base_style`` until a style sets the flag explicitly and returns
+    that value (``None`` when no style in the chain sets it).  The caller decides
+    what counts as active, so a style-resolved value is judged exactly like a
+    direct one.
+    """
+    style = getattr(run, "style", None)
+    depth = 0
+    while style is not None and depth < _MAX_STYLE_DEPTH:
+        font = getattr(style, "font", None)
+        value = getattr(font, attr, None) if font is not None else None
+        if value is not None:
+            return value
+        style = getattr(style, "base_style", None)
+        depth += 1
+    return None
+
+
 def _docx_run_styles(run: object) -> frozenset[str]:
-    """Extract active inline styles from a python-docx Run object."""
-    active: set[str] = set()
-    if getattr(run, "italic", None) is True:
-        active.add("italic")
-    if getattr(run, "bold", None) is True:
-        active.add("bold")
-    if getattr(run, "underline", None) is True:
-        active.add("underline")
+    """Extract active inline styles from a python-docx Run object.
+
+    Direct formatting wins; a flag left unset on the run (``None``) is resolved
+    against the character-style chain via :func:`_style_flag`.  A run that switches
+    a style off explicitly (``run.italic is False``) is therefore never promoted.
+    """
     font = getattr(run, "font", None)
-    if font is not None:
-        if getattr(font, "strike", None) is True:
-            active.add("strikethrough")
-        if getattr(font, "superscript", None) is True:
-            active.add("superscript")
-        if getattr(font, "subscript", None) is True:
-            active.add("subscript")
+    styled = _run_has_char_style(run)
+
+    def _flag(direct: object, attr: str) -> bool:
+        if direct is not None:
+            return direct is True
+        return styled and _style_flag(run, attr) is True
+
+    def _font_flag(attr: str) -> bool:
+        return _flag(getattr(font, attr, None) if font is not None else None, attr)
+
+    active: set[str] = set()
+    if _flag(getattr(run, "italic", None), "italic"):
+        active.add("italic")
+    if _flag(getattr(run, "bold", None), "bold"):
+        active.add("bold")
+    if _flag(getattr(run, "underline", None), "underline"):
+        active.add("underline")
+    if _font_flag("strike"):
+        active.add("strikethrough")
+    if _font_flag("superscript"):
+        active.add("superscript")
+    if _font_flag("subscript"):
+        active.add("subscript")
     return frozenset(active)
 
 
