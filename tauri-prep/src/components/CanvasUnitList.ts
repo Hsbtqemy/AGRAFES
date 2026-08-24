@@ -12,6 +12,7 @@
  * lives in lib/*. This holds only DOM + selection wiring. No sidecar calls.
  */
 import type { ConventionRole, UnitRecord } from "../lib/sidecarClient.ts";
+import { richTextToHtml } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import {
   filterUnits,
@@ -192,7 +193,7 @@ export class CanvasUnitList {
         return `${marker}${sep}
           <div class="prep-conv-unit-row${selected ? " selected" : ""}${para ? " paratext" : ""}${grouped ? " prep-conv-unit-row--grouped" : ""}" data-uid="${u.unit_id}">
             <span class="prep-conv-unit-n">${u.n}</span>
-            <span class="prep-conv-unit-text">${esc(u.text_norm ?? "")}</span>
+            <span class="prep-conv-unit-text">${richTextToHtml(u.text_raw, u.text_norm ?? "")}</span>
             ${fineHint}
             ${badgeHtml}
           </div>`;

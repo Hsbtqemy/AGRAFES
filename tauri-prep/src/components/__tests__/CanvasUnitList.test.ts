@@ -193,3 +193,64 @@ describe("stylo — édition en place (D-C8)", () => {
     expect(list.getSelection().size).toBe(0);
   });
 });
+
+describe("balisage riche <hi> (§5)", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("rend l'italique importé plutôt que le texte plat", () => {
+    const list = new CanvasUnitList(host);
+    list.setData({
+      docId: 1,
+      units: [unit(1, { text_raw: 'un <hi rend="italic">mot</hi> ici', text_norm: "un mot ici" })],
+    });
+    list.render();
+    const textEl = host.querySelector(".prep-conv-unit-text")!;
+    expect(textEl.querySelector("em")).not.toBeNull();
+    expect(textEl.textContent).toBe("un mot ici");
+  });
+
+  it("rend le texte corrigé quand le verbatim est périmé, sans balisage", () => {
+    // La curation / le stylo réécrivent text_norm en gardant text_raw (D-C1) :
+    // le balisage décrit alors un texte qui n'existe plus.
+    const list = new CanvasUnitList(host);
+    list.setData({
+      docId: 1,
+      units: [unit(1, {
+        text_raw: 'The <hi rend="italic">Observer</hi>,  14 Aug 2022',
+        text_norm: "The Observer, 14 Aug 2022",
+      })],
+    });
+    list.render();
+    const textEl = host.querySelector(".prep-conv-unit-text")!;
+    expect(textEl.querySelector("em")).toBeNull();
+    expect(textEl.textContent).toBe("The Observer, 14 Aug 2022");
+  });
+
+  it("n'injecte jamais de HTML venu du texte", () => {
+    const list = new CanvasUnitList(host);
+    list.setData({
+      docId: 1,
+      units: [unit(1, { text_raw: "<img src=x onerror=alert(1)>", text_norm: "<img src=x onerror=alert(1)>" })],
+    });
+    list.render();
+    expect(host.querySelector(".prep-conv-unit-text img")).toBeNull();
+    expect(host.querySelector(".prep-conv-unit-text")!.textContent).toContain("<img");
+  });
+
+  it("après une correction en place, la ligne affiche le texte corrigé", async () => {
+    const list = new CanvasUnitList(host, { onEditText: async () => {} });
+    list.setData({
+      docId: 1,
+      units: [unit(1, { text_raw: 'un <hi rend="italic">mot</hi> ici', text_norm: "un mot ici" })],
+    });
+    list.render();
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click();
+    const ta = host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!;
+    ta.value = "un mot corrigé ici";
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-editor-actions .btn-primary")!.click();
+    await flush();
+    const textEl = host.querySelector(".prep-conv-unit-text")!;
+    expect(textEl.textContent).toBe("un mot corrigé ici");
+    expect(textEl.querySelector("em")).toBeNull(); // le balisage périmé ne revient pas
+  });
+});
