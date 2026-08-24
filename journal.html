@@ -435,9 +435,21 @@ function bandeBord(){
 
   /* Le point de reprise est l'artefact le plus lu d'une fiche et le seul qui se
      périme sans bruit : il n'est faux que sur les chantiers actifs, exacts sur les
-     dormants. On le compte plutôt que de compter sur l'œil. */
+     dormants. On le compte plutôt que de compter sur l'œil.
+
+     « Décalés », pas « périmés » — et ce n'est pas une nuance de style. Le contrôle
+     exige le hash EXACT du dernier commit de code, donc il sur-déclenche par
+     construction : une ligne écrite après ce commit mais citant autre chose (un
+     commit de tenue, un merge) est signalée alors qu'elle est juste. Cette
+     sur-sensibilité est le prix de la détection et non un défaut — l'alternative
+     par date a été testée sur T-05 le 2026-08-24 et rate le cas qui compte : la
+     fiche y avait été commitée DEUX FOIS après le dernier commit de code alors que
+     son marqueur pointait encore le 25 juin. Un signal volontairement bruyant ne
+     peut donc pas porter une étiquette qui tranche sur le fond : « périmé » dirait
+     que le travail décrit est caduc, ce que la mesure ne montre jamais. Le nom
+     interne (`arreteDecale`) disait déjà juste ; l'écran s'aligne dessus. */
   const dec = D.chantiers.filter(c => c.arreteDecale);
-  if (dec.length) l.push({ cle: "points de reprise périmés", val: String(dec.length),
+  if (dec.length) l.push({ cle: "points de reprise décalés", val: String(dec.length),
     note: `ne citent plus le dernier commit · ${dec.map(c => versFiche(c.code)).join(" ")}` });
 
   /* Même geste pour le seul autre champ déclaré que git puisse contredire : un
