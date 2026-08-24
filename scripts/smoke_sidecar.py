@@ -20,6 +20,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -27,6 +29,14 @@ import tempfile
 import time
 import urllib.request
 from pathlib import Path
+
+# Les sondes ne passent JAMAIS par un proxy — et sans dépendre d'une variable
+# d'environnement pour cela. Le proxy de l'université intercepte les requêtes loopback
+# d'urllib (cause racine du 2026-07-09) ; l'ancien code posait bien `NO_PROXY`, mais dans
+# l'environnement du SIDECAR, pas dans celui de ce processus-ci, où vivent les sondes.
+# Il fallait donc exporter `NO_PROXY` à la main avant de lancer le script pour que son
+# propre commentaire devienne vrai. Un opener dédié ferme la question.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 # (path, expected key in the JSON body) — one public GET per extracted service.
 CHECKS: list[tuple[str, str]] = [
@@ -50,8 +60,43 @@ def _free_port() -> int:
 
 
 def _get(url: str, timeout: float = 2.0) -> tuple[int, dict]:
-    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (loopback only)
+    with _OPENER.open(url, timeout=timeout) as resp:  # noqa: S310 (loopback only)
         return resp.status, json.loads(resp.read().decode("utf-8"))
+
+
+def _terminate_tree(proc: subprocess.Popen) -> None:
+    """Arrête le sidecar ET ses enfants.
+
+    Un binaire PyInstaller **onefile** est DEUX processus : le bootloader, qui déballe le
+    paquet, et l'interpréteur Python qu'il lance ensuite. ``proc.terminate()`` n'atteint
+    que le bootloader — l'interpréteur survit, et il garde le port. Constaté le
+    2026-08-24 : un sidecar de smoke encore à l'écoute une minute après que ce script eut
+    imprimé PASSED, exactement la classe de fuite que décrit ``pilotage/T-05.md``.
+
+    Windows n'a pas de groupe de processus utilisable ici : ``taskkill /T`` remonte l'arbre.
+    Sous POSIX le sidecar est lancé dans sa propre session (``start_new_session``), ce qui
+    donne un groupe à tuer d'un coup.
+    """
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True, check=False,
+        )
+    else:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            print("WARN: le sidecar n'est pas mort — vérifier qu'aucun processus ne reste")
 
 
 def _resolve_launch_prefix(launcher: str, via_module: bool) -> list[str]:
@@ -95,13 +140,24 @@ def main() -> int:
 
     if args.dry_run:
         print("DRY RUN:", " ".join(cmd))
+        # `mkdtemp` a déjà eu lieu, plus haut, parce que la commande affichée porte le
+        # chemin de la base. Sans cette ligne, un simple `--dry-run` laisse un dossier —
+        # la quatrième manifestation de la même étourderie, et la seule qui échappe au
+        # `finally` ci-dessous, puisqu'on sort avant d'y entrer.
+        shutil.rmtree(tmp, ignore_errors=True)
         return 0
 
     base = f"http://127.0.0.1:{port}"
-    # Loopback only — never route the smoke checks through a proxy.
+    # Pour le SIDECAR lui-même, si l'un de ses services sortait sur le réseau. Les sondes
+    # de ce script, elles, ne dépendent plus de cette variable : cf. `_OPENER`.
     env = dict(os.environ, NO_PROXY="127.0.0.1,localhost", no_proxy="127.0.0.1,localhost")
+    # POSIX : le sidecar prend sa propre session, donc son propre groupe de processus, pour
+    # que `_terminate_tree` puisse tuer le groupe entier. Ignoré sous Windows, où c'est
+    # `taskkill /T` qui remonte l'arbre.
+    popen_kwargs: dict = {} if os.name == "nt" else {"start_new_session": True}
     proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, text=True
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, text=True,
+        **popen_kwargs,
     )
     try:
         deadline = time.monotonic() + args.timeout
@@ -139,11 +195,11 @@ def main() -> int:
         print("Sidecar binary smoke PASSED")
         return 0
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        _terminate_tree(proc)
+        # Le dossier temporaire aussi : 11 `sidecar-smoke-*` traînaient sous %TEMP% le
+        # 2026-08-24, le plus ancien du 2 août. Un script de vérification qui laisse des
+        # traces apprend à ne plus faire confiance à ce qu'on trouve sur la machine.
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":
