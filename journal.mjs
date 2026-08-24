@@ -7,7 +7,8 @@ import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, relative, basename } from "node:path";
+import { join, relative, basename, dirname } from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
 // Contrat de parsing partage avec pilotage/verifier.mjs -- voir journal-contrat.mjs.
 import { RX, frontmatter, walk, estPasse, constatsAudit } from "./journal-contrat.mjs";
 
@@ -36,14 +37,49 @@ const PORT = Number(opt("port", 4123));
 const DIR  = opt("dir", "pilotage");
 const DAYS = Number(opt("days", 60));
 const ROOT = process.cwd();
-// Refs d'intégration, de l'amont vers l'aval. Un chantier vit sur la première qui
-// contient son dernier commit ; à défaut sur la branche courante, donc pas intégré.
-const REFS = opt("refs", "origin/main,dev").split(",").map(s => s.trim()).filter(Boolean);
+// Où vit l'OUTIL, par opposition à où vit le DÉPÔT. Lancé par `npx`, le serveur est
+// dans node_modules et le dépôt est le cwd. Confondre les deux, c'est chercher la vue
+// et le contrôleur dans le projet de l'utilisateur — qui ne les a pas. Sur un dépôt
+// qui héberge l'outil lui-même, les deux coïncident et rien ne change.
+const OUTIL = dirname(fileURLToPath(import.meta.url));
 // Longueur de la traînée de commits affichée sur une fiche.
 const TRAINEE = Number(opt("trainee", 5));
 
+// ---------- ce que le journal sait de ce dépôt ----------
+// Tout ce qui nomme des chemins, des fichiers ou des codes vit dans
+// `pilotage/journal.config.mjs`, à côté du dossier qu'il décrit. Le fichier est
+// facultatif : sans lui, on garde le dossier (fiches, passes, cases, contrôleur,
+// front d'intégration) et on perd ce qui exige de connaître le dépôt — les masses
+// par aire, la veille à seuil, les liens code → document.
+const DEFAUT = {
+  refs: ["origin/main"],
+  codes: { chantier: RX.chantier, decision: RX.decision, adr: RX.adr },
+  documentation: null,
+  aires: [],
+  veille: null
+};
+const CFG = await (async () => {
+  const p = join(ROOT, DIR, "journal.config.mjs");
+  if (!existsSync(p)) return DEFAUT;
+  // `import()` d'un chemin Windows nu échoue : il faut une URL file://.
+  const m = await import(pathToFileURL(p).href).catch(e => {
+    console.error(`config illisible (${p}) : ${e.message} — on continue sans.`);
+    return null;
+  });
+  return { ...DEFAUT, ...(m ? (m.default || m) : {}) };
+})();
+
+// Refs d'intégration, de l'amont vers l'aval. Un chantier vit sur la première qui
+// contient son dernier commit ; à défaut sur la branche courante, donc pas intégré.
+const REFS = opt("refs", CFG.refs.join(","))
+  .split(",").map(s => s.trim()).filter(Boolean);
+
+// stderr ignoré : sur un dépôt sans commit, git écrit huit `fatal:` sur la console
+// avant que le journal ait rendu sa première page. L'appel échoue déjà proprement —
+// c'est le `catch` qui décide, pas le bruit.
 const git = (...a) => {
-  try { return execFileSync("git", a, { cwd: ROOT, encoding: "utf8", maxBuffer: 64e6 }).trim(); }
+  try { return execFileSync("git", a,
+    { cwd: ROOT, encoding: "utf8", maxBuffer: 64e6, stdio: ["ignore", "pipe", "ignore"] }).trim(); }
   catch { return ""; }
 };
 
@@ -181,7 +217,7 @@ const rxCodes = (codes) =>
 // Compter les codes bruts serait faux depuis la remontée — un commit citant
 // ALI-01, ALI-10 et ALI-22 est du R3 pur, pas un fourre-tout.
 const fourretout = (sujet, proprietaire) =>
-  new Set((sujet.match(RX.chantier) || []).map(c => proprietaire[c] || c)).size >= 3;
+  new Set((sujet.match(CFG.codes.chantier) || []).map(c => proprietaire[c] || c)).size >= 3;
 
 // Les commits d'un chantier, du plus récent au plus ancien. `tenue` = ceux qui ne
 // touchent que `pilotage/` : tenir le dossier n'est pas travailler sur le chantier
@@ -204,23 +240,13 @@ function fronts() {
 }
 
 // ---------- masses de code ----------
-// Une aire = un préfixe de chemin ; le premier qui matche l'emporte, donc sidecar.py
-// et services/ sont détachés avant le reste du moteur. Les tailles sont le cumul de
-// `--numstat` : vérifié exact au fichier près sur 6 aires, à condition de désactiver
-// la détection de renommage (sinon le chemin sort en `{ancien => nouveau}`).
-const AIRES = [
-  ["moteur/sidecar.py", "src/multicorpus_engine/sidecar.py"],
-  ["moteur/services",   "src/multicorpus_engine/services/"],
-  ["moteur/reste",      "src/multicorpus_engine/"],
-  ["prep/lib",          "tauri-prep/src/lib/"],
-  ["prep/screens",      "tauri-prep/src/screens/"],
-  ["prep/components",   "tauri-prep/src/components/"],
-  ["prep/ui",           "tauri-prep/src/ui/"],
-  ["prep/reste",        "tauri-prep/src/"],
-  ["app",               "tauri-app/src/"],
-  ["shell",             "tauri-shell/src/"],
-  ["tests",             "tests/"]
-];
+// Les aires viennent de la config du dépôt (voir `pilotage/journal.config.mjs`) :
+// un préfixe de chemin chacune, le premier qui matche l'emporte. Les tailles sont
+// le cumul de `--numstat` : vérifié exact au fichier près sur 6 aires, à condition
+// de désactiver la détection de renommage (sinon le chemin sort en
+// `{ancien => nouveau}`). Sans aires déclarées, l'onglet reste vide — mais la passe
+// tourne quand même : c'est elle qui repère les commits de tenue.
+const AIRES = CFG.aires;
 
 // `fenetre` en mois : sur 6 le delta égale presque la masse et le classement retombe
 // sur la taille ; sur 3 les reculs ressortent (screens, ui) et le tri dit qui bouge.
@@ -273,12 +299,9 @@ function calculMasses(seuil, fenetre) {
 }
 
 // ---------- veille à seuil ----------
-// Le seul chiffre du tableau de bord qui ait une limite réelle. Mêmes paramètres que
-// .github/workflows/sidecar-growth-gate.yml — s'ils y changent, ils changent ici.
-// `chantier` = la fiche où se prend la décision quand le seuil approche. Sans elle,
-// le chiffre est un cul-de-sac : on voit qu'il monte, on ne sait pas où agir.
-const VEILLE = { fichier: "src/multicorpus_engine/sidecar.py", seuil: 500, jours: 90,
-                 chantier: "A-01" };
+// Le seul chiffre du tableau de bord qui ait une limite réelle ; déclaré par dépôt
+// (voir `pilotage/journal.config.mjs`). Absent = pas de bandeau de veille.
+const VEILLE = CFG.veille;
 
 // Mémo sur le hash de HEAD : ce qui ne dépend que de l'historique se recalcule au
 // commit suivant, pas à chaque coche de case. (Le contrôleur, lui, lit les fichiers
@@ -295,6 +318,7 @@ const surTete = (cle, fn) => {
 const gardeFou = () => surTete("veille", calculGardeFou);
 
 function calculGardeFou() {
+  if (!VEILLE) return null;
   const raw = git("log", `--since=${VEILLE.jours} days ago`, "--numstat", "--format=", "--", VEILLE.fichier);
   if (!raw) return null;
   let a = 0, d = 0;
@@ -310,8 +334,11 @@ function calculGardeFou() {
 // lance en processus fils plutôt que de l'importer. Code de retour non nul = il a
 // trouvé des erreurs, pas qu'il a planté — la sortie JSON reste bonne.
 function controleur() {
-  const p = join(ROOT, DIR, "verifier.mjs");
-  if (!existsSync(p)) return null;
+  // Celui de l'outil d'abord : un exemplaire copié dans un projet et laissé en arrière
+  // vérifierait un contrat que le serveur n'applique plus.
+  const p = [join(OUTIL, "pilotage", "verifier.mjs"), join(ROOT, DIR, "verifier.mjs")]
+    .find(existsSync);
+  if (!p) return null;
   const lire = (s) => { try { return JSON.parse(s || ""); } catch { return null; } };
   try {
     return lire(execFileSync(process.execPath, [p, "--json", "--dir", DIR],
@@ -320,20 +347,26 @@ function controleur() {
 }
 
 // ---------- index de navigation ----------
+// D'où vient un code : le document qui l'a écrit, pour que l'écran y renvoie. Les
+// règles — quels fichiers, quel vocabulaire — sont propres au dépôt et déclarées
+// dans la config. Première source qui cite un code l'emporte, sauf `ecrase` : les
+// ADR font foi contre une note de conception qui les mentionne.
 async function index() {
   const map = {};
-  const docs = join(ROOT, "docs");
-  let noms = []; try { noms = (await readdir(docs)).filter(n => n.endsWith(".md")); } catch {}
+  const cfg = CFG.documentation;
+  if (!cfg) return map;
+
+  const dossier = join(ROOT, cfg.dossier);
+  let noms = []; try { noms = (await readdir(dossier)).filter(n => n.endsWith(".md")); } catch {}
 
   for (const n of noms) {
-    const p = `docs/${n}`;
-    const t = await readFile(join(docs, n), "utf8").catch(() => "");
-    if (/^(AUDIT|REVIEW)_/.test(n))
-      for (const c of new Set(t.match(RX.chantier) || [])) map[c] ||= p;
-    if (/^DESIGN_/.test(n))
-      for (const c of new Set(t.match(RX.decision) || [])) map[c] ||= p;
-    if (n === "DECISIONS.md")
-      for (const c of new Set(t.match(RX.adr) || [])) map[c] = p;
+    const p = `${cfg.dossier}/${n}`;
+    const t = await readFile(join(dossier, n), "utf8").catch(() => "");
+    for (const s of cfg.sources) {
+      if (!s.fichiers.test(n)) continue;
+      for (const c of new Set(t.match(CFG.codes[s.codes]) || []))
+        if (s.ecrase) map[c] = p; else map[c] ||= p;
+    }
   }
   return map;
 }
@@ -421,7 +454,7 @@ async function reinitialiser({ file }) {
 }
 
 // ---------- serveur ----------
-const HTML = join(ROOT, "journal.html");
+const HTML = join(OUTIL, "journal.html");
 
 createServer(async (req, res) => {
   const send = (code, type, body) =>

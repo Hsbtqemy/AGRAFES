@@ -7,9 +7,9 @@
 // chaque item de `Reste` au code — n'est pas automatisable : il demande de lire ce
 // que la phrase affirme. Il est donc rapporté en fin de sortie comme un manque
 // explicite, avec son compte. Un script vert qui laisserait croire qu'il couvre tout
-// serait pire que pas de script du tout : le 2026-08-20, dix items confrontés à la
-// main en ont livré un périmé (les verbes `set_bead`/`clear_bead` donnés pour
-// « absents » alors qu'ils existent depuis le contrat 1.6.57).
+// serait pire que pas de script du tout : sur le dépôt d'où vient cet outil, dix items
+// confrontés à la main en ont livré un périmé — deux verbes donnés pour « absents »
+// alors qu'ils existaient depuis six mois.
 //
 // Les règles de lecture viennent de `journal-contrat.mjs`, partagé avec le serveur :
 // vérifier un contrat différent de celui qu'applique l'outil donnerait un vert sans
@@ -114,8 +114,8 @@ for (const c of chantiers) {
 
 // ── contrôle 4 — constats d'audit sans item correspondant ────────────────────
 // Un constat ouvert qui n'est cité dans aucun `Reste` n'existe pas pour qui planifie
-// depuis le journal : il ne vit que dans `docs/`. Le 2026-08-20, douze constats de
-// l'audit alignement étaient dans ce cas, dont cinq oranges.
+// depuis le journal : il ne vit que dans `docs/`. Mesuré une fois : douze constats
+// dans ce cas sur un même audit, dont cinq sérieux.
 const C4 = "constats sans item";
 const audits = {};   // exploitable par l'écran : compte par audit et par sévérité
 for (const c of chantiers) {
@@ -193,8 +193,7 @@ if (JSON_) {
   // Le manque, en dernier et en toutes lettres.
   console.log(`\nNON COUVERT — confrontation des ${itemsOuverts} items au code : à faire à la main.`);
   console.log("   Aucun contrôle mécanique ne peut dire si « X est absent » est encore vrai :");
-  console.log("   il faut ouvrir le fichier que la phrase désigne. Dernière passe : 2026-08-20,");
-  console.log("   dix items relus, un périmé.");
+  console.log("   il faut ouvrir le fichier que la phrase désigne.");
 }
 
 const echec = erreurs.length > 0 || (STRICT && avertissements.length > 0);
