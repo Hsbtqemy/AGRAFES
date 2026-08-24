@@ -92,7 +92,14 @@ def _terminate_tree(proc: subprocess.Popen) -> None:
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        # L'escalade doit rester à l'échelle de l'ARBRE : `proc.kill()` seul retomberait
+        # dans le défaut que cette fonction corrige — le bootloader meurt, l'enfant reste.
+        # (Sous Windows `taskkill /F` a déjà tué de force ; il n'y a rien à escalader.)
+        if os.name != "nt":
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                proc.kill()
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
