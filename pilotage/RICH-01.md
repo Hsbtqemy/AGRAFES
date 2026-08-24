@@ -1,0 +1,67 @@
+---
+chantier: RICH-01
+statut: à venir
+---
+
+# RICH-01 — stylisation inline : ce que l'import perd encore, ce que l'export invente
+
+**Point de départ** — trois lots livrés le 24 août 2026 (`0806c66`, `b5491e5`, `4d21d69`) ; ce qui reste est l'asymétrie TEI, mesurée mais jamais tracée, 24 août 2026.
+
+## Reste
+
+- [ ] L'import TEI aplatit les `<hi>` par `itertext()` (`tei_importer.py:169`) alors que l'export les reconstruit (`tei.py:50`) : réimporter un export perd la stylisation, silencieusement
+- [ ] Trancher si l'import TEI doit accepter d'autres `rend` que les six tokens connus (garder tel quel ? mapper vers le plus proche ? refuser ?) — la décision manque avant d'écrire la ligne de code
+- [ ] Vérifier le même aller-retour sur `readable_text` en `source_field=text_raw` et sur le `# text =` de CoNLL-U (`conllu_export.py:85`) : ils impriment aujourd'hui le balisage en toutes lettres
+- [ ] ODT — `odt_extract_style_map` ne lit que `office:automatic-styles` et ne résout pas `style:parent-style-name` : un span héritant d'un style nommé italique passe à travers (0 cas sur les 23 ODT locaux, donc dette assumée tant que rien ne le contredit)
+- [ ] Décider si `text_norm` doit cesser de porter les entités XML (`&amp;`) sur les lignes riches : `normalize()` tourne sur un `text_raw` déjà échappé, donc une ligne riche contenant `&` s'affiche « &amp; » et se cherche mal en FTS
+
+## QA
+
+- qa/italique-import.md
+
+## Contexte
+
+**Ce qui est déjà fait, et qu'il ne faut pas refaire.** Trois lots poussés sur `refonte`
+le 24 août :
+
+- `0806c66` — `richTextToHtml` ne rend le balisage que s'il décrit encore le texte
+  courant. Le stylo (D-C1), la curation et le *marker lift* réécrivent `text_norm` en
+  gardant `text_raw` comme provenance ; sur une ligne qu'ils ont touchée, le canvas
+  affichait le verbatim d'avant correction. Le pliage JS réplique `normalize()` — vérifié
+  par test différentiel sur 4 012 lignes réelles, 0 divergence. Une seconde garde refuse
+  d'injecter du HTML venu d'un import verbatim (txt/TEI contenant littéralement `<hi`).
+- `b5491e5` — l'italique porté par un style de caractère (Word *Emphasis* /
+  « Accentuation », *Strong* pour le gras) n'est plus perdu : python-docx ne rapporte que
+  le formatage direct, `run.italic` valant `None` dans ce cas.
+- `4d21d69` — le balisage devient visible dans les couches Rôles, Curation et Annotation
+  (`CanvasUnitList`), qui affichaient du texte plat.
+
+**Ce que la mesure a dit, et qui recadre la priorité.** Sur les 53 documents en base dont
+le fichier source a été retrouvé en local : 3 runs en italique direct, **0** via style de
+caractère. Rien n'était perdu sur l'existant. En revanche, sur les 785 `.docx` locaux :
+7 198 runs en italique direct, **835 via style de caractère répartis sur 58 fichiers,
+dont 33 sans le moindre italique direct** — concentrés dans le corpus presse
+(`CI-OrEnTrFr`, `M-GW`), pas encore importé. Le correctif est une assurance avant la
+prochaine vague, pas une réparation.
+
+**Le piège de performance, pour mémoire.** `run.style` déclenche une résolution de style
+complète dans python-docx : 0,305 ms par appel, soit 0,30 s → 10,65 s sur un document de
+6 226 runs quand on la demande six fois par run. `_run_has_char_style` sonde le
+`<w:rPr><w:rStyle>` sous-jacent, 500× moins cher, et seuls 46 runs sur 6 226 en portent
+un. Toute évolution de ce module doit garder cette barrière — et la garder *testée sur de
+vrais documents python-docx*, puisque les doublures n'ont pas de `_element` et la
+contournent entièrement.
+
+**Pourquoi l'asymétrie TEI mérite un code.** On exporte un balisage qu'on ne sait pas
+relire. Un utilisateur qui exporte en TEI puis réimporte croit récupérer son document et
+récupère du texte nu, sans avertissement. C'est le seul des cinq points ci-dessus qui
+détruit de l'information au su de l'outil.
+
+Décisions applicables : ADR-002 (le `¤`), ADR-003 (la politique de normalisation que le
+pliage front réplique), ADR-043 (`text_source`), D-C1 (`docs/DESIGN_inline_text_correction.md`
+§9.2 — le stylo édite `text_norm` et garde `text_raw`).
+
+Pas de champ `audit:` : aucun audit ne porte ce chantier, les mesures ci-dessus sont sa
+seule source. Aucun ADR n'a jamais cadré la stylisation inline : le périmètre « formatage direct
+seulement » de `f1c8658` (17 avril 2026) était un fait d'implémentation, pas une décision.
+S'il faut en écrire un, c'est ici.
