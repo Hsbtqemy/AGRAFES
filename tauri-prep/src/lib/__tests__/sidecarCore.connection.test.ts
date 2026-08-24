@@ -80,6 +80,18 @@ const PORTFILE = { host: "127.0.0.1", port: 8765, token: "abc", db_path: "/data/
  * the stdout reader (registered by _readFirstJsonFromCommand before spawn) as
  * soon as spawn() is called, mirroring the real sidecar printing its port/token.
  */
+/** L'ordre relatif de deux appels mockés, via `invocationCallOrder` (index global
+ *  croissant que vitest attribue à chaque invocation, tous mocks confondus). C'est
+ *  l'ORDRE qui porte le correctif de l'arbre : réaper après avoir tué le bootloader ne
+ *  trouve plus rien, l'enfant ayant été réparenté à PID 1. */
+function ordreReapAvantKill(kill: { mock: { invocationCallOrder: number[] } }): void {
+  const i = vi.mocked(invoke).mock.calls.findIndex(([cmd]) => cmd === "reap_sidecar_pid");
+  expect(i, "reap_sidecar_pid n'a pas été appelé — child.kill() seul laisse l'enfant Python").toBeGreaterThanOrEqual(0);
+  const reap = vi.mocked(invoke).mock.invocationCallOrder[i];
+  expect(kill.mock.invocationCallOrder.length, "child.kill() n'a pas été appelé").toBeGreaterThan(0);
+  expect(reap, "l'arbre doit être réapé AVANT que le bootloader ne meure").toBeLessThan(kill.mock.invocationCallOrder[0]);
+}
+
 function makeFakeCommand(startup: Record<string, unknown>) {
   let stdoutCb: ((c: string) => void) | undefined;
   const child = { pid: 4242, kill: vi.fn().mockResolvedValue(undefined) };
@@ -378,6 +390,13 @@ describe("ensureRunning (spawn / cold start)", () => {
 
     expect(cmd1._child.kill).toHaveBeenCalledTimes(1);
     expect(conn2.baseUrl).toBe("http://127.0.0.1:8766");
+
+    // Ce test PASSAIT pendant que le code fuyait : il n'épinglait que `child.kill()`,
+    // c'est-à-dire l'appel qui ne tue que le bootloader d'un onefile et laisse
+    // l'interpréteur Python en écoute (mesuré sur macOS le 2026-08-24). L'assertion
+    // suivante est celle qui distingue les deux comportements.
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("reap_sidecar_pid", { pid: 4242 });
+    ordreReapAvantKill(cmd1._child.kill);
   });
 
   it("persists the spawned port to localStorage", async () => {
@@ -422,6 +441,11 @@ describe("ensureRunning (spawn / cold start)", () => {
 
       await expect(p).rejects.toThrow();
       expect(cmd._child.kill).toHaveBeenCalledTimes(1);
+      // Même remarque que ci-dessus : « reaps » ne voulait rien dire tant que seul
+      // `child.kill()` était asserté. C'est le chemin le plus coûteux à laisser fuir —
+      // il se rejoue à CHAQUE expiration du seuil de démarrage.
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("reap_sidecar_pid", { pid: 5151 });
+      ordreReapAvantKill(cmd._child.kill);
     } finally {
       vi.useRealTimers();
     }

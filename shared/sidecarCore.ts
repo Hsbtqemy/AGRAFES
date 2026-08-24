@@ -64,13 +64,39 @@ export const SPAWN_TOKEN_PORTFILE_RETRY_DELAY_MS = 150;
 export const IS_WINDOWS_RUNTIME =
   typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent);
 
+export const IS_MACOS_RUNTIME =
+  typeof navigator !== "undefined" && /mac/i.test(navigator.userAgent);
+
+/** Le sidecar se DÉPLIE-t-il à chaque démarrage ?
+ *
+ *  Ce qui gouverne le temps de démarrage n'est pas l'OS mais le FORMAT d'empaquetage : un
+ *  onefile PyInstaller réextrait ~400 Mo à chaque lancement, un onedir non. Les formats
+ *  livrés (`tauri-shell-build.yml`, matrice) sont **macOS onefile, Windows onefile, Linux
+ *  onedir** — si bien que `IS_WINDOWS_RUNTIME` seul est un proxy juste pour Windows et
+ *  pour Linux, et FAUX pour macOS, le seul cas où les deux critères divergent.
+ *
+ *  Mesuré sur macOS le 2026-08-24 : démarrage réel ~15,4 s contre un seuil de 12 s. La
+ *  voie spawn n'aboutissait donc JAMAIS sur cette plateforme — et chaque expiration
+ *  passait par la reprise, qui fuyait (cf. `_tuerArbreSidecar`) : un générateur
+ *  d'orphelins, en silence.
+ *
+ *  À revoir si le format d'une plateforme change. C'est un proxy assumé : le front ne
+ *  connaît pas le format à l'exécution, il le déduit de la plateforme. */
+export const SIDECAR_UNPACKS_AT_START = IS_WINDOWS_RUNTIME || IS_MACOS_RUNTIME;
+
 export const SIDECAR_HEALTH_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 45000 : 15000;
 
 export const SIDECAR_HEALTH_INITIAL_DELAY_MS = IS_WINDOWS_RUNTIME ? 1200 : 0;
 
 export const SIDECAR_HEALTH_POLL_INTERVAL_MS = 350;
 
-export const SIDECAR_STARTUP_JSON_TIMEOUT_MS = IS_WINDOWS_RUNTIME ? 90000 : 12000;
+/** ⚠ Seule cette constante-ci a été RÉ-ÉTALONNÉE sur la mesure macOS. Ses deux voisines
+ *  (`SIDECAR_HEALTH_TIMEOUT_MS`, `SIDECAR_HEALTH_INITIAL_DELAY_MS`) ont la même forme
+ *  « Windows ou pas » et sont donc suspectes du même défaut — mais elles gouvernent le
+ *  sondage de santé, qui vient APRÈS l'annonce de démarrage, et rien ne les a mises en
+ *  défaut. Les changer sans mesure serait exactement le reproche qu'on fait à la valeur
+ *  d'origine. Consigné dans `pilotage/T-05.md`. */
+export const SIDECAR_STARTUP_JSON_TIMEOUT_MS = SIDECAR_UNPACKS_AT_START ? 90000 : 12000;
 
 
 export type LoopbackHttpBackendMode = "auto" | "global_this_only" | "tauri_only";
@@ -804,21 +830,45 @@ async function _ensureRunning(dbPath: string): Promise<Conn> {
  *  que faire deux sidecars pour une base. Le geste est au mieux : un pid déjà mort rend
  *  une erreur sans conséquence.
  *
- *  ⚠ Ce correctif ne ferme QUE la fuite. Il ne touche pas au seuil de 90 s
- *  (`SIDECAR_STARTUP_JSON_TIMEOUT_MS`), et c'est délibéré : la distribution des
- *  démarrages lue au journal est CENSURÉE par ce seuil — un démarrage plus lent n'est
- *  jamais compté comme abouti — donc elle ne peut pas dire de combien le relever. Voir
- *  `pilotage/T-05.md`. */
-async function _reaperDesavoue(verrou: SpawnLock): Promise<void> {
-  if (typeof verrou.pid !== "number" || verrou.pid <= 0) return;
+ *  ⚠ Ce correctif ne ferme QUE la fuite. Il ne touche pas au seuil de 90 s de Windows,
+ *  et c'est délibéré : la distribution des démarrages lue au journal y est CENSURÉE par
+ *  le seuil lui-même — un démarrage plus lent n'est jamais compté comme abouti — donc
+ *  elle ne peut pas dire de combien le relever.
+ *
+ *  Le cas macOS était différent, et c'est pourquoi il a pu être tranché : le lecteur de
+ *  la sortie continue APRÈS l'abandon, si bien que le journal porte la vraie durée
+ *  (~15,4 s, le payload arrivant 18 ms après l'échéance). Mesure non censurée, décision
+ *  possible. Voir `pilotage/T-05.md`. */
+/** Tue un sidecar ET SA DESCENDANCE, par le seul chemin du produit qui sache le faire.
+ *
+ *  `child.kill()` de tauri-plugin-shell ne tue que l'enfant DIRECT. Or un binaire
+ *  PyInstaller onefile est deux processus — le bootloader qui déballe, et l'interpréteur
+ *  Python qui écoute. Tuer le premier laisse le second vivant, réparenté à PID 1, en
+ *  écoute et répondant : mesuré sur macOS le 2026-08-24, deux fois de suite en un seul
+ *  tour, sans que rien ne le signale. C'est l'asymétrie fermée dans `_kill_pid` côté Rust
+ *  (27b64a7), qui était restée intacte ici — je n'avais corrigé que le site que j'avais
+ *  sous les yeux, sans chercher qui d'autre tue un sidecar.
+ *
+ *  ⚠ L'ORDRE N'EST PAS LIBRE. Ce réapeur doit passer AVANT `child.kill()`, jamais après :
+ *  `_kill_pid` trouve la descendance par le parent (`pkill -P` / `taskkill /T`), et une
+ *  fois le bootloader mort son enfant est réparenté à PID 1 — donc introuvable par cette
+ *  voie. Tuer d'abord, réaper ensuite, c'est fabriquer l'orphelin qu'on voulait éviter.
+ *
+ *  Au mieux : un pid déjà mort rend une erreur sans conséquence. */
+async function _tuerArbreSidecar(pid: number | null | undefined, quoi: string): Promise<void> {
+  if (typeof pid !== "number" || pid <= 0) return;
   try {
-    await invoke("reap_sidecar_pid", { pid: verrou.pid });
-    sidecarLog("info", `sidecar désavoué tué (pid=${verrou.pid})`);
+    await invoke("reap_sidecar_pid", { pid });
+    sidecarLog("info", `${quoi} tué avec sa descendance (pid=${pid})`);
   } catch (err) {
     // Un shell plus ancien n'a pas la commande : on le DIT, sinon la fuite se cherche
     // ailleurs pendant des heures — la leçon du verrou non posé, juste au-dessus.
-    sidecarLog("warn", `sidecar désavoué NON tué (pid=${verrou.pid}) — il écoute peut-être encore`, errToString(err));
+    sidecarLog("warn", `${quoi} NON tué (pid=${pid}) — il écoute peut-être encore`, errToString(err));
   }
+}
+
+async function _reaperDesavoue(verrou: SpawnLock): Promise<void> {
+  await _tuerArbreSidecar(verrou.pid, "sidecar désavoué");
 }
 
 /** Attend qu'un sidecar en vol publie son portfile, et l'adopte. `null` au délai.
@@ -888,6 +938,8 @@ async function _attendrePortfile(dbPath: string, budgetMs: number): Promise<Conn
 
 export async function _spawnSidecar(dbPath: string): Promise<Conn> {
   if (_spawnedChild) {
+    // Descendance d'abord — voir `_tuerArbreSidecar` : l'ordre inverse orpheline le fils.
+    await _tuerArbreSidecar(_spawnedChild.pid, "sidecar précédent");
     try {
       await _spawnedChild.kill();
     } catch {
@@ -972,6 +1024,7 @@ export async function _spawnSidecar(dbPath: string): Promise<Conn> {
   } catch (err) {
     // Reap the child if it never emitted a valid startup payload (R-01c).
     if (_spawnedChild === child) {
+      await _tuerArbreSidecar(child.pid, "sidecar sans démarrage valide");
       try { await child.kill(); } catch { /* ignore */ }
       _spawnedChild = null;
     }
@@ -986,6 +1039,7 @@ export async function _spawnSidecar(dbPath: string): Promise<Conn> {
   if (port === null) {
     sidecarLog("error", "startup payload rejected (invalid port)", started);
     if (_spawnedChild === child) {
+      await _tuerArbreSidecar(child.pid, "sidecar au port invalide");
       try { await child.kill(); } catch { /* ignore */ }
       _spawnedChild = null;
     }
@@ -1008,6 +1062,7 @@ export async function _spawnSidecar(dbPath: string): Promise<Conn> {
     // Don't leak the unhealthy child (R-01c) — kill before bailing so a wedged
     // startup can't pile up orphans across reconnect retries.
     if (_spawnedChild === child) {
+      await _tuerArbreSidecar(_spawnedChild.pid, "sidecar jamais sain");
       try { await _spawnedChild.kill(); } catch { /* ignore */ }
       _spawnedChild = null;
     }
