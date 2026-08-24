@@ -5,7 +5,7 @@ statut: interrompu
 
 # JOURNAL — journal de bord local
 
-**Arrêté sur** — traînée des cinq derniers commits sous le point de reprise, commit `dd2f2c0` puis celui-ci, 22 août 2026.
+**Arrêté sur** — le tableau de bord compte les points de reprise périmés (5 sur 14), commit `0241e00`, 24 août 2026.
 
 ## Reste
 
@@ -15,7 +15,7 @@ statut: interrompu
 - [ ] Seuil de dormance sur le silence d'un chantier (dormant ≥ 10 jours actifs) — coupé à la relecture de la maquette, à reposer si le tri seul ne suffit pas. La moitié « fossile ≥ 25 » est morte : elle visait la dormance des **fichiers**, axe mesuré cassé le 19 août (voir `Contexte`)
 - [ ] L'onglet masses ne jalonne que les **retraits** : les plus gros ajouts sont tous des commits de bootstrap de mars (jusqu'à +146 951 lignes), inexploitables. À rouvrir quand février-mars sortira de toute fenêtre utile
 - [ ] Le front n'est calculé que pour les fiches — ni le fil ni les passes ne le portent. Coupe volontaire, à rouvrir seulement si le fil devient illisible une fois plusieurs branches vivantes
-- [ ] Le contrôleur pourrait signaler mécaniquement l'écart entre le commit cité dans `Arrêté sur` et le dernier commit réel du chantier — la traînée le rend visible, elle ne le compte pas
+- [x] Signaler mécaniquement l'écart entre le commit cité dans `Arrêté sur` et le dernier commit réel — fait le 24 août dans le journal et non dans le contrôleur, qui n'ouvre pas git : lui donner ce contrôle imposait d'y dupliquer tout l'appariement commit↔chantier
 
 ### Décisions en attente
 
