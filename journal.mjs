@@ -247,6 +247,9 @@ function fronts() {
 // `{ancien => nouveau}`). Sans aires déclarées, l'onglet reste vide — mais la passe
 // tourne quand même : c'est elle qui repère les commits de tenue.
 const AIRES = CFG.aires;
+// Le dossier de documentation du dépôt, quand il est déclaré : sert à distinguer un
+// commit de cadrage (note + fiche) d'un commit de code. Sans config, aucun démenti.
+const DOCS = CFG.documentation?.dossier || null;
 
 // `fenetre` en mois : sur 6 le delta égale presque la masse et le classement retombe
 // sur la taille ; sur 3 les reculs ressortent (screens, ui) et le tri dit qui bouge.
@@ -260,14 +263,18 @@ function calculMasses(seuil, fenetre) {
                   "--format=@%h\x1f%ad\x1f%s", "--date=short");
   if (!raw) return null;
 
-  const cum = {}, serie = {}, mois = [], jalons = [], tenue = [];
+  const cum = {}, serie = {}, mois = [], jalons = [], tenue = [], redaction = [];
   for (const [n] of AIRES) { cum[n] = 0; serie[n] = []; }
-  let m = null, c = null, net = 0, nf = 0, npil = 0;
+  let m = null, c = null, net = 0, nf = 0, npil = 0, ndoc = 0;
   const clore = () => {
     if (!c) return;
     if (net <= -seuil) jalons.push({ ...c, delta: net });
     // Ne touche que `pilotage/` : de la tenue de dossier, pas du travail daté.
     if (nf > 0 && nf === npil) tenue.push(c.hash);
+    // Ne touche que `pilotage/` et la doc : du cadrage écrit, pas du code. Sert au
+    // seul démenti du statut `à venir` — surtout PAS au silence, où écrire une note
+    // de conception est un vrai travail sur le chantier.
+    if (nf > 0 && nf === npil + ndoc) redaction.push(c.hash);
   };
   const graver = () => { mois.push(m); for (const [n] of AIRES) serie[n].push(cum[n]); };
 
@@ -277,13 +284,15 @@ function calculMasses(seuil, fenetre) {
       const [hash, date, sujet] = l.slice(1).split("\x1f");
       const mm = date.slice(0, 7);
       if (m && m !== mm) graver();
-      m = mm; c = { hash, date, sujet }; net = 0; nf = 0; npil = 0;
+      m = mm; c = { hash, date, sujet }; net = 0; nf = 0; npil = 0; ndoc = 0;
       continue;
     }
     const f = l.split("\t");
     if (f.length < 3 || !/^\d+$/.test(f[0])) continue;   // binaire (`-`) ou ligne vide
     const n = Number(f[0]) - Number(f[1]);
-    net += n; nf++; if (f[2].startsWith(DIR + "/")) npil++;
+    net += n; nf++;
+    if (f[2].startsWith(DIR + "/")) npil++;
+    else if (DOCS && f[2].startsWith(DOCS + "/")) ndoc++;
     const a = aire(f[2]); if (a) cum[a] += n;
   }
   clore();
@@ -294,7 +303,7 @@ function calculMasses(seuil, fenetre) {
     return { nom, valeurs: v, total: tot, delta: tot - (v[Math.max(0, v.length - 1 - fenetre)] ?? 0) };
   }).filter(a => a.total > 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
-  return { mois, fenetre, aires, tenue,
+  return { mois, fenetre, aires, tenue, redaction,
            jalons: jalons.sort((a, b) => a.delta - b.delta).slice(0, 8) };
 }
 
@@ -381,6 +390,7 @@ async function build() {
   // La passe des masses suit HEAD, pas `--all` : un commit de tenue posé sur une
   // autre branche ne sera pas reconnu comme tel. Sans conséquence en pratique.
   const tenue = new Set(mss?.tenue || []);
+  const redaction = new Set(mss?.redaction || []);
   const rem = await remontee(chantiers);
   const proprietaire = {};
   for (const [ch, codes] of Object.entries(rem)) for (const c of codes) proprietaire[c] = ch;
@@ -395,6 +405,10 @@ async function build() {
     const f = last ? fr.find(x => x.hashes.has(last.full)) : null;
     ch.front = f ? { ref: f.nom, integre: f.integre } : null;
     ch.commits = liste.length;
+    // Les commits qui touchent autre chose que la doc et le dossier de pilotage. Un
+    // `à venir` qui en porte n'est plus à venir : c'est le seul démenti mécanique du
+    // statut déclaré, et il ne coûte aucune passe git de plus.
+    ch.commitsCode = liste.filter(c => !redaction.has(c.hash)).length;
     // La traînée : `Arrêté sur` est une pile de profondeur un, réécrite à chaque
     // reprise. Mesuré le 2026-08-22 : 4 fiches sur 14 la portaient périmée, et
     // c'étaient les trois plus actives — elle ne tient que là où on n'en a pas besoin.
@@ -402,7 +416,9 @@ async function build() {
     // Le point de reprise cite-t-il encore le dernier commit ? Mesuré le 22 août :
     // 4 fiches sur 14 non, et c'étaient les trois plus actives. La traînée le rendait
     // visible ; ceci le compte, ce qui est la différence entre voir et savoir.
-    ch.arreteDecale = Boolean(c_arreteDecale(ch));
+    // Un `à venir` n'a pas de point de reprise à périmer : sa ligne est un point de
+    // départ, elle ne cite aucun commit et n'a pas à en citer un.
+    ch.arreteDecale = ch.statut !== "à venir" && Boolean(c_arreteDecale(ch));
     ch.passes = passes.filter(p => p.chantier === ch.code).map(p => p.file);
     liens[ch.code] = `#/c/${encodeURIComponent(ch.code)}`;
   }

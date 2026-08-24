@@ -68,6 +68,9 @@ a{color:var(--outremer)}
 .mesure i{font:400 var(--t1)/1 var(--mo);font-style:normal;opacity:.75;margin-left:.15em}
 .mot{font:500 var(--t1)/1.3 var(--mo);text-transform:uppercase;letter-spacing:.11em;opacity:.82}
 .s-dif .plaque{background:transparent;box-shadow:inset 0 0 0 2.5px var(--minium);color:var(--minium)}
+/* « à venir » : rien n'a commencé. Pas le minium des chantiers vivants — l'outremer,
+   qui n'appelle pas au secours mais annonce. */
+.s-ven .plaque{background:var(--outremer)}
 .s-clos .plaque,.s-liv .plaque{background:var(--pl-close-bg);color:var(--pl-close-fg)}
 .s-clos .mot,.s-clos .mesure i,.s-liv .mesure i{color:var(--pl-close-fg2);opacity:1}
 .s-liv .mot{color:var(--verdet);opacity:1}
@@ -119,6 +122,7 @@ a{color:var(--outremer)}
   background:var(--plat);border-left:3px solid var(--minium);border-radius:0 2px 2px 0}
 .s-clos .lemme-f,.s-liv .lemme-f{border-left-color:var(--pl-close-bg)}
 .s-dif .lemme-f{border-left-style:double;border-left-width:5px}
+.s-ven .lemme-f{border-left-color:var(--outremer)}
 .lemme-f b{font:600 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.11em;
   color:var(--encre3);display:block;margin-bottom:.35rem}
 
@@ -353,9 +357,13 @@ const ligne = t => pastilles(inline(esc(t)));
 const prose = md => pastilles(esc(md).split(/\n{2,}/)
   .map(p => "<p>" + inline(p.replace(/\n/g, " ")) + "</p>").join(""));
 
-const OUVERT = s => s === "interrompu" || s === "différé";
-const SLUG = { "interrompu":"int", "différé":"dif", "clos":"clos", "livré":"liv" };
+const OUVERT = s => s === "à venir" || s === "interrompu" || s === "différé";
+const SLUG = { "à venir":"ven", "interrompu":"int", "différé":"dif", "clos":"clos", "livré":"liv" };
 const slug = s => SLUG[s] || "int";
+/* Un `à venir` que git dément : la fiche annonce que rien n'a commencé, et des commits
+   qui citent son code touchent autre chose que la doc et `pilotage/`. Déclaré d'un
+   côté, mesuré de l'autre — on montre l'écart plutôt que d'arbitrer. */
+const dementi = c => c.statut === "à venir" && c.commitsCode > 0;
 const byCode = c => D.chantiers.find(x => x.code === c);
 const byFile = f => D.passes.find(p => p.file === f);
 const jour = s => new Date(s + "T00:00:00")
@@ -432,6 +440,12 @@ function bandeBord(){
   if (dec.length) l.push({ cle: "points de reprise périmés", val: String(dec.length),
     note: `ne citent plus le dernier commit · ${dec.map(c => versFiche(c.code)).join(" ")}` });
 
+  /* Même geste pour le seul autre champ déclaré que git puisse contredire : un
+     chantier annoncé « à venir » sur lequel du code est déjà tombé. */
+  const dem = D.chantiers.filter(dementi);
+  if (dem.length) l.push({ cle: "« à venir » démentis", val: String(dem.length),
+    note: `du code est déjà tombé · ${dem.map(c => versFiche(c.code)).join(" ")}` });
+
   /* Seul chiffre volontairement inerte : il est la somme des Reste de toutes les
      fiches, et sa destination est la liste qui suit déjà sur cet écran. */
   if (c?.nonCouvert) l.push({ cle: "items jamais confrontés", val: String(c.nonCouvert.items),
@@ -492,6 +506,7 @@ function vueChantiers(){
      titre <code>## Reste</code>. Le gabarit est dans <code>pilotage/_TEMPLATE.md</code>.</p>`);
 
   const tri = l => l.sort((a, b) => (a.silence ?? 1e9) - (b.silence ?? 1e9));
+  const ven = tri(D.chantiers.filter(c => c.statut === "à venir"));
   const int = tri(D.chantiers.filter(c => c.statut === "interrompu"));
   const dif = tri(D.chantiers.filter(c => c.statut === "différé"));
   const fer = tri(D.chantiers.filter(c => !OUVERT(c.statut)));
@@ -505,6 +520,7 @@ function vueChantiers(){
           ${c.arrete ? `<p class="lemme">${ligne(c.arrete)}</p>` : ""}
           <p class="pied">
             <span class="${r ? "r" : "r0"}">${r ? r + " reste" + (r > 1 ? "s" : "") : "aucun reliquat"}</span>
+            ${dementi(c) ? `<span class="nf">${c.commitsCode} commit${c.commitsCode > 1 ? "s" : ""} de code</span>` : ""}
             ${c.dernier ? `<span>${c.dernier.hash} · ${c.dernier.date}</span>` : ""}
             ${c.front ? `<span class="fr${c.front.integre ? "" : " nf"}">${esc(c.front.ref)}</span>` : ""}
           </p>
@@ -516,9 +532,10 @@ function vueChantiers(){
      <div class="pile">${l.map(carte).join("")}</div>`;
 
   return bandeVol() + bandeBord()
+       + bloc(ven, "À venir — cadrés, pas commencés")
        + bloc(int, "Interrompus — arrêtés en plein travail")
        + bloc(dif, "Différés — fermés volontairement, reliquat connu")
-       + (int.length || dif.length ? "" : vide(
+       + (ven.length || int.length || dif.length ? "" : vide(
            `<p>Aucun chantier ouvert — les ${D.chantiers.length} fiches sont closes ou livrées.</p>
             <p>Quand tu en reprends un, repasse son <code>statut:</code> à
             <code>interrompu</code> dans sa fiche et il remontera ici.</p>`))
@@ -580,7 +597,7 @@ function vueFiche(code){
     </aside>
     <div>
       <h1 class="titre-f">${esc(c.titre)}</h1>
-      ${c.arrete ? `<p class="lemme-f"><b>Arrêté sur</b>${ligne(c.arrete)}</p>` : ""}
+      ${c.arrete ? `<p class="lemme-f"><b>${c.statut === "à venir" ? "Point de départ" : "Arrêté sur"}</b>${ligne(c.arrete)}</p>` : ""}
       ${!c.trainee?.length ? "" : `<ol class="trainee">${c.trainee.map(t => `<li>
         <span class="t-h">${t.hash}</span><span class="t-d">${t.date}</span>
         <span class="t-s">${ligne(t.sujet)}</span></li>`).join("")}</ol>`}

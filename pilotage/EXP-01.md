@@ -1,12 +1,12 @@
 ---
 chantier: EXP-01
-statut: interrompu
+statut: à venir
 audit: docs/DESIGN_explorer_autonome.md
 ---
 
 # EXP-01 — Explorer autonome, consultation et analyse sans écriture
 
-**Arrêté sur** — cadrage écrit et mesuré, aucune ligne de code ; deux décisions ouvertes (forme du livrable, niveau d'étanchéité), 24 août 2026.
+**Point de départ** — cadrage écrit et mesuré, aucune ligne de code ; deux décisions ouvertes (forme du livrable, niveau d'étanchéité), 24 août 2026.
 
 ## Reste
 

@@ -47,6 +47,17 @@ Décisions applicables : D-P10, D-W13 (voir DESIGN_alignment_workspace.md).
 Collision connue : R5 partage 25 fichiers, dont sidecar.py et coarse_grain.py.
 ```
 
+**`statut: à venir`** est pour la fiche écrite *avant* le premier commit de code : le
+chantier est cadré, il n'a pas commencé. Sans lui, un chantier neuf s'annonçait
+`interrompu` — le mot dit qu'on s'est arrêté en plein travail, alors qu'on n'a rien
+commencé. Sur une telle fiche, le point d'entrée s'écrit **`**Point de départ**`** plutôt
+que `**Arrêté sur**` : c'est le même champ, avec le mot juste.
+
+Rien n'oblige à le tenir à jour : le journal le **dément** tout seul dès qu'un commit
+citant le code touche autre chose que `pilotage/` et `docs/`. La fiche affiche alors
+« N commits de code », et le tableau de bord compte les « à venir » démentis — comme il
+compte déjà les points de reprise périmés.
+
 La section `## QA` ne contient pas les points : elle **pointe** vers les passes. Un
 chantier peut en avoir plusieurs, et une même passe peut servir plusieurs chantiers.
 
@@ -121,10 +132,10 @@ Ce que l'outil lit, et rien d'autre.
 | Élément | Règle | Si absent |
 |---|---|---|
 | `chantier:` | Le code, tel qu'il apparaît dans les sujets de commit | Fichier ignoré |
-| `statut:` | `interrompu` · `clos` · `livré` | Traité comme `interrompu` |
+| `statut:` | `à venir` · `interrompu` · `clos` · `livré` | Traité comme `interrompu` |
 | `audit:` | Chemin d'un `AUDIT_*.md` ou `REVIEW_*.md` | Pas de lien vers l'audit |
 | `# Titre` | Premier H1 | Le code sert de titre |
-| `**Arrêté sur**` | La ligne entière après le tiret | Ligne omise à l'écran |
+| `**Arrêté sur**` | La ligne entière après le tiret. `**Point de départ**` est accepté à sa place, et c'est le mot juste sur un `à venir` | Ligne omise à l'écran |
 | `## Reste` | Cases à cocher, une par ligne | Section absente de l'écran |
 | `## QA` | **Non lu par l'outil** — voir la note ci-dessous | Aucun effet |
 

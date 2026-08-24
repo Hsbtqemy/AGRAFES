@@ -24,7 +24,10 @@ import { join, extname } from "node:path";
 export const RX = {
   fm:      /^---\r?\n([\s\S]*?)\r?\n---/,
   h1:      /^#\s+(.+)$/m,
-  arret:   /^\*\*Arrêté sur\*\*\s*[—–-]?\s*(.+)$/m,
+  // « Point de départ » est le même artefact sous le mot juste pour un `à venir` :
+  // on ne s'est arrêté sur rien. Un seul champ, deux libellés — l'écran affiche celui
+  // que la fiche a écrit, et le contrat n'en gagne pas un second.
+  arret:   /^\*\*(?:Arrêté sur|Point de départ)\*\*\s*[—–-]?\s*(.+)$/m,
   box:     /^\s*[-*]\s+\[([ xX])\]\s+(.+)$/,
   h2:      /^##\s+(.+)$/,
   h3:      /^###\s+(.+)$/,
@@ -61,8 +64,12 @@ export const walk = async (dir) => {
  *  un `passe:` dans le frontmatter suffit, le dossier `qa/` aussi. */
 export const estPasse = (rel, fm) => fm.passe !== undefined || rel.includes("/qa/");
 
-/** Statuts admis pour un chantier. Absent ⇒ `interrompu` (journal.mjs). */
-export const STATUTS = ["interrompu", "clos", "livré"];
+/** Statuts admis pour un chantier. Absent ⇒ `interrompu` (journal.mjs).
+ *  `à venir` : cadré, pas commencé — une fiche écrite AVANT le premier commit de code.
+ *  Sans lui, un chantier neuf s'annonçait « interrompu », ce qui dit qu'on s'est arrêté
+ *  en plein travail alors que rien n'a commencé. Le journal le dément mécaniquement dès
+ *  qu'un commit de code cite le code (voir `commitsCode`). */
+export const STATUTS = ["à venir", "interrompu", "clos", "livré"];
 
 // Un constat est OUVERT si sa colonne sévérité porte une de ces pastilles ; ✅ ou
 // barré valent clos. `reconnu` distingue « aucun constat ouvert » de « je ne sais pas
