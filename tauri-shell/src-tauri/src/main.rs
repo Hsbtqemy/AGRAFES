@@ -357,7 +357,9 @@ fn register_sidecar(
     *guard = Some(SidecarEntry { base_url, token, pid });
 }
 
-/// Force-kills a sidecar process tree by PID (reap fallback, R-01d).
+/// Force-kills a sidecar process TREE by PID (reap fallback, R-01d).
+/// « Tree » vaut sur les deux plateformes depuis le 2026-08-24 : `/T` sous Windows, et
+/// un parcours d'enfants sous POSIX, ou un onefile fork lui aussi (voir la branche).
 /// Best-effort: a dead/unknown PID just yields a harmless error.
 fn _kill_pid(pid: Option<u32>) {
     let Some(pid) = pid else { return };
@@ -373,6 +375,29 @@ fn _kill_pid(pid: Option<u32>) {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        // Les ENFANTS d'abord, le pid ensuite. Mesure sur macOS le 2026-08-24 : un binaire
+        // PyInstaller onefile est deux processus la aussi (bootloader parent + interpreteur
+        // Python), et `kill -9 <bootloader>` laisse le fils vivant, reparente a PID 1,
+        // toujours en ecoute et repondant a /health. Or c'est precisement le bootloader que
+        // cette fonction recoit sur ses DEUX chemins de force-kill : la connexion issue d'un
+        // spawn porte `child.pid` (sidecarCore.ts:1052), et le desaveu de verrou passe
+        // `verrou.pid`, ecrit depuis `child.pid` (:815 / :967). Les chemins qui portent le
+        // pid du portfile — donc le fils — sont ceux de REUTILISATION, qui ne tuent pas.
+        // La branche Windows etait couverte par `/T` depuis R-01 ; celle-ci ne l'etait pas,
+        // si bien que le garde-fou anti-fuite de T-05 aurait lui-meme fui sur macOS.
+        //
+        // PAS `killpg`. Le sidecar herite du groupe de processus de l'APP : ni
+        // tauri-plugin-shell ni shared_child n'appellent setsid/setpgid (verifie dans les
+        // deux crates). Signaler le groupe reviendrait a tuer l'application elle-meme —
+        // mesure : le groupe contenait le lanceur. `scripts/smoke_sidecar.py` peut, lui,
+        // utiliser killpg, parce qu'il lance avec `start_new_session=True` : son sidecar a
+        // son propre groupe. Meme primitive, deux contextes, deux verdicts opposes.
+        //
+        // Le pid du fils est couvert sans cas particulier : `pkill -P` n'y trouve rien, et
+        // le `kill` ci-dessous suffit — tuer le fils emporte le bootloader (mesure).
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-P", &pid.to_string()])
+            .output();
         let _ = std::process::Command::new("kill")
             .args(["-9", &pid.to_string()])
             .output();
@@ -394,7 +419,9 @@ fn _kill_pid(pid: Option<u32>) {
 /// toucher au processus qu'il venait de declarer perdu — alors qu'il en tient le pid et
 /// vient de l'evaluer vivant. Mesure le 2026-08-22 sur un cas reel : le desavoue arrive
 /// 19 s trop tard, publie un socket que plus personne n'attend, et garde le binaire
-/// verrouille. `_kill_pid` fait l'arbre (/T) : le bootloader onefile ET son enfant Python.
+/// verrouille. `_kill_pid` fait l'arbre sur les deux plateformes : le bootloader onefile
+/// ET son enfant Python. Le pid transmis ici est celui du VERROU, donc `child.pid`, donc le
+/// bootloader — c'est le cas qui fuyait sous POSIX avant le 2026-08-24.
 #[tauri::command]
 fn reap_sidecar_pid(pid: u32) {
     _kill_pid(Some(pid));
