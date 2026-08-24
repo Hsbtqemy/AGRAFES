@@ -113,6 +113,29 @@ export interface DocumentPreviewResponse {
 const _HI_RE = /<hi\b([^>]*)>(.*?)<\/hi>/gs;
 const _REND_RE = /\brend=["']([^"']*)["']/;
 
+/** Opening/closing <hi> tags — mirrors unicode_policy._HI_TAG_RE. */
+const _HI_TAG_RE = /<hi\b[^>]*>|<\/hi>/g;
+/** Invisibles + C0 controls (TAB/LF/CR kept) — mirrors unicode_policy._REMOVE_CHARS + _STRIP_CONTROLS. */
+const _NORM_REMOVE_RE = /[\u200b\u200c\u200d\u2060\ufeff\u00ad\u0000-\u0008\u000b\u000c\u000e-\u001f]/g;
+/** NBSP/NNBSP/figure/thin space + ¤ (ADR-002) — mirrors unicode_policy._NORMALIZE_TO_SPACE. */
+const _NORM_SPACE_RE = /[\u00a0\u202f\u2007\u2009\u00a4]/g;
+
+/**
+ * Strip <hi> markup and apply the engine's normalisation policy (ADR-003).
+ *
+ * Mirrors `unicode_policy.normalize()` step for step, so that for a line untouched
+ * since import `_foldNorm(text_raw) === text_norm` holds *exactly* — text_norm is
+ * precisely what the importer produced by running normalize() on text_raw.
+ */
+function _foldNorm(s: string): string {
+  return s
+    .replace(_HI_TAG_RE, "")
+    .normalize("NFC")
+    .replace(/\r\n?/g, "\n")
+    .replace(_NORM_SPACE_RE, " ")
+    .replace(_NORM_REMOVE_RE, "");
+}
+
 /**
  * Convert text_raw <hi rend="…"> markup to safe HTML for display.
  * Falls back to escaping text_norm if text_raw is absent or plain.
@@ -123,9 +146,27 @@ const _REND_RE = /\brend=["']([^"']*)["']/;
  *
  * Supported rend tokens: italic → <em>, bold → <strong>,
  * underline → <u>, strikethrough → <s>, superscript → <sup>, subscript → <sub>.
+ *
+ * Staleness guard — the markup describes the text *as imported*. Three engine paths
+ * rewrite text_norm while deliberately keeping text_raw as provenance: the stylo
+ * (D-C1, units/update_text), the curation pass and the marker lift. On a line they
+ * touched, text_raw describes a text that no longer exists, so rendering it would
+ * show the user their pre-correction text. When the two have diverged we drop the
+ * markup and render the corrected text plain — showing the correction always wins
+ * over showing the styling. Both sides are folded through the engine's normalize()
+ * policy, so an untouched line matches exactly (text_norm *is* normalize(text_raw)),
+ * and the "voir l'original d'import" fold (raw === fallback) always matches itself.
  */
 export function richTextToHtml(raw: string | null | undefined, fallback: string): string {
   if (!raw || !raw.includes("<hi")) return _esc(fallback);
+  if (_foldNorm(raw) !== _foldNorm(fallback)) return _esc(fallback);
+  // Provenance guard — text segments are injected unescaped, which is only sound for
+  // text the DOCX/ODT importers escaped themselves (& < > become entities). A plain
+  // importer (txt, TEI) stores the line verbatim, so a source file that happens to
+  // contain "<hi" would carry live markup into the page. Real <hi> markup never
+  // leaves a bare angle bracket behind once the tags are removed: if one is there,
+  // this is not importer markup and the whole line is escaped.
+  if (/[<>]/.test(raw.replace(_HI_TAG_RE, ""))) return _esc(fallback);
   let result = "";
   let last = 0;
   let m: RegExpExecArray | null;
