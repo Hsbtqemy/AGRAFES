@@ -209,8 +209,14 @@ def test_a_later_gesture_on_the_same_links_blocks_the_undo(db: sqlite3.Connectio
     db.execute("UPDATE alignment_links SET status='rejected' WHERE link_id=?", (l2,))
     db.commit()
 
-    with pytest.raises(ConflictError):
+    with pytest.raises(ConflictError) as refus:
         align_ops_service.undo_batch_op(db, op1)
+
+    # Le message est lu par quelqu'un à qui l'on vient de refuser une action : il doit
+    # s'accorder, pas poser des parenthèses. « 1 geste(s) … portent » a été relevé à
+    # l'usage le 2026-08-24 (passe qa/annulation-alignement). Ici `later` vaut 1.
+    assert "un geste plus récent porte" in refus.value.message
+    assert "(s)" not in refus.value.message
 
     # Dans l'ordre, les deux passent.
     align_ops_service.undo_batch_op(db, op2)

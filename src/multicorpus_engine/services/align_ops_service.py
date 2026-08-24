@@ -274,10 +274,21 @@ def undo_batch_op(conn: sqlite3.Connection, op_id: int) -> dict[str, object]:
         (int(op_id),),
     ).fetchone()[0]
     if later:
-        raise ConflictError(
-            f"{later} geste(s) plus récent(s) portent sur ces mêmes liens :"
-            " les annuler d'abord, sinon cette annulation les écraserait sans le dire"
-        )
+        # Accorder plutôt que poser des parenthèses. Ce message est lu par quelqu'un à qui
+        # l'on vient de refuser une action — le moment où il a le moins envie de décoder un
+        # « 1 geste(s) … portent ». Constaté à l'usage le 2026-08-24, en jouant
+        # `pilotage/qa/annulation-alignement.md`.
+        if later == 1:
+            detail = (
+                "un geste plus récent porte sur ces mêmes liens :"
+                " l'annuler d'abord, sinon cette annulation l'écraserait sans le dire"
+            )
+        else:
+            detail = (
+                f"{later} gestes plus récents portent sur ces mêmes liens :"
+                " les annuler d'abord, sinon cette annulation les écraserait sans le dire"
+            )
+        raise ConflictError(detail)
 
     rows = conn.execute(
         f"SELECT {_COLS}, existed FROM align_op_link_snapshots WHERE op_id = ?",

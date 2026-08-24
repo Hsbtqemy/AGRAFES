@@ -72,7 +72,7 @@ describe("describeUndoOutcome — les trois compteurs ne sont pas interchangeabl
 
 describe("describeUndoFailure — on garde le mot du moteur", () => {
   it("reprend le message tel quel", () => {
-    const m = "2 geste(s) plus récent(s) portent sur ces mêmes liens : les annuler d'abord";
+    const m = "2 gestes plus récents portent sur ces mêmes liens : les annuler d'abord";
     expect(describeUndoFailure(m, 409)).toContain(m);
   });
 
