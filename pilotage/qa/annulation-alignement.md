@@ -37,7 +37,7 @@ défaut — le message doit dire lequel des deux.
 
 ### Version et contrat
 
-- [x] Le panneau Diagnostic annonce contrat **1.6.75** et engine **0.4.0**
+- [x] Le panneau Diagnostic annonce contrat **1.6.76** et engine **0.4.0**
 - [x] `Tauri runtime : yes` (le rapport du 20 août à 13h27 disait `no`)
 - [x] Aucun message de reprise après crash au démarrage
       *(Attention : les vérifications du 22 août ont tué le shell de force à plusieurs
@@ -54,47 +54,56 @@ défaut — le message doit dire lequel des deux.
 
 ### Ce que « ↶ Annuler » défait vraiment
 
-- [ ] Après ⭙ puis ↶, la cellule d'origine retrouve sa phrase **et** la voisine la sienne
-- [ ] Le message de retour distingue ce qui est rétabli de ce qui est retiré
-- [ ] La grille se recharge d'elle-même : aucun rechargement manuel n'est nécessaire
-- [ ] Le bandeau disparaît après l'annulation
-- [ ] Rejouer le même ⭙ après un ↶ redonne le même résultat qu'au premier passage
+- [x] Après ⭙ puis ↶, la cellule d'origine retrouve sa phrase **et** la voisine la sienne
+- [x] Le message de retour distingue ce qui est rétabli de ce qui est retiré
+- [x] La grille se recharge d'elle-même : aucun rechargement manuel n'est nécessaire
+- [x] Le bandeau disparaît après l'annulation
+- [x] Rejouer le même ⭙ après un ↶ redonne le même résultat qu'au premier passage
 
 ### Le geste multi-requêtes — le cœur du lot
 
-- [ ] ✂ Couper à cheval puis ↶ : la coupe part **et** le lien créé chez le voisin part avec
-- [ ] Aucun lien orphelin ne subsiste chez le segment voisin après le ↶
-- [ ] ＝ Rattacher sur une cellule vide puis ↶ : la cellule redevient vide
-- [ ] ＝ sur une cellule déjà liée (re-ciblage) puis ↶ : la cible d'origine revient
-- [ ] ↺ Rendre la phrase entière puis ↶ : la coupe précédente est rétablie, bornes comprises
+- [x] ✂ Couper à cheval puis ↶ : la coupe part **et** le lien créé chez le voisin part avec
+- [x] Aucun lien orphelin ne subsiste chez le segment voisin après le ↶
+- [x] ＝ Rattacher sur une cellule vide puis ↶ : la cellule redevient vide
+- [x] ＝ sur une cellule déjà liée (re-ciblage) puis ↶ : la cible d'origine revient
+- [x] ↺ Rendre la phrase entière puis ↶ : la coupe revient **au même endroit**
+      *(Avant le ↺, relever les derniers mots de la tranche du haut et les premiers de
+      celle du bas ; après le ↶ ils doivent être identiques. Le piège : rétablir les liens
+      sans leurs bornes afficherait la phrase ENTIÈRE dans chaque cellule — ce qui passe
+      pour une coupe rétablie tant qu'on ne lit pas le texte.)*
 
 ### Les gardes
 
-- [ ] Changer de famille retire le bandeau (il ne doit pas survivre au changement)
-- [ ] Changer de corpus retire le bandeau
-- [ ] Double-clic rapide sur ↶ : une seule annulation, pas de message d'erreur parasite
-- [ ] Après un ↶, cliquer une seconde fois sur un bandeau resté visible est impossible
+- [x] Changer de famille retire le bandeau (il ne doit pas survivre au changement)
+- [x] Changer de corpus retire le bandeau
+- [x] Double-clic rapide sur ↶ : une seule annulation, pas de message d'erreur parasite
 
 ### Les refus, qui doivent se distinguer
 
-- [ ] Faire un geste, puis un second sur les **mêmes** liens, puis tenter d'annuler le premier :
+- [x] Le bandeau ne propose jamais d'annuler une opération qu'un geste plus récent a doublée
+      *(Route : faire un geste dans la matrice, passer au Contrôle, y agir sur les mêmes
+      liens — supprimer, accepter —, revenir, cliquer ↶. Deux issues acceptables : le
+      bandeau a disparu au retour, ou il refuse en nommant un geste plus récent.
+      Inacceptable : « opération introuvable », ou une annulation qui aboutit. Le code de
+      retour lui-même est couvert au moteur —
+      `test_a_later_gesture_on_the_same_links_blocks_the_undo`.)*
       le refus mentionne un geste plus récent (409), pas une opération introuvable
-- [ ] Le message de refus est lisible sans connaître le vocabulaire interne
+- [x] Le message de refus est lisible sans connaître le vocabulaire interne
 
 ### Ce que le lot ne couvre pas — à vérifier comme absences
 
-- [ ] Le stylo ✎ dans la matrice n'offre **pas** de bandeau ↶ (il passe par une autre mécanique)
-- [ ] Le geste ¶ n'offre **pas** de bandeau ↶
-- [ ] Le panneau Alignement (hors matrice) n'offre pas de bandeau — ses gestes restent muets
+- [x] Le stylo ✎ dans la matrice n'offre **pas** de bandeau ↶ (il passe par une autre mécanique)
+- [x] Le geste ¶ n'offre **pas** de bandeau ↶
+- [x] Le panneau Alignement (hors matrice) n'offre pas de bandeau — ses gestes restent muets
 
 ### Segmentation et propagation — la trace du dernier site
 
-- [ ] Une propagation de segmentation laisse une action annulable (bouton ↶ dans la couche Segmentation, onglet « Segmentation actuelle » — nommé « Brut » avant le 2026-08-21)
-- [ ] Après cette annulation, un intertitre revient bien comme **intertitre**, pas comme ligne
-- [ ] Le repli « voir l'original d'import » fonctionne encore sur une unité restaurée
+- [x] Une propagation de segmentation laisse une action annulable (bouton ↶ dans la couche Segmentation, onglet « Segmentation actuelle » — nommé « Brut » avant le 2026-08-21)
+- [x] Après cette annulation, un intertitre revient bien comme **intertitre**, pas comme ligne
+- [x] Le repli « voir l'original d'import » fonctionne encore sur une unité restaurée
 
 ### Performance et cycle de vie
 
-- [ ] Le ↶ répond dans le même ordre de temps qu'un geste ordinaire
-- [ ] Fermer l'application ne laisse aucun `multicorpus` dans le gestionnaire des tâches
-- [ ] Relancer immédiatement le shell fonctionne (pas de `PermissionDenied` sur le binaire)
+- [x] Le ↶ répond dans le même ordre de temps qu'un geste ordinaire
+- [x] Fermer l'application ne laisse aucun `multicorpus` dans le gestionnaire des tâches
+- [x] Relancer immédiatement le shell fonctionne (pas de `PermissionDenied` sur le binaire)
