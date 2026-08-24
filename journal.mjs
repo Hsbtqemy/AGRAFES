@@ -165,6 +165,14 @@ async function remontee(chantiers) {
   return out;
 }
 
+// Un `Arrêté sur` est décalé s'il ne cite pas le dernier commit du chantier — y
+// compris quand il ne cite aucun hash du tout. Sans `dernier`, on ne peut rien dire.
+const c_arreteDecale = (ch) => {
+  if (!ch.arrete || !ch.dernier) return false;
+  const cites = ch.arrete.match(/\b[0-9a-f]{7,40}\b/g) || [];
+  return !cites.some(h => ch.dernier.hash.startsWith(h) || h.startsWith(ch.dernier.hash));
+};
+
 const echappe = (c) => c.replace(/[.]/g, "\\.");
 const rxCodes = (codes) =>
   new RegExp(`(^|[^A-Za-z0-9-])(${codes.map(echappe).join("|")})([^A-Za-z0-9-]|$)`);
@@ -358,6 +366,10 @@ async function build() {
     // reprise. Mesuré le 2026-08-22 : 4 fiches sur 14 la portaient périmée, et
     // c'étaient les trois plus actives — elle ne tient que là où on n'en a pas besoin.
     ch.trainee = liste.slice(0, TRAINEE).map(c => ({ hash: c.hash, date: c.date, sujet: c.sujet }));
+    // Le point de reprise cite-t-il encore le dernier commit ? Mesuré le 22 août :
+    // 4 fiches sur 14 non, et c'étaient les trois plus actives. La traînée le rendait
+    // visible ; ceci le compte, ce qui est la différence entre voir et savoir.
+    ch.arreteDecale = Boolean(c_arreteDecale(ch));
     ch.passes = passes.filter(p => p.chantier === ch.code).map(p => p.file);
     liens[ch.code] = `#/c/${encodeURIComponent(ch.code)}`;
   }

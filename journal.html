@@ -425,6 +425,13 @@ function bandeBord(){
     note: `<a href="#/qa">${vol.length} passe${vol.length > 1 ? "s" : ""} en vol</a>`
         + ` · ${dort} points au repos` });
 
+  /* Le point de reprise est l'artefact le plus lu d'une fiche et le seul qui se
+     périme sans bruit : il n'est faux que sur les chantiers actifs, exacts sur les
+     dormants. On le compte plutôt que de compter sur l'œil. */
+  const dec = D.chantiers.filter(c => c.arreteDecale);
+  if (dec.length) l.push({ cle: "points de reprise périmés", val: String(dec.length),
+    note: `ne citent plus le dernier commit · ${dec.map(c => versFiche(c.code)).join(" ")}` });
+
   /* Seul chiffre volontairement inerte : il est la somme des Reste de toutes les
      fiches, et sa destination est la liste qui suit déjà sur cet écran. */
   if (c?.nonCouvert) l.push({ cle: "items jamais confrontés", val: String(c.nonCouvert.items),
