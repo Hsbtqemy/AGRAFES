@@ -77,30 +77,30 @@ export const STATUTS = ["à venir", "interrompu", "clos", "livré"];
 // ouvert », un vert qui ne mesure rien.
 export const SEVERITES_OUVERTES = ["🔴", "🟠", "🟡", "🟢"];
 
-// Deux formes de constat coexistent dans `docs/`, et les lire toutes les deux coûte
-// moins cher que de renuméroter les audits : `A-01` seul est cité dans 40 fichiers,
-// dont CLAUDE.md et `.github/workflows/sidecar-growth-gate.yml`.
+// Deux formes de constat coexistent dans la documentation d'un dépôt, et les lire
+// toutes les deux coûte moins cher que de renuméroter les audits — un code d'audit
+// finit cité partout, jusque dans les fichiers de CI.
 //
-//  · TABLEAU   `| A-01 | 🔴 | constat | preuve |`   (AUDIT_2026-06-12, ALIGNEMENT, …)
-//    Le préfixe va de UNE à cinq lettres — `A-01`/`Q-01`/`T-01` d'AUDIT_2026-06-12
-//    étaient muets sous l'ancien `{2,5}`. Un code barré (`| ~~A-05~~ |`) ne matche
-//    pas, donc n'est pas compté : c'est voulu, il est retiré.
-//  · TITRE     `### IMP-01 ✔ — 🔴 P0 — …`          (AUDIT_IMPORT_2026-07-20)
+//  · TABLEAU   `| A-01 | 🔴 | constat | preuve |`
+//    Le préfixe va de UNE à cinq lettres : `A-01`, `Q-01`, `T-01` étaient muets sous
+//    un ancien `{2,5}`. Un code barré (`| ~~A-05~~ |`) ne matche pas, donc n'est pas
+//    compté : c'est voulu, il est retiré.
+//  · TITRE     `### IMP-01 ✔ — 🔴 P0 — …`
 //    Collecté SEULEMENT s'il porte une pastille, et clos s'il porte ✔ ou ✅ — la
 //    pastille y est la SÉVÉRITÉ, pas l'état, si bien qu'un `✔ — 🔴` compterait
 //    ouvert sans cette seconde lecture.
 //
-// La condition de pastille n'est pas une commodité : `BACKLOG_PREP_AUDIT.md` a des
-// codes en titre (`### C-1 — …`) et AUCUNE sévérité. Le collecter le ferait passer
-// « reconnu, 0 ouvert » alors que six items y sont ouverts — un vert qui ne mesure
-// rien, précisément ce que `reconnu` existe pour empêcher. Il reste INCONNU, et
-// c'est le document qu'il faut alors corriger, pas cette règle.
+// La condition de pastille n'est pas une commodité. Un backlog mesuré portait des
+// codes en titre (`### C-1 — …`) et AUCUNE sévérité : le collecter le faisait passer
+// « reconnu, 0 ouvert » alors que six items y étaient ouverts — un vert qui ne mesure
+// rien, précisément ce que `reconnu` existe pour empêcher. Il reste INCONNU, et c'est
+// le document qu'il faut alors corriger, pas cette règle.
 const CLOS_EN_TITRE = ["✔", "✅"];
 
 export const constatsAudit = (texte) => {
-  // Clé = le code, et le TABLEAU gagne. `AUDIT_ALIGNEMENT_2026-08-18` porte les DEUX
-  // formes — un tableau de 24 lignes ET une section `### ALI-NN` par constat — et les
-  // additionner faisait passer son compte de 16 à 38 ouverts. Le tableau est l'index
+  // Clé = le code, et le TABLEAU gagne. Un audit mesuré portait les DEUX formes — un
+  // tableau de 24 lignes ET une section `### CODE-NN` par constat — et les additionner
+  // faisait passer son compte de 16 à 38 ouverts. Le tableau est l'index
   // canonique : lui seul porte l'état (✅, code barré) ; la section ne porte que le
   // détail, et n'y répète pas la clôture.
   const parCode = new Map();

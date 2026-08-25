@@ -6,7 +6,7 @@
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile, readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative, basename, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 // Contrat de parsing partage avec pilotage/verifier.mjs -- voir journal-contrat.mjs.
@@ -74,14 +74,24 @@ const CFG = await (async () => {
 const REFS = opt("refs", CFG.refs.join(","))
   .split(",").map(s => s.trim()).filter(Boolean);
 
-// stderr ignoré : sur un dépôt sans commit, git écrit huit `fatal:` sur la console
-// avant que le journal ait rendu sa première page. L'appel échoue déjà proprement —
-// c'est le `catch` qui décide, pas le bruit.
-const git = (...a) => {
+// Lecture synchrone tolérante : un document annoncé par une fiche peut avoir disparu.
+const lireSync = (p) => { try { return readFileSync(p, "utf8"); } catch { return null; } };
+
+// Rend null quand la commande ÉCHOUE, "" quand elle réussit sans rien dire. `git()` écrase
+// les deux, ce qui convient partout où une absence vaut zéro — mais pas là où un zéro
+// serait lui-même une mesure. Payé une fois : un `--format=@` invalide (git y lit un NOM
+// de format) faisait rendre "" pour chaque audit, donc « 0 commit depuis » sur les dix,
+// un vert parfaitement faux.
+//
+// stderr ignoré : sur un dépôt sans commit, git écrit huit `fatal:` sur la console avant
+// que le journal ait rendu sa première page. C'est le `catch` qui décide, pas le bruit.
+const gitEssai = (...a) => {
   try { return execFileSync("git", a,
     { cwd: ROOT, encoding: "utf8", maxBuffer: 64e6, stdio: ["ignore", "pipe", "ignore"] }).trim(); }
-  catch { return ""; }
+  catch { return null; }
 };
+
+const git = (...a) => gitEssai(...a) ?? "";
 
 // ---------- lecture de pilotage/ ----------
 async function pilotage() {
@@ -175,16 +185,16 @@ function historique() {
 
 const joursActifs = (jours, depuis) => jours.filter(j => j > depuis).length;
 
-// Remontée des codes de constat vers leur chantier. Le travail réel cite `ALI-10`,
-// jamais `R3` : sans ça, R3 n'est daté que par les notes qu'on écrit SUR lui.
-// Trois gardes, parce que les audits se citent entre eux :
-//   — le code doit venir du TABLEAU de constats, pas de la prose (AUDIT_ALIGNEMENT
-//     mentionne T-05 en renvoi ; son tableau, non) ;
-//   — l'audit doit n'être possédé que par une fiche (AUDIT_2026-06-12 est cité par
-//     quatre : A-01, T-03, T-05, U-03 — ses orphelins iraient aux quatre) ;
+// Remontée des codes de constat vers leur chantier. Le travail réel cite le constat
+// (`ALI-10`), jamais le chantier (`R3`) : sans ça, le chantier n'est daté que par les
+// notes qu'on écrit SUR lui. Trois gardes, parce que les audits se citent entre eux :
+//   — le code doit venir du TABLEAU de constats, pas de la prose : un audit en
+//     mentionne un autre en renvoi, son tableau non ;
+//   — l'audit doit n'être possédé que par UNE fiche — mesuré : un même audit cité par
+//     quatre chantiers verrait ses orphelins remonter aux quatre ;
 //   — le code ne doit pas avoir de fiche à lui.
-// Les constats clos comptent aussi : un commit citant ALI-10 est du R3 que le
-// constat soit soldé ou non.
+// Les constats clos comptent aussi : un commit citant `ALI-10` est du travail sur son
+// chantier, que le constat soit soldé ou non.
 async function remontee(chantiers) {
   const fiches = new Set(chantiers.map(c => c.code));
   const proprio = {};
@@ -312,17 +322,45 @@ function calculMasses(seuil, fenetre) {
 // (voir `pilotage/journal.config.mjs`). Absent = pas de bandeau de veille.
 const VEILLE = CFG.veille;
 
-// Mémo sur le hash de HEAD : ce qui ne dépend que de l'historique se recalcule au
-// commit suivant, pas à chaque coche de case. (Le contrôleur, lui, lit les fichiers
-// de `pilotage/` — il doit rester vivant, il n'est pas mémorisé.)
+// Mémo sur le hash de HEAD : ce qui ne dépend que de l'historique se recalcule au commit
+// suivant, pas à chaque coche de case. (Le contrôleur, lui, lit les fichiers de
+// `pilotage/` — il doit rester vivant, il n'est pas mémorisé.)
+//
+// La tête est lue UNE fois par requête, pas à chaque consultation de clé. Mesuré : avec
+// une quarantaine de clés, `rev-parse HEAD` était appelé 47 fois et coûtait 1,16 s — le
+// mémo dépensait plus qu'il n'économisait. `build()` remet le cache à zéro en entrant.
 const memos = new Map();
+let TETE = null;
+const tete = () => TETE ?? (TETE = git("rev-parse", "HEAD"));
 const surTete = (cle, fn) => {
-  const tete = git("rev-parse", "HEAD"), m = memos.get(cle);
-  if (tete && m && m.tete === tete) return m.val;
+  const t = tete(), m = memos.get(cle);
+  if (t && m && m.tete === t) return m.val;
   const val = fn();
-  memos.set(cle, { tete, val });
+  memos.set(cle, { tete: t, val });
   return val;
 };
+
+// Quand chaque document est entré dans le dépôt. Le nom de fichier porte souvent la date,
+// mais pas toujours, et il peut mentir : `--diff-filter=A` la donne pour n'importe quel
+// fichier, sans convention de nommage.
+//
+// UNE passe pour tout l'arbre, pas une par chemin. Mesuré : trente et un relevés séparés
+// coûtaient 4,7 s au démarrage, chacun parcourant l'historique entier pour un seul
+// fichier. Le journal sort du plus récent au plus ancien, donc la DERNIÈRE occurrence
+// d'un chemin est son entrée.
+const entrees = () => surTete("entrees", () => {
+  const raw = git("log", "--all", "--diff-filter=A", "--name-only",
+                  "--format=@%ad", "--date=short");
+  const par = new Map();
+  let d = null;
+  for (const l of raw.split("\n")) {
+    if (l.startsWith("@")) { d = l.slice(1); continue; }
+    if (l.trim() && d) par.set(l, d);
+  }
+  return par;
+});
+
+const entree = (chemin) => entrees().get(chemin) || null;
 
 const gardeFou = () => surTete("veille", calculGardeFou);
 
@@ -337,6 +375,149 @@ function calculGardeFou() {
   }
   return { ...VEILLE, net: a - d };
 }
+
+// ---------- branches en vol ----------
+// Une branche n'existe à l'écran que si un chantier la porte, et un chantier n'est porté
+// que si un commit cite son code. Le travail qui échappe aux deux est invisible : mesuré
+// sur un dépôt réel, cinq commits de fonctionnalité sur quatorze en vol — de l'italique à
+// l'import, une borne sur un run d'alignement — qu'aucune fiche ne pouvait montrer.
+//
+// Ce n'est pas un défaut de l'outil mais de la discipline qu'il mesure : les sujets ne
+// citaient pas de code. C'est précisément ce qu'il doit rendre visible.
+//
+// Le test de « porté » réutilise ce qui existe : le motif des codes déclarés, et la table
+// fichiers-par-commit, dont un ensemble VIDE signale un commit qui n'a touché que le
+// dossier ou la documentation — de la tenue ou du cadrage, pas du travail à rattacher.
+function branchesEnVol(codes, parCommit) {
+  const brut = git("for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes");
+  const court = (r) => r.replace(/^[^/]+\//, "");
+  const estRef = (r) => REFS.includes(r) || REFS.includes(court(r));
+  const rx = codes.length ? rxCodes(codes) : null;
+  const par = new Map();
+
+  for (const ref of brut.split("\n").map(x => x.trim()).filter(Boolean)) {
+    if (!ref || ref.endsWith("/HEAD") || estRef(ref)) continue;
+    const liste = git("rev-list", "--format=%h\x1f%s", "--no-commit-header",
+                      ref, ...REFS.map(r => "^" + r))
+      .split("\n").filter(Boolean).map(l => { const [hash, sujet] = l.split("\x1f"); return { hash, sujet }; });
+    if (!liste.length) continue;   // fusionnée : rien à signaler
+
+    const orphelins = liste.filter(c =>
+      (parCommit.get(c.hash)?.size || 0) > 0 && !(rx && rx.test(c.sujet)));
+    const tete = git("log", "-1", "--format=%h\x1f%ad\x1f%s", "--date=short", ref).split("\x1f");
+    const e = { nom: ref, avance: liste.length, orphelins: orphelins.length,
+                exemples: orphelins.slice(0, 3).map(c => ({ hash: c.hash, sujet: c.sujet })),
+                dernier: { hash: tete[0], date: tete[1], sujet: tete[2] } };
+    // Locale et distante de même nom sont la même branche à deux tips. On garde la plus
+    // avancée plutôt que d'afficher deux lignes pour un seul travail.
+    const cle = court(ref);
+    const a = par.get(cle);
+    if (!a || e.avance > a.avance) par.set(cle, e);
+  }
+  return [...par.values()].sort((a, b) => b.orphelins - a.orphelins || b.avance - a.avance);
+}
+
+// ---------- collisions entre chantiers ----------
+// Deux chantiers qui ont touché les mêmes fichiers se marcheront dessus à la reprise.
+// La relation existe déjà dans les fiches, écrite à la main — et mesurée le 2026-08-25,
+// les trois chiffres inscrits étaient tous faux, tous sous-évalués (14→21, 12→25,
+// 25→31), et la deuxième collision du dépôt n'était écrite nulle part. Une déclaration
+// manuelle enregistre ce à quoi on a pensé, jamais ce qu'on a manqué.
+//
+// `docs/` et le dossier de pilotage sont écartés : deux chantiers qui citent le même
+// audit ne se marchent pas dessus, ils se réfèrent au même document.
+const fichiersParCommit = () => surTete("fichiers", () => {
+  const raw = git("log", "--all", "--no-renames", "--name-only", "--format=@%h");
+  const par = new Map();
+  const exclus = [DIR + "/", CFG.documentation?.dossier && CFG.documentation.dossier + "/"]
+    .filter(Boolean);
+  let cur = null;
+  for (const l of raw.split("\n")) {
+    if (l.startsWith("@")) { cur = new Set(); par.set(l.slice(1), cur); continue; }
+    if (!l.trim() || !cur) continue;
+    if (exclus.some(e => l.startsWith(e))) continue;
+    cur.add(l);
+  }
+  return par;
+});
+
+const fichiersDe = (liste, par) => {
+  const s = new Set();
+  for (const c of liste) for (const f of par.get(c.hash) || []) s.add(f);
+  return s;
+};
+
+// Le nombre seul ne suffit pas : une collision avec un chantier clos est un empiètement
+// HISTORIQUE — le terrain est stabilisé — tandis qu'avec un chantier vivant c'est un
+// risque présent. Même nombre, situation opposée. L'état de l'autre voyage donc avec.
+const collisions = (moi, sets, chantiers) => {
+  const a = sets.get(moi.code);
+  if (!a || !a.size) return null;
+  const out = [];
+  for (const o of chantiers) {
+    if (o.code === moi.code) continue;
+    const b = sets.get(o.code);
+    if (!b || !b.size) continue;
+    let n = 0;
+    for (const f of a) if (b.has(f)) n++;
+    if (n) out.push({ code: o.code, n, statut: o.statut, silence: o.silence });
+  }
+  return out.length ? out.sort((x, y) => y.n - x.n) : null;
+};
+
+// ---------- portée d'un audit ----------
+// Un audit observe le code à la date où il est écrit. Le code bouge ensuite, souvent par
+// d'autres chantiers. Ce qui est mesuré ici n'est PAS qu'un constat est réglé — aucune
+// mesure ne peut le dire — mais que le sol a bougé sous lui, donc qu'il faut le relire
+// avant de planifier dessus.
+//
+// Les chemins sont trouvés par leur forme, puis filtrés par leur EXISTENCE dans l'arbre.
+// Une liste de dossiers ou d'extensions admis serait exactement le réglage propre à un
+// dépôt qu'on refuse d'introduire ; ce qui n'existe pas n'est pas un chemin.
+//
+// Le dossier de pilotage et celui de la documentation sont écartés : un audit qui en
+// cite un autre parle de lui-même, pas du code qu'il décrit.
+const RX_CHEMIN = /\b[A-Za-z0-9_][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9]{1,6}\b/g;
+// Au-delà, la ligne de commande git dépasse la limite du système. Le compte devient
+// partiel et le DIT (`tronque`), plutôt que de mentir par un chiffre trop bas.
+const MAX_CHEMINS = 80;
+
+function calculPortee(fichier, depuis) {
+  const texte = lireSync(join(ROOT, fichier));
+  if (texte === null || !depuis) return null;
+  const exclus = [DIR + "/", CFG.documentation?.dossier && CFG.documentation.dossier + "/"]
+    .filter(Boolean);
+  const vus = new Set();
+  for (const m of texte.match(RX_CHEMIN) || []) {
+    const c = m.replace(/^\.\//, "");
+    if (exclus.some(e => c.startsWith(e))) continue;
+    if (!vus.has(c) && existsSync(join(ROOT, c))) vus.add(c);
+  }
+  const chemins = [...vus];
+  const vises = chemins.slice(0, MAX_CHEMINS);
+  // Zéro chemin n'est pas zéro mouvement : c'est « je n'ai pas su regarder ». Les deux
+  // doivent se distinguer à l'écran, sinon un audit qui parle de comportements plutôt
+  // que de fichiers passerait pour un audit dont le code n'a pas bougé.
+  if (!vises.length) return { chemins: 0, tronque: false, commits: null, plus: 0, moins: 0, depuis };
+
+  // `--format=@` seul est refusé par git, qui y lit un NOM de format ; il faut au moins un
+  // placeholder. Et l échec doit remonter en « inconnu », pas en zéro.
+  const raw = gitEssai("log", "--all", "--no-renames", "--numstat", "--format=@%h",
+                       "--since=" + depuis, "--", ...vises);
+  if (raw === null) return { chemins: chemins.length, tronque: false, commits: null,
+                             plus: 0, moins: 0, depuis, echec: true };
+  let commits = 0, plus = 0, moins = 0;
+  for (const l of raw.split("\n")) {
+    if (l.startsWith("@")) { commits++; continue; }
+    const f = l.split("\t");
+    if (/^\d+$/.test(f[0])) { plus += Number(f[0]); moins += Number(f[1]); }
+  }
+  return { chemins: chemins.length, tronque: chemins.length > MAX_CHEMINS,
+           commits, plus, moins, depuis };
+}
+
+const portee = (fichier, depuis) =>
+  surTete(`portee:${fichier}:${depuis}`, () => calculPortee(fichier, depuis));
 
 // ---------- contrôleur du dossier ----------
 // `pilotage/verifier.mjs` s'exécute au chargement et sort par process.exit : on le
@@ -382,6 +563,8 @@ async function index() {
 
 // ---------- assemblage ----------
 async function build() {
+  TETE = null;   // une lecture de HEAD par requête, pas une par clé de mémo
+
   const { jours, commits } = historique();
   const { chantiers, passes } = await pilotage();
   const liens = await index();
@@ -395,12 +578,24 @@ async function build() {
   const proprietaire = {};
   for (const [ch, codes] of Object.entries(rem)) for (const c of codes) proprietaire[c] = ch;
 
+  const parCommit = fichiersParCommit(), sets = new Map();
   for (const ch of chantiers) {
     const codes = [ch.code, ...(rem[ch.code] || [])];
     ch.remontee = rem[ch.code] || null;
     const liste = commitsDuChantier(commits, codes, proprietaire, tenue);
     const last = liste[0] || null;
     ch.dernier = last ? { hash: last.hash, date: last.date, sujet: last.sujet } : null;
+    // L'autre borne. `dernier` seul ne distingue pas un sprint de trois jours d'une
+    // tresse de deux mois : mesuré, deux chantiers affichaient une carte identique pour
+    // 7 commits en 3 jours d'un côté, 9 commits sur 64 jours de l'autre.
+    const first = liste[liste.length - 1] || null;
+    ch.premier = first ? { hash: first.hash, date: first.date } : null;
+    ch.auditDate = ch.audit ? entree(ch.audit) : null;
+    // Quand la fiche elle-même est entrée. Sans elle, un chantier `à venir` n'a aucune
+    // marque sur l'axe du temps : pas de commit, donc pas de barre, donc invisible là où
+    // il est justement le plus utile de le voir — récent et pas commencé.
+    ch.ficheDate = entree(ch.file);
+    ch.portee = ch.audit ? portee(ch.audit, ch.auditDate) : null;
     ch.silence = last ? joursActifs(jours, last.date) : null;
     const f = last ? fr.find(x => x.hashes.has(last.full)) : null;
     ch.front = f ? { ref: f.nom, integre: f.integre } : null;
@@ -419,15 +614,25 @@ async function build() {
     // Un `à venir` n'a pas de point de reprise à périmer : sa ligne est un point de
     // départ, elle ne cite aucun commit et n'a pas à en citer un.
     ch.arreteDecale = ch.statut !== "à venir" && Boolean(c_arreteDecale(ch));
+    sets.set(ch.code, fichiersDe(liste, parCommit));
     ch.passes = passes.filter(p => p.chantier === ch.code).map(p => p.file);
     liens[ch.code] = `#/c/${encodeURIComponent(ch.code)}`;
   }
+  // Une seconde passe : croiser deux chantiers suppose les deux ensembles construits.
+  for (const ch of chantiers) ch.collisions = collisions(ch, sets, chantiers);
+
   // Une passe vieillit comme un chantier : en jours actifs. Sans ça, « armée mais pas
   // encore jouée » ne durait qu'une journée et sortait de l'écran le lendemain.
   for (const p of passes) {
     p.silence = p.derniere ? joursActifs(jours, p.derniere) : null;
+    // Quand la passe est entrée dans le dépôt. Avec `derniere`, ça donne la durée
+    // pendant laquelle elle a été en jeu — une passe écrite il y a deux mois et rejouée
+    // hier ne raconte pas la même chose qu'une passe écrite et jouée le même jour.
+    p.entree = entree(p.file);
     liens[p.nom] ||= `#/qa/${encodeURIComponent(p.file)}`;
   }
+
+  const enVol = branchesEnVol(chantiers.map(c => c.code), parCommit);
 
   const depuis = new Date(Date.now() - DAYS * 864e5).toISOString().slice(0, 10);
   return {
@@ -439,7 +644,7 @@ async function build() {
     dernierJour: jours[jours.length - 1] || null,
     silenceCourant: jours.length
       ? Math.round((Date.now() - Date.parse(jours[jours.length - 1])) / 864e5) : null,
-    chantiers, passes, liens, masses: mss,
+    chantiers, passes, liens, masses: mss, branches: enVol,
     veille: gardeFou(), controle: controleur(),
     commits: commits.filter(c => c.date >= depuis)
   };

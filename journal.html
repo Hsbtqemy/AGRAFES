@@ -228,6 +228,74 @@ a{color:var(--outremer)}
 .av a:hover{border-bottom-color:currentColor}
 .av a i{font-style:normal;color:var(--encre3);margin-left:.25em}
 
+/* Une pastille ne se coupe pas — c est ce qu on veut d un code court, pas d un chemin
+   de document. Mesuré : un nom de 34 caractères débordait de 34 px du panneau latéral,
+   qui fait 208 px de contenu. La pastille de chemin s autorise donc la coupure ; elle
+   reste une pastille, elle cesse d être insécable. */
+.pill.doc{white-space:normal;overflow-wrap:anywhere}
+
+/* ---- frise ---- */
+/* Pas de SVG : une piste en position relative et des barres en pourcentage. Un SVG en
+   largeur 100 % dans une colonne qui se dimensionne sur son contenu se résout en rond
+   et disparaît — déjà payé sur les courbes de masse. */
+.frise{margin:0 0 1.6rem}
+.fr-corps{position:relative}
+.fr-fond{position:absolute;inset:0 0 0 var(--gout);pointer-events:none}
+/* `--verge` sert AUSSI de fond de page : le trait y était de la couleur exacte du fond,
+   donc présent dans le DOM et invisible à l écran. Compter les traits ne prouvait rien —
+   il fallait relever leur couleur. `currentColor` suit le texte, donc les deux thèmes. */
+.fr-mois{position:absolute;top:0;bottom:0;width:1px;background:currentColor;opacity:.13}
+.fr-l{display:grid;grid-template-columns:var(--gout) 1fr;align-items:center;
+  min-height:1.55rem;position:relative}
+.fr-l+.fr-l{margin-top:.1rem}
+.fr-c{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.09em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:.6rem}
+.fr-t{position:relative;height:1.55rem}
+.fr-b{position:absolute;top:.42rem;height:.7rem;min-width:3px;border-radius:2px;
+  background:var(--minium)}
+.s-clos .fr-b,.s-liv .fr-b{background:var(--pl-close-bg)}
+.s-ven .fr-b{background:var(--outremer)}
+/* La fiche et l'audit sont des instants, pas des durées : un trait fin, pas une barre.
+   Le losange de la fiche se distingue du trait de l'audit sans recourir à la couleur. */
+/* Centrés sur leur date, pas accrochés par le bord gauche : un repère posé par son
+   bord se lit APRÈS l'instant qu'il marque, et déborde de la piste aux dernières dates
+   — mesuré, deux marques hors piste à 700 px de large. */
+.fr-f,.fr-a{position:absolute;top:.3rem;height:.95rem;width:1px;background:var(--encre3);
+  transform:translateX(-50%)}
+.fr-f{transform:translateX(-50%) rotate(45deg);height:.5rem;width:.5rem;top:.5rem;
+  background:none;box-shadow:inset 0 0 0 1.5px var(--encre3);border-radius:1px}
+.fr-a{background:var(--outremer);width:2px}
+/* La passe se range sous son chantier : retrait, trait plus fin, teinte pâle — elle
+   accompagne la ligne au-dessus au lieu de rivaliser avec elle. */
+.fr-lp{min-height:1.2rem}
+.fr-lp .fr-c{padding-left:.7rem;font-size:.625rem;text-transform:none;letter-spacing:.02em;
+  color:var(--encre3);font-weight:400}
+.fr-lp .fr-t{height:1.2rem}
+/* Une passe est le plus souvent un INSTANT, pas une durée : écrite et rejouée dans la
+   même semaine, sa barre tombe à 3 px sur un axe de cent jours — mesuré, six sur huit.
+   Elle est donc dessinée pour être lisible en point comme en barre : plus haute, plus
+   large au minimum, et pleine plutôt que cernée. */
+.fr-q{position:absolute;top:.4rem;height:.42rem;min-width:7px;border-radius:3px;
+  background:var(--outremer);opacity:.5}
+/* Hors champ : le repère est antérieur au premier commit et se tient au bord gauche.
+   Creux plutôt que plein — il dit « avant », pas « ici ». */
+/* Collé au bord, pas centré : un repère hors champ n'a pas de position réelle à
+   marquer, et le centrage le faisait dépasser de sa piste par la gauche. */
+.fr-avant{opacity:.55;transform:none}
+.fr-f.fr-avant{transform:rotate(45deg)}
+.fr-a.fr-avant{background:none;box-shadow:inset 0 0 0 1px var(--outremer);width:4px;
+  border-radius:1px}
+.fr-axe{display:grid;grid-template-columns:var(--gout) 1fr;margin-top:.35rem}
+.fr-axe>div{position:relative;height:1rem}
+.fr-m0{transform:none}
+.fr-m{position:absolute;top:0;font:400 var(--t1)/1 var(--mo);color:var(--encre3);
+  transform:translateX(-50%);white-space:nowrap}
+.fr-leg{font:400 var(--t1)/1.5 var(--mo);color:var(--encre3);margin:.9rem 0 0}
+.fr-leg b{font-weight:500;color:var(--encre2)}
+@media (max-width:900px){
+  .fr-l,.fr-axe{grid-template-columns:4.2rem 1fr}
+  .fr-fond{inset:0 0 0 4.2rem}
+}
 .masses{width:100%;border-collapse:collapse;font:400 var(--t2)/1.4 var(--mo)}
 .masses th{font:500 var(--t1)/1 var(--mo);text-transform:uppercase;letter-spacing:.1em;
   color:var(--encre3);text-align:right;padding:0 0 .55rem;font-weight:500}
@@ -316,7 +384,7 @@ a{color:var(--outremer)}
     <p class="marque"><b id="repo">…</b><span class="branche" id="br">…</span></p>
     <p class="etat" id="sil"></p>
     <nav class="ong" id="tabs">
-      <a href="#/">chantiers</a><a href="#/qa">passes</a><a href="#/masses">masses</a><a href="#/fil">fil</a>
+      <a href="#/">chantiers</a><a href="#/qa">passes</a><a href="#/frise">frise</a><a href="#/masses">masses</a><a href="#/fil">fil</a>
     </nav>
   </div>
 </header>
@@ -348,7 +416,7 @@ function pastilles(html){
       : `${pre}<a class="pill e" href="${vsc(cible)}">${code}</a>`;
   });
   return html.replace(/(^|[^\w\/-])(docs\/[\w.\-]+\.md)/g,
-    (m, pre, p) => `${pre}<a class="pill e" href="${vsc(p)}">${p.replace("docs/", "")}</a>`);
+    (m, pre, p) => `${pre}<a class="pill e doc" href="${vsc(p)}">${p.replace("docs/", "")}</a>`);
 }
 
 const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -364,6 +432,57 @@ const slug = s => SLUG[s] || "int";
    qui citent son code touchent autre chose que la doc et `pilotage/`. Déclaré d'un
    côté, mesuré de l'autre — on montre l'écart plutôt que d'arbitrer. */
 const dementi = c => c.statut === "à venir" && c.commitsCode > 0;
+/* La portée d'un audit : combien le code a bougé sous lui depuis qu'il est écrit.
+   Elle ne dit JAMAIS qu'un constat est réglé — aucune mesure ne peut le dire. Elle dit
+   que le sol a bougé, donc qu'il faut relire avant de planifier. D'où « à relire » et
+   jamais « périmé » : le second trancherait sur le fond.
+   Zéro chemin et zéro commit ne se ressemblent pas et ne doivent pas se lire pareil —
+   mesuré, un audit qui parle de comportements plutôt que de fichiers ne rend qu'un seul
+   chemin, et son zéro voudrait dire « je n'ai pas su regarder ». */
+const ditPortee = (p) => {
+  if (!p) return null;
+  if (p.echec) return "mesure impossible — la commande git a échoué";
+  if (!p.chemins) return "aucun chemin reconnu dans ce document — mouvement <b>inconnu</b>, pas nul";
+  const ou = `sur ${p.chemins} chemin${p.chemins > 1 ? "s" : ""} cité${p.chemins > 1 ? "s" : ""}`;
+  if (!p.commits) return `aucun mouvement ${ou} depuis le ${jour(p.depuis)}`;
+  return `<b>${p.commits.toLocaleString("fr-FR")} commits</b> ${ou}, depuis le ${jour(p.depuis)}
+    <i>+${p.plus.toLocaleString("fr-FR")} −${p.moins.toLocaleString("fr-FR")}</i>`
+    + (p.tronque ? " — compte partiel, trop de chemins pour une seule mesure" : "");
+};
+
+/* À relire : le sol a bougé ET il reste des constats ouverts dessus. L'un sans l'autre
+   ne change rien à ce qu'on fait — un audit remué mais soldé est de l'histoire, un audit
+   intact garde ses constats valables.
+   Le compte porte sur les DOCUMENTS, pas sur les fiches : quatre chantiers partageaient
+   le même audit et le faisaient compter quatre fois. On le relit une fois pour les quatre. */
+const aRelire = () => {
+  const par = new Map();
+  for (const c of D.chantiers) {
+    const a = D.controle?.audits?.[c.audit];
+    if (!(c.portee?.commits > 0 && a?.reconnu && a.total > 0)) continue;
+    const e = par.get(c.audit) || { audit: c.audit, portee: c.portee, ouverts: a.total, codes: [] };
+    e.codes.push(c.code);
+    par.set(c.audit, e);
+  }
+  return [...par.values()].sort((x, y) => y.portee.commits - x.portee.commits);
+};
+
+/* Les collisions : combien de fichiers deux chantiers ont touchés en commun. L'état de
+   l'autre est dit avec le nombre, parce qu'il le retourne — 29 fichiers partagés avec un
+   chantier livré, c'est un terrain stabilisé qu'on retrouvera tel quel ; 20 avec un
+   chantier qui a bougé ce matin, c'est un risque présent. On montre l'état plutôt que
+   d'en fabriquer une pondération : le lecteur sait ce que « livré » veut dire chez lui. */
+const ditCollisions = (l) => l.slice(0, 3).map(x => {
+  const ferme = x.statut === "clos" || x.statut === "livré";
+  const etat = ferme ? esc(x.statut)
+    : x.silence === null ? "jamais commencé"
+    : `${x.silence} j de silence`;
+  // Parenthèses : sans elles, « R5 20 4 j de silence » colle deux nombres qui ne parlent
+  // pas de la même chose.
+  return `<a href="#/c/${encodeURIComponent(x.code)}">${esc(x.code)}</a>
+    <b>${x.n}</b> <i>(${etat})</i>`;
+}).join(" · ");
+
 const byCode = c => D.chantiers.find(x => x.code === c);
 const byFile = f => D.passes.find(p => p.file === f);
 const jour = s => new Date(s + "T00:00:00")
@@ -442,9 +561,9 @@ function bandeBord(){
      construction : une ligne écrite après ce commit mais citant autre chose (un
      commit de tenue, un merge) est signalée alors qu'elle est juste. Cette
      sur-sensibilité est le prix de la détection et non un défaut — l'alternative
-     par date a été testée sur T-05 le 2026-08-24 et rate le cas qui compte : la
-     fiche y avait été commitée DEUX FOIS après le dernier commit de code alors que
-     son marqueur pointait encore le 25 juin. Un signal volontairement bruyant ne
+     par date a été testée et rate le cas qui compte : une fiche avait été commitée
+     DEUX FOIS après son dernier commit de code alors que son marqueur pointait
+     encore deux mois en arrière. Un signal volontairement bruyant ne
      peut donc pas porter une étiquette qui tranche sur le fond : « périmé » dirait
      que le travail décrit est caduc, ce que la mesure ne montre jamais. Le nom
      interne (`arreteDecale`) disait déjà juste ; l'écran s'aligne dessus. */
@@ -457,6 +576,28 @@ function bandeBord(){
   const dem = D.chantiers.filter(dementi);
   if (dem.length) l.push({ cle: "« à venir » démentis", val: String(dem.length),
     note: `du code est déjà tombé · ${dem.map(c => versFiche(c.code)).join(" ")}` });
+
+  /* Le seul autre endroit où un document déclaré se confronte à une mesure : l'audit
+     sur lequel s'appuie un chantier, et le code qui a bougé sous lui depuis. */
+  const rel = aRelire();
+  if (rel.length) l.push({ cle: "audits à relire avant de planifier", val: String(rel.length),
+    note: rel.slice(0, 3).map(e =>
+      `${e.codes.map(versFiche).join(" ")} <i>${e.portee.commits} commits sous ${e.ouverts} constats</i>`
+    ).join(" · ") });
+
+  /* Le travail qu'aucune fiche ne peut montrer : des commits en vol dont le sujet ne
+     cite aucun code, et qui touchent autre chose que le dossier et la documentation.
+     Une branche entièrement couverte par ses chantiers ne paraît pas ici — elle n'a
+     rien de mauvais à signaler, et la règle de cette bande est qu'un chiffre n'y entre
+     que s'il peut l'être.
+     Les sujets des premiers orphelins passent en infobulle : « 5 sans fiche » dit qu'il
+     faut agir, pas SUR QUOI. */
+  const brVol = (D.branches || []).filter(b => b.orphelins > 0);
+  const perdus = brVol.reduce((n, b) => n + b.orphelins, 0);
+  if (perdus) l.push({ cle: "commits en vol sans fiche", val: String(perdus),
+    note: brVol.slice(0, 3).map(b =>
+      `<span title="${esc(b.exemples.map(e => e.hash + "  " + e.sujet).join("\n"))}">${esc(b.nom)}</span>
+       <i>${b.orphelins} sur ${b.avance}, jusqu'au ${jour(b.dernier.date)}</i>`).join(" · ") });
 
   /* Seul chiffre volontairement inerte : il est la somme des Reste de toutes les
      fiches, et sa destination est la liste qui suit déjà sur cet écran. */
@@ -599,6 +740,9 @@ function vueFiche(code){
     c.remontee && ["remontée", `${c.remontee.length} codes de constat comptés comme
       <code>${esc(c.code)}</code> — ${c.remontee.slice(0, 2).map(esc).join(", ")}…`],
     c.audit && ["source", pastilles(esc(c.audit))],
+    c.portee && ["portée", ditPortee(c.portee)],
+    c.collisions && ["collisions", ditCollisions(c.collisions)
+      + (c.collisions.length > 3 ? ` <i>+${c.collisions.length - 3} autres</i>` : "")],
     ["fiche", `<a href="${vsc(c.file)}">${esc(c.file)}</a>`]
   ].filter(Boolean);
 
@@ -722,6 +866,115 @@ function vueFil(){
           <span class="s">${ligne(c.sujet)}</span></div>`).join("")}</div>`).join("")}`;
 }
 
+/* ---------------- frise ---------------- */
+/* Ce que la carte d'un chantier ne peut pas dire : sa FORME dans le temps. Mesuré sur
+   quinze fiches, deux chantiers affichaient une carte identique — même statut, silence
+   comparable — alors que l'un était un sprint de trois jours abandonné deux mois plus
+   tôt et l'autre une tresse de deux mois avançant d'un commit par semaine. Le dernier
+   commit seul ne distingue pas les deux ; les deux bornes, si.
+   Pas de liens entre chantiers : la relation qui existe entre eux est la collision de
+   fichiers, elle se dérive et ne se dessine pas en graphe. */
+const JOUR = 864e5;
+
+function vueFrise(){
+  const t = d => Date.parse(d + "T00:00:00");
+  const toutes = [], travaux = [];
+  for (const c of D.chantiers) {
+    for (const d of [c.premier?.date, c.dernier?.date, c.auditDate, c.ficheDate]) if (d) toutes.push(d);
+    if (c.premier) travaux.push(c.premier.date);
+  }
+  for (const p of D.passes) for (const d of [p.entree, p.derniere]) if (d) toutes.push(d);
+  if (!toutes.length) return vide(
+    `<p>Rien à situer dans le temps : aucun commit ne cite un code de chantier, et
+     aucune fiche n'est encore entrée dans le dépôt.</p>`);
+
+  /* L'axe part du premier COMMIT, pas du premier document. Mesuré : les dates d'entrée
+     d'audits précédaient le travail de 33 jours, un quart de la largeur ne portant
+     aucune barre. Ce qui tombe avant n'est pas perdu — c'est marqué hors-champ au bord
+     gauche, avec sa vraie date au survol.
+     Le vide qui RESTE à l'intérieur (29 jours mesurés) n'est pas comprimé : il n'y en a
+     qu'un, il ne rapprocherait qu'un seul chantier, et une échelle brisée détruirait la
+     seule chose que cette vue sert à faire — comparer des durées. */
+  const a = travaux.length ? Math.min(...travaux.map(t)) : Math.min(...toutes.map(t));
+  const b = Math.max(...toutes.map(t), t(D.dernierJour || new Date().toISOString().slice(0, 10)));
+  /* Une marge d'un jour de chaque côté : sans elle, le premier commit colle au bord et
+     se lit comme une troncature plutôt que comme un début. */
+  const lo = a - JOUR, amp = (b + JOUR) - lo;
+  const avant = d => t(d) < lo;
+  const pc = d => Math.max(0, (t(d) - lo) / amp * 100).toFixed(2);
+
+  /* Traits de mois. Le premier de chaque mois compris dans l'intervalle : les mois n'ont
+     pas la même longueur, un dégradé répété ne tomberait pas juste. */
+  const mois = [];
+  const d0 = new Date(lo); d0.setUTCDate(1);
+  for (let x = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), 1));
+       x.getTime() <= b + JOUR;
+       x = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 1))) {
+    const s = x.toISOString().slice(0, 10);
+    const nom = x.toLocaleDateString("fr-FR", { month: "short", timeZone: "UTC" });
+    /* Le mois du début n'a pas son 1er dans l'intervalle : sans ce cas, la région la plus
+       à gauche reste sans étiquette et on ne sait pas où l'axe commence. Il est posé au
+       bord, sans trait de séparation. */
+    if (t(s) >= lo) mois.push({ s, nom, trait: true });
+    else if (!mois.length && t(s) + 32 * JOUR > lo) mois.push({ s: new Date(lo).toISOString().slice(0, 10), nom, trait: false });
+  }
+
+  const ordre = D.chantiers.slice().sort((x, y) =>
+    String(x.premier?.date || x.ficheDate || "9999").localeCompare(String(y.premier?.date || y.ficheDate || "9999")));
+
+  const marque = (d, cls, quoi) => !d ? "" :
+    `<span class="${cls}${avant(d) ? " fr-avant" : ""}" style="left:${pc(d)}%"
+       title="${esc(quoi)} ${esc(d)}${avant(d) ? " — hors champ, avant le premier commit" : ""}"></span>`;
+
+  /* Les deux bornes sont remises dans l'ordre avant de tracer. Une passe peut porter une
+     `derniere` ANTÉRIEURE à l'entrée de son fichier — elle existait avant d'être migrée
+     dans le dossier — et la soustraction sortait alors une largeur négative, donc une
+     barre de 3 px posée du mauvais côté de sa propre date. Mesuré sur une passe de juillet
+     migrée en août. */
+  const barre = (dA, dB, cls, titre) => {
+    if (!dA && !dB) return "";
+    const [d1, d2] = [dA || dB, dB || dA].sort();
+    return `<span class="${cls}" style="left:${pc(d1)}%;width:max(3px,${(pc(d2) - pc(d1)).toFixed(2)}%)"
+       title="${esc(titre)}"></span>`;
+  };
+
+  const ligne = c => {
+    const p1 = c.premier?.date, p2 = c.dernier?.date;
+    const t = `<div class="fr-t">${
+      p1 ? barre(p1, p2, "fr-b", `${p1} → ${p2} · ${c.commits} commit${c.commits > 1 ? "s" : ""}`) : ""
+      }${marque(c.ficheDate, "fr-f", "fiche écrite le")}${marque(c.auditDate, "fr-a", "audit entré le")}</div>`;
+    return `<div class="fr-l s-${slug(c.statut)}">
+      <a class="fr-c" href="#/c/${encodeURIComponent(c.code)}">${esc(c.code)}</a>${t}</div>`;
+  };
+
+  /* Une passe se range SOUS son chantier : c'est déjà la relation que porte son propre
+     `chantier:`, et la poser en glyphe de plus sur la ligne du chantier les empilait —
+     trois passes de R3, dont deux à la même date. Sa barre va de son entrée à sa
+     dernière rejoue : une passe écrite il y a deux mois et rejouée hier ne raconte pas
+     la même chose qu'une passe écrite et jouée le même jour. */
+  const ligneP = p => `<div class="fr-l fr-lp">
+    <a class="fr-c" href="#/qa/${encodeURIComponent(p.file)}">${esc(p.nom)}</a>
+    <div class="fr-t">${barre(p.entree, p.derniere, "fr-q",
+      `${p.entree || "?"} → ${p.derniere || "jamais rejouée"} · ${p.faits}/${p.total}`)}</div></div>`;
+
+  return `<div class="frise">
+    <div class="fr-corps">
+      <div class="fr-fond">${mois.filter(m => m.trait).map(m => `<span class="fr-mois" style="left:${pc(m.s)}%"></span>`).join("")}</div>
+      ${ordre.map(c => ligne(c) + D.passes.filter(p => p.chantier === c.code).map(ligneP).join("")).join("")}
+      ${D.passes.filter(p => !p.chantier).map(ligneP).join("")}
+    </div>
+    <div class="fr-axe"><span></span><div>${
+      mois.map(m => `<span class="fr-m${m.trait ? "" : " fr-m0"}" style="left:${pc(m.s)}%">${esc(m.nom)}</span>`).join("")}</div></div>
+    <p class="fr-leg"><b>barre pleine</b> premier &rarr; dernier commit de travail, la
+      tenue du dossier exclue &middot; <b>point bleu</b> une passe de QA, de son entrée
+      à sa dernière rejoue &mdash; souvent un point plutôt qu'une barre, la
+      passe étant écrite et jouée dans la même semaine &middot;
+      <b>losange</b> la fiche entre dans le dépôt &middot; <b>trait fin</b>
+      l'audit entre dans le dépôt &middot; un repère <b>ouvert au bord
+      gauche</b> est antérieur au premier commit, donc hors champ</p>
+  </div>`;
+}
+
 /* ---------------- masses ---------------- */
 /* Une courbe par aire, normalisée sur elle-même : les masses vont de 1 170 à 28 655
    lignes, une échelle commune écraserait tout sauf les deux plus grosses. */
@@ -767,6 +1020,7 @@ function rendre(){
   else if (h === "qa")          { html = vueQA();               onglet = "#/qa"; }
   else if (h.startsWith("qa/")) { html = vuePasse(h.slice(3));  onglet = "#/qa"; }
   else if (h === "fil")         { html = vueFil();              onglet = "#/fil"; }
+  else if (h === "frise")       { html = vueFrise();           onglet = "#/frise"; }
   else if (h === "masses")      { html = vueMasses();           onglet = "#/masses"; }
   else                          html = vueChantiers();
 
