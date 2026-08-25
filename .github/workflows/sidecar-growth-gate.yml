@@ -47,15 +47,18 @@ jobs:
           # Pourquoi 2500, et pourquoi c'est provisoire (décidé le 2026-08-25).
           #
           # 500 était calibré sur le rythme du fichier APRÈS l'extraction A-01 :
-          # net +373 sur la fenêtre avr→juil, +557 sur mai→août. Le seuil était juste.
+          # net +373 sur la fenêtre avr→juil, +558 sur mai→août. Le seuil était juste.
           #
           # Mais ce net est financé par un one-off : l'extraction des 17-18 juin pèse
           # -1436 dans la fenêtre. Elle en sort le 15-16 septembre, et le gate lira
-          # alors +1995 SANS UN SEUL COMMIT DE PLUS. Le rythme réel du fichier, une
-          # fois ce crédit retiré, est d'environ +2691 ajoutées / -2134 retirées par
-          # 90 jours — un net autour de +560 tant que l'extraction de juin le finance, et sans elle une addition brute de +2691 sur 90 jours. 500 est donc inatteignable sans
-          # extraction continue, et un seuil qu'on ne peut pas tenir n'alerte plus :
-          # il devient un warning permanent qu'on apprend à ne plus lire.
+          # alors +1996 SANS UN SEUL COMMIT DE PLUS.
+          #
+          # Sur 90 jours, le fichier reçoit +2691 lignes et en rend -2134. Le net de
+          # +558 ne tient donc que parce que l'extraction de juin est encore dans la
+          # fenêtre ; sans elle, il ne reste presque plus rien pour compenser les
+          # additions. 500 est inatteignable sans extraction continue, et un seuil
+          # qu'on ne peut pas tenir n'alerte plus : il devient un warning permanent
+          # qu'on apprend à ne plus lire.
           #
           # 2500 se tient juste au-dessus de ce rythme : il ne crie pas au loup le
           # 16 septembre, et il se déclenche si la cadence accélère.
@@ -71,8 +74,18 @@ jobs:
           DAYS=90
           FILE=src/multicorpus_engine/sidecar.py
 
-          GROWTH=$(git log --numstat --since="$DAYS days ago" -- "$FILE" \
-            | awk 'NF==3 {add+=$1; del+=$2} END {print (add-del)+0}')
+          # `--format=` est INDISPENSABLE, et il manquait. Sans lui, `git log` intercale
+          # les en-têtes et le CORPS DES MESSAGES de commit, et l'awk additionne de la
+          # prose. Mesuré le 2026-08-25 : la ligne de message « Phase 1 inchangée). » a
+          # trois champs, awk y lit $1="Phase" (→ 0) et $2="1" (→ 1), et retranche 1 du
+          # total. Aujourd'hui l'erreur vaut 1 ligne ; le jour où un message dira « 500
+          # lignes retirées de sidecar.py », le gate se trompera de 500.
+          #
+          # Le garde `$1 ~ /^[0-9]+$/` ferme la même porte par l'autre bout : seules les
+          # vraies lignes de numstat comptent, quel que soit ce que git envoie en amont.
+          # `NF==3` seul ne suffisait pas — une phrase de trois mots le satisfait.
+          GROWTH=$(git log --numstat --format= --since="$DAYS days ago" -- "$FILE" \
+            | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ {add+=$1; del+=$2} END {print (add-del)+0}')
 
           echo "growth=$GROWTH" >> "$GITHUB_OUTPUT"
           echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
@@ -112,8 +125,12 @@ jobs:
 
           # « Pour l'instant » ne se tient que si quelque chose le rappelle : sans
           # cette date, un relèvement provisoire devient définitif par oubli.
+          # `[[ ]]` et non `[ ]` : dans `[ ]`, le `>` est une REDIRECTION. Écrit ainsi,
+          # le test créait un fichier nommé d'après la date de réexamen et se réduisait
+          # à « chaîne non vide » — donc toujours vrai, donc un rappel à chaque exécution.
+          # Dans `[[ ]]`, `>` est bien la comparaison lexicographique voulue.
           REVIEW="${{ steps.growth.outputs.review }}"
-          if [ "$(date -u +%Y-%m-%d)" > "$REVIEW" ]; then
+          if [[ "$(date -u +%Y-%m-%d)" > "$REVIEW" ]]; then
             echo "::warning::Le seuil de $THRESHOLD était provisoire et devait être rejugé le $REVIEW. A-01 (scission de sidecar.py par domaine) est-il repris ? Voir pilotage/A-01.md."
           fi
 
