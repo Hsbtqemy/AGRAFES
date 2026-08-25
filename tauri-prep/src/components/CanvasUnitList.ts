@@ -68,6 +68,8 @@ export class CanvasUnitList {
   private _editingUid: number | null = null;
   /** Barre de stylisation flottante (créée à la première sélection utile). */
   private _styleBar: HTMLElement | null = null;
+  /** L'écoute de sélection est posée une seule fois, pas à chaque rendu. */
+  private _selectionWatchBound = false;
   /** Sélection courante : unité visée + bornes dans le texte nu. */
   private _styleTarget: { unitId: number; start: number; end: number } | null = null;
 
@@ -272,14 +274,11 @@ export class CanvasUnitList {
       });
     }
 
-    // Stylisation inline (D-R3), seulement là où l'hôte a câblé la persistance.
-    if (this._opts.onStyleText) {
-      rows.forEach((el) => {
-        const uid = parseInt(el.dataset.uid!, 10);
-        el.querySelector<HTMLElement>(".prep-conv-unit-text")
-          ?.addEventListener("mouseup", () => this._onTextSelected(uid));
-      });
-    }
+    // Stylisation inline (D-R3), seulement là où l'hôte a câblé la persistance. L'écoute
+    // est posée une fois pour toutes au niveau du document, pas par ligne : on relâche
+    // souvent la souris hors du texte — dans la marge, sur un badge, au-delà de la fin de
+    // ligne — et un écouteur posé sur le seul texte manquait alors la sélection.
+    if (this._opts.onStyleText) this._bindSelectionWatch(area.ownerDocument);
 
     area.querySelector<HTMLButtonElement>(".prep-conv-text-start-clear")?.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -297,6 +296,31 @@ export class CanvasUnitList {
   private _styleBase(u: UnitRecord): string {
     const norm = u.text_norm ?? "";
     return isRichInSync(u.text_raw, norm) ? (u.text_raw ?? norm) : norm;
+  }
+
+  /** Pose l'écoute de sélection une seule fois pour la vie de la liste. */
+  private _bindSelectionWatch(doc: Document): void {
+    if (this._selectionWatchBound) return;
+    this._selectionWatchBound = true;
+    doc.addEventListener("mouseup", () => this._onSelectionSettled(doc));
+  }
+
+  /** Trouve la ligne qui porte la sélection courante, où qu'on ait relâché la souris. */
+  private _onSelectionSettled(doc: Document): void {
+    const selection = doc.defaultView?.getSelection() ?? null;
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+      return this._hideStyleBar();
+    }
+    const anchor = selection.anchorNode;
+    const start = anchor?.nodeType === 1 ? (anchor as Element) : (anchor?.parentElement ?? null);
+    const span = start?.closest<HTMLElement>(".prep-conv-unit-text") ?? null;
+    // Sélection hors liste, ou à cheval sur deux lignes : rien à styliser ici.
+    if (!span || !this._host.contains(span) || !span.contains(selection.focusNode)) {
+      return this._hideStyleBar();
+    }
+    const uid = parseInt(span.closest<HTMLElement>(".prep-conv-unit-row")?.dataset.uid ?? "", 10);
+    if (!Number.isFinite(uid)) return this._hideStyleBar();
+    this._onTextSelected(uid);
   }
 
   /** Lit la sélection faite dans une ligne et présente la barre I/G, ou la retire. */

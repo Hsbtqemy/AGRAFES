@@ -494,3 +494,62 @@ describe("stylisation inline — le clic qui suit le glisser", () => {
     expect(seen).toEqual([1]);
   });
 });
+
+describe("stylisation inline — où l'on relâche la souris", () => {
+  const bar = () => document.querySelector<HTMLElement>(".prep-conv-stylebar");
+
+  function twoLines() {
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({
+      docId: 1,
+      units: [
+        unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" }),
+        unit(2, { text_norm: "autre ligne", text_raw: "autre ligne" }),
+      ],
+    });
+    list.render();
+    return host.querySelectorAll<HTMLElement>(".prep-conv-unit-text");
+  }
+
+  it("la barre apparaît même si l'on relâche hors du texte", () => {
+    // Cas courant : on surligne d'un geste rapide et on relâche dans la marge, sur un
+    // badge, ou au-delà de la fin de la ligne. L'écoute posée sur le seul texte ratait
+    // alors la sélection (signalé en QA le 25 août).
+    const spans = twoLines();
+    const range = document.createRange();
+    range.setStart(spans[0].firstChild!, 3);
+    range.setEnd(spans[0].firstChild!, 6);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.body.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    expect(bar()!.hidden).toBe(false);
+  });
+
+  it("ne propose rien sur une sélection à cheval sur deux lignes", () => {
+    const spans = twoLines();
+    const range = document.createRange();
+    range.setStart(spans[0].firstChild!, 3);
+    range.setEnd(spans[1].firstChild!, 5);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.body.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    expect(bar()?.hidden ?? true).toBe(true);
+  });
+
+  it("ne propose rien pour une sélection faite hors de la liste", () => {
+    twoLines();
+    const outside = document.createElement("p");
+    outside.textContent = "texte etranger";
+    document.body.appendChild(outside);
+    const range = document.createRange();
+    range.setStart(outside.firstChild!, 0);
+    range.setEnd(outside.firstChild!, 5);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.body.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    expect(bar()?.hidden ?? true).toBe(true);
+  });
+});
