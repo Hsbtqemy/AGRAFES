@@ -30,6 +30,8 @@ audit: docs/DESIGN_explorer_autonome.md
 - [ ] EXA-01 — retirer les gestes d'écriture du concordancier : boutons « ⬆ Importer… » et « ⟳ Réindexer » (`tauri-app/src/ui/buildUI.ts:241-242`)
 - [ ] EXA-02 — retirer l'écriture de rôle d'unité du panneau métadonnées (`POST /units/set_role`, `tauri-app/src/lib/sidecarClient.ts:603`)
 - [ ] EXA-08 — reloger l'export CSV de la recherche grammaticale, dont la seconde entrée vit dans le mode « Publier » (`shell.ts:2889`) qu'Explorer n'aura pas
+- [ ] Refaire l'accueil du profil plutôt que griser : sans le module dans le bundle, la carte « Constituer » ne peut pas fonctionner — et gater aussi les onglets, les raccourcis ⌘2/⌘3 et le deep-link `?mode=constituer`, qui mène aujourd'hui droit à un `import()` de chunk absent
+- [ ] Traiter l'entrée CSS du profil : `main.ts` importe six feuilles de Prep en statique (`app.css` 215 KiB à elle seule), qu'aucune garde sur l'`import()` dynamique n'élimine — mesuré le 25 août
 - [ ] EXA-11 — remplacer l'accès aux métadonnées par une fiche technique en lecture (corpus + document), alimentée par les GET existants, sans endpoint neuf
 
 ### Diffusion — c'est là que pèse le téléchargement
@@ -83,6 +85,13 @@ la lecture du code avait manqué : une consultation sans le moindre geste d'écr
 n'avait signalé — et ajoute **25 lignes** de `schema_migrations` sur le corpus démo du
 dépôt, 25 migrations en retard. Et l'adoption par portfile n'est plus un risque déduit :
 un second processus reçoit le jeton d'écriture du premier et écrit.
+
+**Le profil de build tient, à une réserve près** (mesuré le 25 août) : avec une garde
+`VITE_PROFILE` sur l'`import()` de `constituerModule`, le bundle passe de 1 290 à 706 KiB
+(−45 %), `constituerModule.js` (573 KiB) et son CSS disparaissent, et les marqueurs de Prep
+ne survivent pas dans le JavaScript. Le **CSS**, lui, ne bouge pas d'un octet : `main.ts`
+importe six feuilles de Prep en statique. Le profil est donc une garde **plus** un
+traitement de l'entrée CSS — pas la ligne unique annoncée.
 
 **Sur la forme du livrable**, la mesure penche nettement : sur les 3 640 lignes de
 `shell.ts`, seuls le wizard « Publier » (483 l.) et les cartes associées sont propres à

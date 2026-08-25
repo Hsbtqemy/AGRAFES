@@ -88,9 +88,45 @@ deep-link `agrafes-shell://`, corpus démo, diagnostics, télémétrie, vérific
 jour, raccourcis, bannières, overlay de démarrage) servent Explorer autant que Prep.
 
 **Recommandation : A.** L'option B fait réécrire 85 % d'un fichier pour économiser 564 KiB
-sur un installeur qui pèse 224 MiB. Le vrai allègement est ailleurs (§6). Le profil se pose
-au build (`import.meta.env.VITE_PROFILE`) et rend l'`import()` dynamique de
-`constituerModule` statiquement mort — Vite l'élimine, le code de Prep ne part pas dans le bundle.
+sur un installeur qui pèse 224 MiB. Le vrai allègement est ailleurs (§6).
+
+### 3.1 Le profil de build, mesuré
+
+L'affirmation « Vite élimine le code de Prep » a été **vérifiée le 25 août** : garde
+`import.meta.env.VITE_PROFILE !== "explorer"` posée sur l'`import()` dynamique de
+`constituerModule`, deux builds comparés chunk par chunk.
+
+| | Base | Profil explorer |
+|---|---|---|
+| `constituerModule.js` | 573 KiB | **absent** |
+| `constituerModule.css` | 7 KiB | **absent** |
+| `search.js`, `telemetry.js` | 5 + 0 KiB | absents |
+| `explorerModule` + `recherche` | 219 KiB | 218 KiB |
+| **Total des assets** | **1 290 KiB** | **706 KiB (−45 %)** |
+
+Le JavaScript de Prep part réellement : les marqueurs `Pré-remplir` et
+`/segment/paragraph_boundary`, présents dans la base, sont **absents** du bundle explorer.
+L'élimination fonctionne.
+
+**Mais le CSS ne part pas.** `index.css` pèse 149 KiB dans les deux profils, et il contient
+toujours `prep-actions-screen`, `prep-canvas`, `prep-state-`. La cause est nette :
+`tauri-shell/src/main.ts` (l. 5-10) importe **six feuilles de Prep en statique**, dont
+`app.css` à lui seul 215 KiB de source. Une garde sur l'`import()` dynamique ne les touche
+pas — elles sont dans l'entrée.
+
+Deux conséquences pour le lot 2 : le profil n'est pas une ligne mais **une ligne plus le
+traitement de l'entrée CSS** (déplacer ces imports dans `constituerModule`, ou donner à
+Explorer sa propre entrée) ; et la garde doit aussi couvrir ce qui reste visible sans le
+module — la carte « Constituer son corpus » de l'accueil survit au profil, marqueur
+retrouvé dans `index.js`.
+
+**Corollaire : l'accueil se refait, il ne se grise pas.** Une carte grisée dit « indisponible
+pour l'instant » ; ici le module n'est pas dans le bundle, l'`import()` échouerait. Les
+surfaces à gater sont quatre, pas une : les cartes d'accueil, les onglets d'en-tête, les
+raccourcis ⌘2/⌘3, et le **deep-link** `#constituer` / `?mode=constituer`, que
+`_normalizeMode` accepte encore et qui conduirait `_setMode` à charger un chunk absent.
+Si Explorer doit signaler que Constituer existe, c'est une mention avec un lien — pas un
+bouton mort.
 
 Réserve honnête : A fait porter à `shell.ts` une seconde raison de changer, et le fichier
 est déjà à 3 640 lignes. Si le second `tauri.conf` se met à diverger (icônes, identifiant,
@@ -255,9 +291,10 @@ l'est, ce sont les trois habituels (`sidecar_contract.py` + `docs/openapi.json` 
 `tests/snapshots/openapi_paths.json`), plus `docs/SIDECAR_API_CONTRACT.md`.
 
 **Lot 2 — front, profil Explorer** · `tauri-shell/vite.config.ts` (define de profil),
-`shell.ts` (garde sur les onglets, cartes d'accueil, raccourcis), `tauri-app/src/ui/buildUI.ts`
-(retrait des deux boutons), `features/metaPanel.ts` (retrait de l'écriture de rôle),
-relogement de l'export RG (EXA-08).
+`shell.ts` (garde sur l'`import()` de `constituerModule`, les onglets, les cartes
+d'accueil, les raccourcis), **`main.ts` (l. 5-10 : les six imports CSS de Prep, mesurés
+comme non éliminés — §3.1)**, `tauri-app/src/ui/buildUI.ts` (retrait des deux boutons),
+`features/metaPanel.ts` (retrait de l'écriture de rôle), relogement de l'export RG (EXA-08).
 
 **Lot 3 — fiche technique** · nouvel écran de lecture dans Explorer, aucun endpoint neuf (§5).
 
