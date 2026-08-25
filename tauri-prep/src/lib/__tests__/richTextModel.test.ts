@@ -134,3 +134,24 @@ describe("domOffsetToPlain — le piège des entités (§5a)", () => {
     expect(applyMark(plain, start, end, "italic", true)).toBe('a &amp; <hi rend="italic">b</hi>');
   });
 });
+
+describe("robustesse — balisage mal formé et lignes non stylables", () => {
+  it("survit à une fermeture orpheline", () => {
+    const m = parseRich("ab</hi>cd");
+    expect(m.plain).toBe("abcd");
+    expect(m.marks.every((x) => x === "")).toBe(true);
+  });
+
+  it("survit à une ouverture jamais fermée", () => {
+    const m = parseRich('ab<hi rend="italic">cd');
+    expect(m.plain).toBe("abcd");
+    expect(m.marks).toEqual(["", "", "italic", "italic"]);
+  });
+
+  it("ne fabrique pas un balisage que le rendu refuserait d'afficher", () => {
+    // Chevron nu → la garde de provenance de richTextToHtml échapperait toute la ligne,
+    // donc la stylisation serait invisible : le modèle refuse de la produire.
+    const raw = "a < b";
+    expect(applyMark(raw, 0, 1, "italic", true)).toBe(raw);
+  });
+});

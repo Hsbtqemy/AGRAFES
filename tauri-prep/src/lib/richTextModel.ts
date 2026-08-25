@@ -131,6 +131,11 @@ export function applyMark(
   token: RichToken,
   on: boolean,
 ): string {
+  // Garde de sûreté : sur une ligne à chevron nu, le balisage produit serait ambigu et la
+  // garde de provenance du rendu le refuserait — la stylisation ne s'afficherait pas. Le
+  // bouton doit être désactivé en amont (`canStyle`) ; ceci empêche seulement le modèle de
+  // fabriquer un `text_raw` inaffichable.
+  if (!canStyle(raw)) return raw;
   const model = parseRich(raw);
   const from = Math.max(0, Math.min(start, model.plain.length));
   const to = Math.max(0, Math.min(end, model.plain.length));
@@ -162,6 +167,23 @@ export function canStyle(raw: string): boolean {
   return !/[<>]/.test(parseRich(raw).plain);
 }
 
+/** Entités que l'encodeur d'import produit, plus les deux que XML définit par ailleurs. */
+const _ENTITIES = ["&amp;", "&lt;", "&gt;", "&quot;", "&apos;"];
+
+/**
+ * Nombre de caractères de `plain` que consomme le caractère affiché en position `i`.
+ *
+ * Écrit sans `slice` ni expression régulière : la fonction est appelée une fois par
+ * caractère parcouru, et une unité du corpus fait 110 788 caractères.
+ */
+function _entityLength(plain: string, i: number): number {
+  if (plain.charCodeAt(i) !== 38 /* & */) return 1;
+  for (const entity of _ENTITIES) {
+    if (plain.startsWith(entity, i)) return entity.length;
+  }
+  return 1;
+}
+
 /**
  * Convertir un offset lu dans le DOM en offset du texte nu.
  *
@@ -175,8 +197,7 @@ export function domOffsetToPlain(plain: string, domOffset: number): number {
   let seen = 0;
   let i = 0;
   while (i < plain.length && seen < domOffset) {
-    const entity = /^&(amp|lt|gt|quot|apos);/.exec(plain.slice(i));
-    i += entity ? entity[0].length : 1;
+    i += _entityLength(plain, i);
     seen++;
   }
   return i;
@@ -187,8 +208,7 @@ export function domLength(plain: string): number {
   let seen = 0;
   let i = 0;
   while (i < plain.length) {
-    const entity = /^&(amp|lt|gt|quot|apos);/.exec(plain.slice(i));
-    i += entity ? entity[0].length : 1;
+    i += _entityLength(plain, i);
     seen++;
   }
   return seen;
