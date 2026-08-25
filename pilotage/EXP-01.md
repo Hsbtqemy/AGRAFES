@@ -14,15 +14,16 @@ audit: docs/DESIGN_explorer_autonome.md
 
 - [ ] D-EX1 — trancher la forme du livrable : second bundle du même shell (recommandé, §3 de la note) ou application `tauri-explorer` dédiée
 - [ ] D-EX2 — trancher le niveau d'étanchéité : interface seule, `serve --read-only`, ou base ouverte en `mode=ro` (recommandé : moteur + suppression des écritures d'ouverture et de lecture)
-- [ ] EXA-10 — trancher la conduite quand la base est d'un schéma plus ancien que l'Explorer, puisque l'ouverture ne migrera plus : refus nommant le geste, ou migration d'une copie
+- [ ] EXA-10 — trancher la conduite quand la base est d'un schéma plus ancien que l'Explorer, puisque l'ouverture ne migrera plus : refus nommant le geste, ou migration d'une copie — le corpus démo du dépôt est lui-même **25 migrations en retard** (12 contre 37)
 
 ### Moteur — la lecture seule n'existe pas encore
 
-- [ ] EXA-03 — supprimer les écritures d'ouverture : migrations appliquées par `cmd_serve`, ligne `runs` insérée, `runs/<id>/run.log` créé, WAL posé sur le fichier, portfile écrit à côté de la base
-- [ ] EXA-04 — supprimer la ligne `runs` insérée par `/query` (`sidecar.py:2009`) et `/token_query` (`:2153`) : une recherche ne doit pas écrire, ni prendre le verrou d'écriture
+- [ ] EXA-03 — supprimer les écritures d'ouverture : mesuré le 25 août, **4 fichiers apparaissent à la seule ouverture** (portfile, `-wal`, `-shm`, `runs/<id>/run.log`) et l'empreinte de la base change
+- [ ] EXA-04 — supprimer la ligne `runs` insérée par `/query` (`sidecar.py:2009`) et `/token_query` (`:2153`) : une recherche ne doit pas écrire, ni prendre le verrou d'écriture — mesuré à +4 lignes pour une session de trois requêtes
 - [ ] EXA-05 — corriger les lectures qui écrivent : `ensure_corpus_info_row` sur `GET /corpus/info`, backfill de colonnes `_ensure_document_workflow_columns`
 - [ ] EXA-06 — partitionner `_WRITE_PATHS` (65 routes) entre mutation de base et écriture de fichier : les 12 routes d'export doivent rester ouvertes en lecture seule
-- [ ] EXA-12 — prouver par un test à deux processus ce qui arrive quand un Explorer lecture seule adopte, par portfile, un sidecar déjà lancé en écriture par Constituer
+- [ ] EXA-12 — faire refuser l'adoption d'un sidecar ouvert en écriture : **prouvé le 25 août**, le second processus reçoit `already_running` **et le jeton d'écriture**, et une écriture passe (`POST /corpus/info` → 200, titre modifié)
+- [ ] EXA-13 — trancher le sort de `.agrafes_telemetry.ndjson`, écrit à côté du corpus pendant une simple consultation, sans condition ni retrait possible
 
 ### Front — le profil Explorer
 
@@ -33,7 +34,8 @@ audit: docs/DESIGN_explorer_autonome.md
 
 ### Diffusion — c'est là que pèse le téléchargement
 
-- [ ] EXA-07 — mesurer par un build réel le poids d'un preset sidecar sans spaCy, puis décider : 223,91 MiB aujourd'hui, budget 350 MiB, et la pile de requête n'importe pas spaCy
+- [ ] EXA-07 — inscrire le preset `explorer` sans spaCy dans `build_sidecar.py`, son budget propre dans `sidecar_size_budget.json` et son job de build : mesuré le 25 août à **16,03 MiB contre 223,91** (−92,8 %), sonde identique des deux côtés, seul `/annotate` tombe
+- [ ] Réécrire pour un lecteur le message d'échec de l'annotation, qui dit aujourd'hui « Install NLP extras with `pip install .[nlp]` » (`annotator.py:57`)
 - [ ] EXA-09 — rendre la recherche fédérée utilisable par un lecteur : elle se pilote aujourd'hui par un textarea de chemins bruts (`features/filters.ts:286`)
 
 ## QA
@@ -53,17 +55,34 @@ constituer. Sans perte de fonctionnalité, et sans pouvoir modifier la base.
 
 **Le constat qui commande le chantier** : l'intuition « sans Prep, on ne peut rien
 modifier » est fausse. Explorer expose aujourd'hui trois gestes d'écriture (import,
-réindexation, rôle d'unité), et six écritures partent de la simple ouverture ou d'une
+réindexation, rôle d'unité), et sept écritures partent de la simple ouverture ou d'une
 simple recherche — migrations, ligne `runs` par recherche, `run.log`, WAL, portfile,
-`ensure_corpus_info_row`. Une application qui affiche « ne modifie pas votre corpus »
+`ensure_corpus_info_row`, fichier de télémétrie. Une application qui affiche « ne modifie pas votre corpus »
 dément la promesse au premier clic. C'est le vrai contenu du chantier, bien plus que le
 masquage d'onglets.
 
 **Le second constat commande le packaging** : le poids du téléchargement, c'est le sidecar
 — 223,91 MiB contre 564 KiB de code Constituer. Retirer Prep du bundle ne gagne rien de
 perceptible ; retirer spaCy, si, puisque `token_query`, `token_stats`, `token_collocates`,
-`cql_parser` et `query` n'en importent rien. Le chiffre exact demande un build : il est
-inscrit comme mesure à faire, pas comme gain acquis.
+`cql_parser` et `query` n'en importent rien.
+
+**Mesuré le 25 août, plus supposé** : le même build sans la pile spaCy sort à **16,03 MiB**
+contre 223,91, soit **−207,88 MiB (−92,8 %)**. Même machine, même PyInstaller, même
+`onefile`, seules les exclusions changent. Les deux binaires passent la même sonde sur une
+copie du corpus démo — `/health`, `/documents`, `/models`, `/query`, `/token_query`,
+`/stats/lexical` répondent à l'identique, dont 3 hits sur 115 en recherche grammaticale.
+Seul le job `/annotate` tombe, avec le message attendu. Et comme la machine de build n'a
+aucun modèle installé, la référence n'en embarque aucun : sur l'installeur diffusé, où la
+CI en ajoute neuf, l'économie est **au moins** celle-là. Le binaire mince démarre en outre
+en **1,33 s de médiane contre 10,16** (pire cas 1,84 contre 37,7), ce qui prive de son
+objet l'avertissement « ~30 s au 1er lancement » du shell.
+
+**Trois mesures du 25 août ont déplacé la fiche**, et deux d'entre elles ont trouvé ce que
+la lecture du code avait manqué : une consultation sans le moindre geste d'écriture laisse
+**trois fichiers** à côté du corpus — dont un fichier de télémétrie qu'aucune lecture
+n'avait signalé — et ajoute **25 lignes** de `schema_migrations` sur le corpus démo du
+dépôt, 25 migrations en retard. Et l'adoption par portfile n'est plus un risque déduit :
+un second processus reçoit le jeton d'écriture du premier et écrit.
 
 **Sur la forme du livrable**, la mesure penche nettement : sur les 3 640 lignes de
 `shell.ts`, seuls le wizard « Publier » (483 l.) et les cartes associées sont propres à
@@ -77,5 +96,5 @@ Collision connue : le lot moteur touche `sidecar.py`, `cli.py`, `db/connection.p
 `runs.py` — noyau partagé avec A-01 (extraction `services/`, growth gate à +410 / 500) et
 avec R5/R6. Toute reprise s'y heurte.
 
-Sources : `docs/DESIGN_explorer_autonome.md` (état des lieux mesuré, constats EXA-01…EXA-12,
+Sources : `docs/DESIGN_explorer_autonome.md` (état des lieux mesuré, constats EXA-01…EXA-13,
 décisions D-EX1…D-EX7, tranches), `BACKLOG.md` P9 (deprecation des standalone).

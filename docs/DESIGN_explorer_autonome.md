@@ -58,20 +58,17 @@ build local, `spacy` + `numpy` + `blis` + `thinc` + `srsly` pèsent **151,5 MiB*
 |---|---|---|
 | EXA-01 | 🔴 | Explorer **écrit déjà** dans la base : `⬆ Importer…` et `⟳ Réindexer` (`tauri-app/src/ui/buildUI.ts:241-242`) appellent `POST /import` et `POST /index`. |
 | EXA-02 | 🟠 | Le panneau métadonnées du concordancier écrit un rôle d'unité : `POST /units/set_role` (`tauri-app/src/lib/sidecarClient.ts:603`). |
-| EXA-03 | 🔴 | **Ouvrir** un corpus le modifie : `cmd_serve` applique les migrations, insère une ligne `runs` (`create_run`) et crée `<db_dir>/runs/<id>/run.log` ; `get_connection` pose `PRAGMA journal_mode=WAL` (fichiers `-wal`/`-shm`) ; le portfile `.agrafes_sidecar.json` est écrit à côté de la base. |
-| EXA-04 | 🟠 | **Chaque recherche** écrit : `/query` et `/token_query` insèrent une ligne `runs` sous verrou d'écriture (`sidecar.py:2009` et `:2153`). |
+| EXA-03 | 🔴 | **Ouvrir** un corpus le modifie : `cmd_serve` applique les migrations, insère une ligne `runs` (`create_run`) et crée `<db_dir>/runs/<id>/run.log` ; `get_connection` pose `PRAGMA journal_mode=WAL` (fichiers `-wal`/`-shm`) ; le portfile `.agrafes_sidecar.json` est écrit à côté de la base. **Mesuré (§4.1) : 4 fichiers apparaissent à la seule ouverture, et l'empreinte de la base change.** |
+| EXA-04 | 🟠 | **Chaque recherche** écrit : `/query` et `/token_query` insèrent une ligne `runs` sous verrou d'écriture (`sidecar.py:2009` et `:2153`). **Mesuré : +2 et +1 lignes pour trois requêtes.** |
 | EXA-05 | 🟡 | Des lectures écrivent : `GET /corpus/info` appelle `ensure_corpus_info_row` (INSERT) ; les handlers documents backfillent des colonnes manquantes (`_ensure_document_workflow_columns`, ALTER TABLE) sur schéma ancien. |
 | EXA-06 | 🟠 | `_WRITE_PATHS` (65 routes) mélange écriture-base et écriture-fichier : **12 routes** n'écrivent que sur le disque (11 exports + `/db/backup`). Un « refus global des write paths » couperait les exports d'analyse qu'on veut garder. |
-| EXA-07 | 🟠 | Le poids du téléchargement est **le sidecar**, pas le JS : 223,91 MiB contre 564 KiB de code Constituer. Le seul levier réel est un preset sans spaCy — possible puisque la pile de requête ne l'importe pas. |
+| EXA-07 | 🟠 | Le poids du téléchargement est **le sidecar**, pas le JS : 223,91 MiB contre 564 KiB de code Constituer. Le seul levier réel est un preset sans spaCy — **mesuré le 25 août : 16,03 MiB, soit −207,88 MiB (−92,8 %)**, sans rien perdre de la consultation (§6). Le preset n'existe pas dans le dépôt. |
 | EXA-08 | 🟡 | L'export CSV de la recherche grammaticale a une **seconde entrée dans le mode « Publier »** (`shell.ts:2889`, `_renderRgExportCard`, lit `agrafes.rg.lastQuery`). Sans Publier, elle disparaît — perte de fonctionnalité. |
 | EXA-09 | 🟡 | La **recherche fédérée** multi-corpus existe (`/query` accepte `db_paths`, `sidecar.py:2016`) mais se pilote par un textarea de chemins bruts (`features/filters.ts:286`) : inutilisable pour un lecteur qui a téléchargé deux corpus. |
-| EXA-10 | 🟠 | Aucune **politique de version de schéma** en lecture : si l'ouverture cesse de migrer, un Explorer plus récent (ou plus ancien) que la base n'a pas de conduite définie. |
+| EXA-10 | 🟠 | Aucune **politique de version de schéma** en lecture : si l'ouverture cesse de migrer, un Explorer plus récent (ou plus ancien) que la base n'a pas de conduite définie. Le cas n'est pas théorique — **le corpus démo livré dans le dépôt est 25 migrations en retard** (12 enregistrées contre 37 fichiers) : la toute première chose qu'un nouvel utilisateur ouvre serait migrée sous ses pieds. |
 | EXA-11 | 🟡 | Les métadonnées ne sont consultables que dans `MetadataScreen` (Constituer), un écran d'**édition** : aucune fiche en lecture, alors que tout est déjà servi par des GET. |
-| EXA-12 | 🟠 | Le sidecar est **découvert par portfile** et adopté s'il tourne déjà : deux applications AGRAFES ouvertes sur la même base partagent le même processus. Un Explorer « lecture seule » adoptant un sidecar lancé par Constituer n'aurait aucune garantie. |
-
-`EXA-12` est déduit du protocole d'adoption (`inspect_sidecar_state`, portfile
-`.agrafes_sidecar.json`) et **reste à prouver par un test à deux processus** — c'est le
-premier item du lot moteur.
+| EXA-12 | 🔴 | Le sidecar est **découvert par portfile** et adopté s'il tourne déjà. **Prouvé (§4.2)** : un second processus lancé sur la même base répond `already_running`, **rend le jeton d'écriture**, et une écriture passe par le sidecar adopté. Un Explorer « lecture seule » lancé après Constituer hérite de ses droits — la garantie ne peut pas vivre dans les seuls arguments de lancement d'Explorer. |
+| EXA-13 | 🟡 | Une consultation écrit un fichier de **télémétrie** à côté du corpus : `.agrafes_telemetry.ndjson`, sans condition ni retrait possible (`telemetry.py`, appelé depuis `sidecar.py:847`). Local, sans réseau — mais c'est une écriture, sur un corpus qu'on a promis de ne pas toucher et qui peut ne pas appartenir au lecteur. Trouvé par la mesure, pas par la lecture du code. |
 
 ---
 
@@ -107,6 +104,41 @@ redevient le bon choix. La note dit **par où commencer**, pas où finir.
 L'intuition « sans Prep, on ne peut pas modifier » est **fausse** : EXA-01 à EXA-05
 recensent trois gestes d'écriture dans l'interface d'Explorer et six écritures déclenchées
 par la simple ouverture ou une simple recherche.
+
+### 4.1 Ce qu'une consultation écrit, mesuré
+
+Session type sur une copie du corpus démo, avec le binaire sans spaCy — ouvrir, lister,
+chercher (KWIC, segment, CQL), statistiques, export CSV, fermer. **Aucun geste d'écriture
+n'a été fait.**
+
+| | Résultat |
+|---|---|
+| Empreinte de la base | `1275e189…` → `45297f4c…` — **elle a changé** |
+| Fichiers apparus à la seule ouverture | 4 : `.agrafes_sidecar.json`, `corpus.db-wal`, `corpus.db-shm`, `runs/<id>/run.log` |
+| Fichiers restants après fermeture | 3 : `.agrafes_telemetry.ndjson` (110 o), `runs/<id>/run.log`, plus le CSV demandé |
+| Lignes ajoutées en base | `schema_migrations` **+25**, `runs` **+4** (1 `serve`, 2 `query`, 1 `token_query`) |
+
+Les `+25` migrations disent que le corpus démo du dépôt est **25 migrations en retard**
+(12 enregistrées contre 37 fichiers dans `migrations/`) : l'ouvrir le met à niveau.
+La télémétrie (EXA-13) n'avait été vue par aucune lecture de code — c'est la mesure qui
+l'a sortie.
+
+### 4.2 L'adoption par portfile, prouvée
+
+Sidecar de référence lancé sur une base (rôle « Constituer »), puis second processus lancé
+sur **la même base** (rôle « Explorer ») :
+
+```
+statut renvoyé : already_running · port 63314 · pid 27944
+jeton d'écriture rendu au second processus : OUI
+POST /corpus/info → HTTP 200 · titre du corpus après coup : 'titre posé par le lecteur'
+```
+
+Le second processus ne démarre pas de serveur : il **adopte** le premier et en reçoit le
+jeton d'écriture. Conséquence directe sur D-EX2 : un Explorer lecture seule ne peut pas se
+contenter d'ouvrir sa connexion autrement — il doit **refuser d'adopter** un sidecar
+ouvert en écriture, sans quoi il suffit d'avoir lancé Constituer avant pour que la
+promesse tombe.
 
 | Niveau | Ce qu'il fait | Ce qu'il couvre | Coût |
 |---|---|---|---|
@@ -154,14 +186,36 @@ Deux réserves :
 
 C'est le sens premier de la demande, et c'est là que se trouve le seul gain de poids réel.
 
-- **Preset sidecar `explorer`** : sans spaCy ni modèles. La pile de requête ne les importe
-  pas (§1) ; seules `/annotate` et `/models/*` en dépendent, deux routes qu'un lecteur
-  n'appelle jamais. Ordre de grandeur libéré : **151,5 MiB** de dépendances non compressées
-  côté build local, plus les neuf modèles ajoutés en CI. **Le chiffre exact ne sera connu
-  que par un build** — c'est le premier item du lot packaging, pas une promesse de la note.
+- **Preset sidecar `explorer`** : sans spaCy ni modèles. **Mesuré le 25 août 2026**, même
+  machine, même PyInstaller 6.18, même format `onefile`, mêmes options — seule la pile
+  spaCy retirée des exclusions :
+
+  | | Taille | Écart |
+  |---|---|---|
+  | Référence (`--preset shell`, 24 août) | **223,91 MiB** | — |
+  | Sans spaCy | **16,03 MiB** | **−207,88 MiB · −92,8 %** |
+
+  Les deux binaires ont été soumis **à la même sonde**, sur une copie du corpus démo :
+  `/health`, `/documents`, `/models`, `/query`, `/token_query`, `/stats/lexical` —
+  **réponses identiques des deux côtés**, dont 3 hits sur 115 en recherche grammaticale.
+  La seule divergence est celle qu'on avait annoncée : le job `/annotate` finit en
+  `error — spaCy is not installed`. Rien d'autre ne bouge.
+
+  **Portée de la mesure** : la machine de build n'a aucun modèle installé, donc la
+  référence n'en embarque aucun non plus (vérifié dans le binaire : `spacy` 1 084
+  occurrences, `fr_core_news_md` zéro). La CI, elle, en télécharge neuf avant de builder —
+  l'économie réelle sur l'installeur diffusé est donc **au moins** ces 207,88 MiB.
+- **Le preset mince démarre aussi plus vite** — trois lancements chacun, jusqu'à ce que
+  `/health` réponde : **1,33 s de médiane contre 10,16 s**, et le pire cas observé passe de
+  **37,7 s à 1,84 s**. Le shell prévient aujourd'hui que « le 1er lancement peut prendre
+  ~30 s » (`shell.ts:2435`) : sur ce binaire, l'avertissement n'a plus d'objet. Mesure à
+  n=3 avec un fort écart-type côté référence (antivirus probable sur 224 Mo déballés) —
+  l'ordre de grandeur tient, la précision non.
 - **Conséquence produit** : un corpus non annoté ne pourra pas l'être depuis Explorer. La
   recherche grammaticale sait déjà le dire (`rechercheModule` calcule une *portée annotée*
   à partir de `token_count`) ; le message devra nommer le manque, pas rendre zéro résultat.
+  Et le message d'erreur du moteur — « Install NLP extras with `pip install .[nlp]` » —
+  s'adresse à un développeur : il faudra le réécrire pour un lecteur.
 - **Signature** : les chaînes existent (`windows-sign-shell.yml`, `macos-sign-shell.yml`,
   entitlement `disable-library-validation` déjà nécessaire au sidecar). Un second produit =
   un second identifiant, un second scheme de deep-link, un second passage de signature.
@@ -183,7 +237,7 @@ C'est le sens premier de la demande, et c'est là que se trouve le seul gain de 
 | D-EX3 | Base plus ancienne que l'Explorer | refus explicite nommant le geste, jamais de migration silencieuse |
 | D-EX4 | Sort des trois gestes d'écriture | retirés d'Explorer ; Import, Réindexer et `set_role` restent dans Constituer |
 | D-EX5 | Métadonnées | fiche corpus + fiche document en lecture (§5) |
-| D-EX6 | Preset sidecar | preset `explorer` sans spaCy, chiffré par un build avant décision définitive |
+| D-EX6 | Preset sidecar | preset `explorer` sans spaCy — **chiffré : 224 → 16 MiB**, à décider maintenant que le coût est connu |
 | D-EX7 | Téléchargement de corpus | hors périmètre du premier livrable ; reposé après diffusion de l'application |
 
 D-EX1 et D-EX2 sont ouvertes : elles ont été explicitement laissées à l'approfondissement.
