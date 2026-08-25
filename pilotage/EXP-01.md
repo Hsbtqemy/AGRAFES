@@ -113,7 +113,7 @@ soit exactement ce que R2 (deux grains), R5.4 (segmentation configurable), R4 (r
 sans spaCy) ne touchent rien de tout cela.
 
 Collision connue : le lot moteur touche `sidecar.py`, `cli.py`, `db/connection.py` et
-`runs.py` — noyau partagé avec A-01 (extraction `services/`, growth gate à +410 / 500) et
+`runs.py` — noyau partagé avec A-01 (extraction `services/`, growth gate à +557 pour un seuil relevé à 2500 le 2026-08-25) et
 avec R5/R6. Toute reprise s'y heurte.
 
 Sources : `docs/DESIGN_explorer_autonome.md` (état des lieux mesuré, constats EXA-01…EXA-13,

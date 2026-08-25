@@ -52,6 +52,9 @@ export default {
   // que .github/workflows/sidecar-growth-gate.yml — s'ils y changent, ils changent
   // ici. `chantier` = la fiche où se prend la décision quand le seuil approche ;
   // sans elle, le chiffre est un cul-de-sac : on voit qu'il monte, pas où agir.
-  veille: { fichier: "src/multicorpus_engine/sidecar.py", seuil: 500, jours: 90,
+  // Seuil aligné sur `.github/workflows/sidecar-growth-gate.yml` (2500 depuis le
+  // 2026-08-25, réexamen le 2026-12-15). Les deux doivent bouger ensemble : une veille
+  // qui affiche un seuil que la CI n'applique pas ne mesure plus rien.
+  veille: { fichier: "src/multicorpus_engine/sidecar.py", seuil: 2500, jours: 90,
             chantier: "A-01" }
 };

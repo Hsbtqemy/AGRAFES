@@ -178,7 +178,7 @@ le panneau latéral du même coup — la traînée le donne avec son sujet, à l
 le lit.
 
 **Le test d'admission du tableau de bord.** Un chiffre n'entre que s'il peut être
-mauvais et qu'être mauvais change la suite. Admis : la veille `sidecar.py` (`+410 / 500`,
+mauvais et qu'être mauvais change la suite. Admis : la veille `sidecar.py` (`+557 / 2500` depuis le relèvement du 25 août,
 seuil réel), les points de vérification en file (82), les items jamais confrontés au code
 (53), les constats d'audit ouverts (17). Recalés : le silence en jours actifs (on le sait
 faussé par la tenue du dossier — afficher en tête une mesure connue pour biaisée est pire
