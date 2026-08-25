@@ -16,6 +16,9 @@ statut: à venir
 - [ ] Décider si `text_norm` doit cesser de porter les entités XML (`&amp;`) sur les lignes riches : `normalize()` tourne sur un `text_raw` déjà échappé, donc une ligne riche contenant `&` s'affiche « &amp; » et se cherche mal en FTS
 - [ ] Vérifier sur données réelles quelle proportion des lignes **entièrement** en gras est un titre ou un intertitre plutôt qu'une emphase — 598 cas mesurés sur les `.docx` locaux, dont 589 sous 120 caractères, mais la longueur est un proxy et non une preuve
 - [ ] Si la proportion tient, trancher où le signal s'applique : pré-remplissage du rôle à l'import, ou simple proposition dans la couche Rôles — sans jamais retirer le `<hi rend="bold">` de `text_raw`, dont l'aller-retour TEI dépend
+- [ ] Rendre l'original consultable dès que le verbatim diverge du texte courant : le repli « voir l'original d'import » ne s'affiche que si `text_source ≠ text_raw` (`importOriginal.ts:20`), or l'import les pose identiques — la condition qui manque est celle que `_foldNorm` calcule déjà, et le repli n'est câblé que dans la couche Segmentation
+- [ ] Trancher la consultation de la stylisation dans le concordancier : la lecture page par page existe déjà (`_fetch_unit_texts`), le coût réel est la projection des offsets KWIC, calculés sur `text_norm`, vers un `text_raw` que chaque balise décale
+- [ ] Cadrer le geste de restylisation — remettre un passage en italique après correction — avant toute ligne de code : où vit le balisage réappliqué, réécriture de `text_raw` (que D-C1 dit réversible), table de spans, autre ?
 
 ## QA
 
@@ -57,6 +60,10 @@ contournent entièrement.
 **Le gras n'a pas la forme de l'italique, et c'est le constat le moins attendu.** Sur les 66 770 paragraphes des `.docx` locaux, l'italique est de l'emphase inline — 2 085 des 2 247 paragraphes concernés (93 %) le portent sur un *fragment*. Le gras fait l'inverse : 598 des 832 (72 %) couvrent la **ligne entière**, dont 589 sous les 120 caractères. Ce sont des titres et des intertitres, et seuls 26 d'entre eux portent un style de paragraphe de titre — le seul signal que l'import regarde (`docx_paragraphs.py:61`). Les autres arrivent sans rôle : dans `8-CI-TrEn-2022_A Aligner.docx`, `n=1` (« Texte_8 ») et `n=2` (le titre de l'article) sont entièrement en gras avec `unit_role = None`, alors que la base porte déjà les rôles `titre` et `intertitre`. Autrement dit, un gras pleine ligne n'est pas de l'emphase : c'est un signal structurel encodé en stylisation inline.
 
 Deux « signaux automatiques évidents » sont déjà morts à la vérification sur ce dépôt. D'où la forme des deux items ci-dessus : mesurer d'abord, décider ensuite, coder en dernier.
+
+**Ce qu'une correction fait vraiment à la stylisation, mesuré.** Une correction du stylo réécrit `text_norm` et **ne touche pas** `text_raw` : sur une base jetable, une unité passée de 519 à 26 caractères garde ses 542 caractères de verbatim balisé. L'italique n'est donc jamais détruit — il cesse d'être affiché, parce qu'il ne décrit plus le texte courant. Mais aucune surface ne le montre ensuite : le repli d'original se règle sur `text_source`, que l'importateur pose **égal** à `text_raw` et que le stylo ne touche pas davantage. La donnée est là, en double, et l'écran n'a aucune porte pour l'ouvrir.
+
+**L'enjeu de traduction.** Un italique marque un mot étranger, un titre d'œuvre, une insistance — autant de choses qu'une traduction rend autrement, et qu'on veut donc comparer. Voir la version d'origine ne suffira pas toujours : il faudra pouvoir re-styliser un texte corrigé, et ce geste n'existe pas. D-C1 avait prévu le retournement en toutes lettres — « réversible si un besoin *réécrire le verbatim* émerge » — c'est ce besoin qui émerge ici. Le versant *sortie* du même problème vit dans SORT-01 : aucun export ne porte à la fois le texte corrigé et sa stylisation.
 
 **Pourquoi l'asymétrie TEI mérite un code.** On exporte un balisage qu'on ne sait pas
 relire. Un utilisateur qui exporte en TEI puis réimporte croit récupérer son document et
