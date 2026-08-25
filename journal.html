@@ -234,6 +234,15 @@ a{color:var(--outremer)}
    reste une pastille, elle cesse d être insécable. */
 .pill.doc{white-space:normal;overflow-wrap:anywhere}
 
+/* Le serveur relit `journal.html` à chaque requête, jamais son propre code : après une
+   mise à jour, un processus laissé en marche sert la vue NEUVE avec un moteur ANCIEN.
+   Les champs manquants passent alors pour des données vides — une frise sans une seule
+   barre, triée par ordre alphabétique faute de dates. Ça s'est produit une fois, et rien
+   ne le disait. */
+.perime{background:var(--minium);color:var(--plat);padding:.7rem 1rem;border-radius:2px;
+  margin:0 0 1.2rem;font:400 var(--t2)/1.5 var(--mo)}
+.perime b{font-weight:600}
+
 /* ---- frise ---- */
 /* Pas de SVG : une piste en position relative et des barres en pourcentage. Un SVG en
    largeur 100 % dans une colonne qui se dimensionne sur son contenu se résout en rond
@@ -482,6 +491,20 @@ const ditCollisions = (l) => l.slice(0, 3).map(x => {
   return `<a href="#/c/${encodeURIComponent(x.code)}">${esc(x.code)}</a>
     <b>${x.n}</b> <i>(${etat})</i>`;
 }).join(" · ");
+
+/* Un champ que seule une version récente du serveur produit. On ne compare pas des
+   numéros de version — il faudrait les tenir à jour des deux côtés — mais la présence de
+   ce que la page a besoin de lire. Quand ce test devient faux, il suffit de le pointer
+   vers un champ plus récent. */
+const serveurPerime = () =>
+  D.chantiers.length > 0 && D.chantiers[0].ficheDate === undefined;
+
+const bandePerime = () => !serveurPerime() ? "" :
+  `<p class="perime"><b>Le serveur tourne sur une version antérieure de
+   <code>journal.mjs</code>.</b> La page est à jour, le moteur non : il relit le HTML à
+   chaque requête mais jamais son propre code. Les dates, la portée des audits et les
+   collisions manquent, et l'écran les montre comme si elles étaient vides. Arrête le
+   processus et relance-le.</p>`;
 
 const byCode = c => D.chantiers.find(x => x.code === c);
 const byFile = f => D.passes.find(p => p.file === f);
@@ -1024,7 +1047,7 @@ function rendre(){
   else if (h === "masses")      { html = vueMasses();           onglet = "#/masses"; }
   else                          html = vueChantiers();
 
-  vue.innerHTML = html;
+  vue.innerHTML = bandePerime() + html;
   document.querySelectorAll("#tabs a").forEach(a =>
     a.classList.toggle("on", a.getAttribute("href") === onglet));
 
