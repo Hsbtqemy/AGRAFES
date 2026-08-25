@@ -18,7 +18,8 @@ statut: à venir
 - [ ] Si la proportion tient, trancher où le signal s'applique : pré-remplissage du rôle à l'import, ou simple proposition dans la couche Rôles — sans jamais retirer le `<hi rend="bold">` de `text_raw`, dont l'aller-retour TEI dépend
 - [ ] Rendre l'original consultable dès que le verbatim diverge du texte courant : le repli « voir l'original d'import » ne s'affiche que si `text_source ≠ text_raw` (`importOriginal.ts:20`), or l'import les pose identiques — la condition qui manque est celle que `_foldNorm` calcule déjà, et le repli n'est câblé que dans la couche Segmentation
 - [ ] Trancher la consultation de la stylisation dans le concordancier : la lecture page par page existe déjà (`_fetch_unit_texts`), le coût réel est la projection des offsets KWIC, calculés sur `text_norm`, vers un `text_raw` que chaque balise décale
-- [ ] Cadrer le geste de restylisation — remettre un passage en italique après correction — avant toute ligne de code : où vit le balisage réappliqué, réécriture de `text_raw` (que D-C1 dit réversible), table de spans, autre ?
+- [ ] Implémenter le geste de restylisation selon `docs/DESIGN_inline_restyling.md` (modèle figé le 25 août : italique et gras seuls, style par caractère, canvas + matrice, trace de main obligatoire) — chantier entièrement front, le moteur accepte déjà les deux colonnes dans un seul appel
+- [ ] Mesurer d'abord, sur les lignes réellement corrigées du corpus, la proportion de fragments stylés retrouvables sans ambiguïté : c'est ce qui décide si la réapplication automatique existe ou si l'on se contente de montrer l'original
 
 ## QA
 
