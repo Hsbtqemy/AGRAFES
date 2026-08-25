@@ -431,6 +431,8 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
 const vsc = p => `vscode://file/${D.racine.replace(/\\/g, "/")}/${p}`;
 
 /* pastilles — posées APRÈS échappement ; un code absent de liens reste du texte */
+const RX_META = /[.*+?^${}()|[\]\\]/g;
+
 function pastilles(html){
   if (!D) return html;
   if (!RXL){
@@ -445,8 +447,11 @@ function pastilles(html){
       ? `${pre}<a class="pill i" href="${cible}">${code}</a>`
       : `${pre}<a class="pill e" href="${vsc(cible)}">${code}</a>`;
   });
-  return html.replace(/(^|[^\w\/-])(docs\/[\w.\-]+\.md)/g,
-    (m, pre, p) => `${pre}<a class="pill e doc" href="${vsc(p)}">${p.replace("docs/", "")}</a>`);
+  /* Le dossier de documentation vient du serveur. Le coder ici en dur était la dernière
+     fuite de grammaire dans la vue, qui ne lit pas la config du dépôt. */
+  const dos = (D.docs || "docs").replace(RX_META, "\\$&");
+  return html.replace(new RegExp("(^|[^\\w/-])(" + dos + "/[\\w.\\-]+\\.md)", "g"),
+    (m, pre, p) => `${pre}<a class="pill e doc" href="${vsc(p)}">${p.slice(dos.length + 1)}</a>`);
 }
 
 const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>")

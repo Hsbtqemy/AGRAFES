@@ -51,10 +51,17 @@ const TRAINEE = Number(opt("trainee", 5));
 // facultatif : sans lui, on garde le dossier (fiches, passes, cases, contrôleur,
 // front d'intégration) et on perd ce qui exige de connaître le dépôt — les masses
 // par aire, la veille à seuil, les liens code → document.
+// `documentation` porte deux natures qu'il fallait séparer. Le NOM DU DOSSIER est de
+// l'inventaire : il sert à distinguer un commit de cadrage d'un commit de code, et son
+// absence ne rendait pas ce test muet — elle le faisait SUR-DÉCLENCHER, une note de
+// conception comptant alors comme du code et démentant un `à venir` qui était juste.
+// D'où une convention plutôt qu'un réglage : `docs/` par défaut, ce qui ne coûte rien à
+// un dépôt qui n'en a pas. Les SOURCES, elles, décrivent quels fichiers portent quels
+// codes : ça reste de la grammaire, et son absence ne coûte que des liens.
 const DEFAUT = {
   refs: ["origin/main"],
   codes: { chantier: RX.chantier, decision: RX.decision, adr: RX.adr },
-  documentation: null,
+  documentation: { dossier: "docs", sources: [] },
   aires: [],
   veille: null
 };
@@ -66,7 +73,12 @@ const CFG = await (async () => {
     console.error(`config illisible (${p}) : ${e.message} — on continue sans.`);
     return null;
   });
-  return { ...DEFAUT, ...(m ? (m.default || m) : {}) };
+  // Fusion imbriquée : à plat, déclarer `documentation.sources` seul effacerait le
+  // dossier par défaut, et déclarer un seul motif de `codes` effacerait les deux autres.
+  const c = m ? (m.default || m) : {};
+  return { ...DEFAUT, ...c,
+    codes: { ...DEFAUT.codes, ...(c.codes || {}) },
+    documentation: { ...DEFAUT.documentation, ...(c.documentation || {}) } };
 })();
 
 // Refs d'intégration, de l'amont vers l'aval. Un chantier vit sur la première qui
@@ -277,7 +289,7 @@ function fronts() {
 const AIRES = CFG.aires;
 // Le dossier de documentation du dépôt, quand il est déclaré : sert à distinguer un
 // commit de cadrage (note + fiche) d'un commit de code. Sans config, aucun démenti.
-const DOCS = CFG.documentation?.dossier || null;
+const DOCS = CFG.documentation.dossier;
 
 // `fenetre` en mois : sur 6 le delta égale presque la masse et le classement retombe
 // sur la taille ; sur 3 les reculs ressortent (screens, ui) et le tri dit qui bouge.
@@ -447,8 +459,7 @@ function branchesEnVol(codes, parCommit) {
 const fichiersParCommit = () => surTete("fichiers", () => {
   const raw = git("log", "--all", "--no-renames", "--name-only", "--format=@%h");
   const par = new Map();
-  const exclus = [DIR + "/", CFG.documentation?.dossier && CFG.documentation.dossier + "/"]
-    .filter(Boolean);
+  const exclus = [DIR + "/", DOCS + "/"];
   let cur = null;
   for (const l of raw.split("\n")) {
     if (l.startsWith("@")) { cur = new Set(); par.set(l.slice(1), cur); continue; }
@@ -503,8 +514,7 @@ const MAX_CHEMINS = 80;
 function calculPortee(fichier, depuis) {
   const texte = lireSync(join(ROOT, fichier));
   if (texte === null || !depuis) return null;
-  const exclus = [DIR + "/", CFG.documentation?.dossier && CFG.documentation.dossier + "/"]
-    .filter(Boolean);
+  const exclus = [DIR + "/", DOCS + "/"];
   const vus = new Set();
   for (const m of texte.match(RX_CHEMIN) || []) {
     const c = m.replace(/^\.\//, "");
@@ -562,7 +572,7 @@ function controleur() {
 async function index() {
   const map = {};
   const cfg = CFG.documentation;
-  if (!cfg) return map;
+  if (!cfg.sources.length) return map;   // aucun motif déclaré : rien à découvrir
 
   const dossier = join(ROOT, cfg.dossier);
   let noms = []; try { noms = (await readdir(dossier)).filter(n => n.endsWith(".md")); } catch {}
@@ -660,6 +670,9 @@ async function build() {
     repo: (git("rev-parse", "--show-toplevel") || ROOT).split(/[\\/]/).pop(),
     branche: git("rev-parse", "--abbrev-ref", "HEAD") || "—",
     refs: REFS,
+    // La vue transforme un chemin de document en lien : elle a besoin de savoir où vit la
+    // documentation, et elle ne lit pas la config.
+    docs: DOCS,
     racine: ROOT,
     genere: new Date().toISOString(),
     dernierJour: jours[jours.length - 1] || null,
