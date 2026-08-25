@@ -52,16 +52,17 @@ conclusions** des §8 et §10.
 | ALI-12 | 🟠 | P1 | Le diagnostic préalable **existe et est bon** (constat initial corrigé), mais son critère d'ancrage n'a **aucun seuil de couverture** : 1 ligne porteuse sur 1 231 suffit à éteindre l'avertissement. |
 | ALI-13 | 🟠 | P1 | Le bead posé par le ⭙ **masque une collision légitime** — risque jugé résiduel en §5, **matérialisé** en §8 (voir ALI-22). |
 | ALI-14 | 🟢 | P3 | L'avertissement d'ancrage dit quoi faire, jamais **pourquoi** : segmenter et ancrer sont confondus. |
-| ALI-15 | 🟠 | P1 | Impossible de réaligner **une seule langue** depuis l'UI ; le moteur sait le faire, le wrapper front existe et n'est appelé nulle part. |
-| ALI-16 | 🟡 | P2 | Aucun effectif par colonne : la comparabilité des grains, qui décide de la qualité, n'est pas lisible. |
+| ALI-15 | ✅ | ~~P1~~ | Impossible de réaligner **une seule langue** depuis l'UI. **Clos le 2026-08-25** (contrat 1.6.77) : `target_doc_ids` sur `POST /families/{id}/align`, un « ⇄ » par en-tête de colonne, et « Recalcul global » devient « Recalculer &lt;langues&gt; » quand le périmètre est réduit — la confirmation nomme les colonnes épargnées et **compte les liens manuels** qu'elle va détruire (correctif 3 compris). |
+| ALI-16 | 🟡 | P2 | Aucun effectif par colonne. **Moitié livrée** (2026-08-25) : `link_counts` (∥ colonnes projetées, rejetés compris + part manuelle) et l'effectif affiché sur chaque chip de langue. **Reste ouvert** pour les deux chiffres qui demandent un champ moteur — nombre de ¶ et couverture d'ancre. |
 | ALI-17 | ✅ | ~~P1~~ | Réaligner après une **coupe d'unité** superpose une couche au lieu de la remplacer — l'unicité porte sur la paire d'unités. |
-| ALI-18 | 🟠 | P1 | Chaque geste re-projette la famille entière, toutes langues comprises : ~2 s pour une cellule sur 7 652. |
+| ALI-18 | 🟠 | P1 | Chaque geste re-projette la famille entière. **Correctifs 0 et 2 livrés** : ANALYZE (ALI-19, 2026-08-19) a ramené le service à **82 ms** — le coût serveur a disparu ; puis `target_doc_ids` sur `/align/matrix` (2026-08-25, 1.6.77) permet de ne charger que les colonnes affichées (−57 % de charge utile et moitié moins de cellules sur la famille de référence). **Restent ouverts** les correctifs 1 (patch local au lieu de re-projeter) et 3 (fenêtrage du rendu), plus les deux économies gratuites : `indent=2` et les `title` répétés. |
 | ALI-19 | ✅ | ~~P0~~ | Aucune statistique SQLite (`ANALYZE` jamais lancé) → mauvais index sur un `NOT EXISTS` corrélé. **17,6×** pour 46 ms. |
 | ALI-20 | 🟡 | P2 | Pas de bandeau d'annulation dans l'Alignement, **y compris pour les deux gestes qui sont journalisés** (✎, ¶). **Moitié livrée** (§12.10) : la matrice porte un bandeau pour les gestes de lien, et un geste multi-requêtes s'y défait d'un bloc. **Reste ouvert** pour les deux gestes visés par le libellé — ✎ et ¶ passent par `/prep/undo`, une mécanique différente — et pour le panneau Alignement, l'autre surface. |
 | ALI-21 | 🟡 | P2 | Gestes de cellule invisibles au repos, glyphe ↻ ≠ ↺ annoncé, et refus `_cutBusy` totalement muet. |
 | ALI-22 | ✅ | ~~P1~~ | Le ⭙ n'a pas d'inverse ; la réparation intuitive (＝) laisse la cible sur **deux** segments, masquée par le bead. **Démontré en base.** (a) **payé** (§12.10) : le ⭙ a désormais son inverse — un bouton qui défait les trois requêtes du geste d'un seul bloc. |
 | ALI-23 | ✅ | ~~P1~~ | **Ajouté le 2026-08-23, trouvé à l'usage et non à l'audit.** Le Contrôle, le TEI, le TMX/bilingue, le CSV et la liste de curation triaient sur `external_id` — un numéro de **paire** que D-W13 (1.6.55) fait volontairement hériter à un lien créé au geste. À numéro égal le départage tombait sur `link_id`, l'ordre de **création** : une coupe qui donne la tranche initiale au segment antérieur rendait les deux à l'envers. Mesuré : 2 paires du corpus de travail sur 14 575 liens. **Clos** en triant sur la position du pivot (`pu.n, target_char_start, link_id`) aux 6 sites — ce qui répare aussi les liens déjà en base ; `external_id` est laissé intact. |
 | ALI-24 | ✅ | ~~P1~~ | **Ajouté le 2026-08-24, suite d'ALI-23.** Le badge `[§N]` du Contrôle affichait `alignment_links.external_id`, qui n'est pas un numéro de segment mais **la clé qui a apparié** : le marqueur `[N]` du pivot pour deux stratégies, sa position `n` pour les trois autres — et `external_id → position` écrit les deux dans un même run. Deux façons de mentir : le geste, qui n'apparie sur rien (6 des 7 liens manuels du corpus portaient un numéro faux, contre 0 des 14 568 liens de run) ; et les unités de structure, qui décalent `n` du rang que la matrice affiche (0 cas aujourd'hui, aucune garantie demain). **Clos** en calculant le numéro au lieu de le stocker : `/align/audit` rend `pivot_segment`, le rang du pivot parmi les lignes de son document — celui-là même que la matrice affiche (contrat 1.6.76). Le geste cesse d'hériter et écrit la position du pivot. |
+| ALI-25 | ✅ | ~~P1~~ | **Ajouté le 2026-08-25, trouvé à l'usage.** La grille nommait « à réparer » le cas normal, et taisait l'anomalie. **Mesuré** : 338 groupes 2-1 dans le corpus, **tous contigus, tous de taille 2** — soit 176 des 179 alertes de la famille Modiano, contre 3 vraies cellules vides ; pendant ce temps 554 cellules réunissent plusieurs phrases de la traduction **sans le moindre signe** (391 sur la seule colonne es de Lodge, 28,5 %). **Clos** : le 2-1 est peint UNE fois à cheval sur ses lignes (`rowspan`) et compté à part ; le N-1 porte une pastille au repos. |
 
 > ALI-13 est traité en §5 (passe beads) ; ALI-14 à ALI-22 en §7 à §10 (passes du 2026-08-19) ; §10 chiffre le correctif d'ALI-10/ALI-17 ; le **§11** approfondit la famille « données
 > détruites » (ALI-03/10/17/22 + QA-06) et tranche ses décisions de conception.
@@ -488,6 +489,37 @@ textes portent (numéros `[N]` ou frontières de ¶) ; segmenter seul n'en crée
 
 ### ALI-15 🟠 P1 — impossible de relancer une seule langue depuis l'interface
 
+> **✅ TRAITÉ le 2026-08-25** — contrat **1.6.77**, aucun chemin nouveau : deux routes
+> gagnent le même paramètre optionnel `target_doc_ids`.
+>
+> Le correctif est allé plus loin que les trois niveaux proposés ci-dessous, parce que le
+> besoin exprimé à l'usage était plus large que « relancer une langue » : **on travaille une
+> traduction à la fois**. D'où un **ensemble de langues affichées** (chips, défaut = toutes)
+> qui est à la fois le `target_doc_ids` de la projection et le périmètre des gestes
+> destructifs — invariant : *ce qui est chargé est ce qui est affiché, et on ne réécrit
+> jamais une colonne masquée*.
+>
+> - (1) **fait** — un « ⇄ » par en-tête de colonne, à côté du « ↗ Segmenter », qui relance
+>   CETTE paire seule **sans changer l'affichage** (réaligner et regarder restent deux
+>   gestes distincts). La porte d'ancrage est elle aussi scopée : un « ⇄ » sur l'espagnol
+>   n'est plus barré par un défaut d'ancrage du roumain.
+> - (2) **fait** — « Recalcul global » devient « Recalculer &lt;langues&gt; » dès que le
+>   périmètre est réduit, et la phrase nomme les colonnes **épargnées**.
+> - (3) **tranché, et fait** — les liens manuels ne sont pas protégés, mais ils sont
+>   **comptés dans la confirmation** : « 15 liens, dont 3 posés à la main et qui seront
+>   supprimés (« Conserver les liens validés » ne protège que les liens validés) ».
+>
+> La confirmation a changé d'échelle au passage : elle s'ouvre désormais sur les liens **du
+> périmètre**, pas de la famille. Aligner l'espagnol pour la première fois ne déclenche plus
+> un avertissement destructif au motif que l'anglais est aligné depuis juin.
+>
+> *Tests* : `tests/test_sidecar_align_scope.py` (7 cas HTTP, dont le central — un recalcul
+> scopé sur EN laisse la colonne ES **bit pour bit**, `link_id` compris, et épargne son lien
+> manuel ; les 7 échouent sur le code d'avant), `tests/test_matrix_export_service.py` (6 cas
+> service), `AlignMatrixView.visibleCols.test.ts` (11 cas d'intégration) et
+> `alignVisibleCols.test.ts` (18 cas purs).
+
+
 `AlignMatrixView._runAlign` (`tauri-prep/src/screens/AlignMatrixView.ts:451, 541`) n'appelle
 qu'`alignFamily` → `POST /families/{id}/align`, qui boucle sur **tous** les enfants
 `translation_of`/`excerpt_of` (`sidecar.py:6358-6420`) sans paramètre de filtrage.
@@ -714,6 +746,40 @@ manuel de la veille, exactement comme décrit. Les quatre liens manuels espagnol
 aujourd'hui sont postérieurs au run (07:15:32 → 07:17:40 UTC) : c'est du travail refait.
 
 ### ALI-18 🟠 P1 — chaque geste re-projette la famille entière, toutes langues comprises
+
+> **⚠️ MESURES PÉRIMÉES — refaites le 2026-08-25.** Les chiffres ci-dessous datent d'AVANT
+> ALI-19 (`ANALYZE`, traité le 2026-08-19). Le coût **serveur** a disparu : `POST
+> /align/matrix` sur Modiano met **82 ms** aujourd'hui, contre les 1 426 ms mesurés ici.
+> Ce qui reste est le **fil** et le **DOM** :
+>
+> | | mesuré le 2026-08-25 |
+> |---|---|
+> | payload compact / sur le fil (`indent=2`) | 2,21 Mo / **3,04 Mo** |
+> | dont `cell_links` | 1,58 Mo (**71 %**) |
+> | par colonne de traduction | **≈ 0,63 Mo** (0,52 `cell_links` + 0,11 texte) |
+>
+> **Correctif 2 livré** (contrat 1.6.77) : `target_doc_ids` sur `/align/matrix`. Mesuré
+> **sur l'implémentation, pas en projection** — travailler une seule traduction contre la VO,
+> l'usage qui a motivé le chantier :
+>
+> | famille | colonnes | sur le fil | cellules de traduction | service |
+> |---|---|---|---|---|
+> | Modiano | fr + en/es/ro | 3,04 Mo | 5 739 | 72 ms |
+> | Modiano | **fr + ro** | **1,28 Mo (−58 %)** | **1 913 (−67 %)** | **22 ms** |
+> | Lodge | en + es/fr | 1,88 Mo | 2 744 | 25 ms |
+> | Lodge | **en + es** | **1,14 Mo (−39 %)** | **1 372 (−50 %)** | 17 ms |
+>
+> Le rendu étant linéaire en cellules (table ci-dessus dans la version d'origine), le DOM
+> suit la dernière colonne.
+>
+> *Tempérament honnête* : le corpus réel compte **20 familles, dont 11 à 3 colonnes et une
+> seule à 4**. Le « N non borné » de `DESIGN_alignment_workspace` §2.1 reste une hypothèse
+> d'avenir ; le gain d'aujourd'hui plafonne à −57 % sur une famille et −43 % sur onze.
+>
+> **Restent ouverts** : correctif 1 (patch local du `<td>` au lieu de re-projeter — c'est lui
+> qui couvrirait la majorité des 21 appels), correctif 3 (fenêtrage du rendu), et les deux
+> économies gratuites (`indent=2`, les `title` répétés).
+
 
 Vingt-et-un gestes de la matrice appellent `_reloadPreservingScroll()`
 (`tauri-prep/src/screens/AlignMatrixView.ts:1985`), qui appelle `_loadMatrix()`, qui refait
@@ -1117,6 +1183,62 @@ lui-même et non contre une reformulation de sa formule — sinon le test ne pro
 propre copie. Côté front, `AlignPanel.segmentBadge.test.ts` épingle la règle de repli, qui a
 trois cas et non deux : champ absent (sidecar ancien → on affiche l'ancien numéro) ≠ champ à
 `null` (le moteur refuse de donner un rang → on n'affiche rien).
+
+### ALI-25 ✅ P1 — le compteur criait au loup sur le cas normal, et taisait l'anomalie
+
+> **✅ TRAITÉ le 2026-08-25** — front pur, aucun mouvement de contrat.
+
+Deux formes de « multisegment » coexistent dans la grille. L'une était présentée comme une
+faute, l'autre n'était pas présentée du tout.
+
+**(a) Le groupe 2-1.** Une traduction qui couvre plusieurs segments source contigus — parce
+qu'elle n'a pas coupé au même endroit. `alignMatrix.ts` la marquait `fused`, peignait **le
+même texte sur les deux lignes** avec un ⚠ « à réparer », et la comptait dans
+`warningCells`.
+
+Mesuré sur `corpus_agrafes.WORKCOPY.db` : **338 groupes, 100 % à segments source contigus,
+100 % de taille 2** — pas un seul dispersé. Sur la famille Modiano, **176 des 179 cellules
+« à réparer » sont des groupes** ; il n'y a que **3** vraies cellules vides. Le compteur
+mesurait donc, à 98 %, un phénomène linguistique normal.
+
+Et il ne pouvait pas faire mieux : les deux natures ont **exactement la même forme**.
+`ro n=1841` (« Numele meu. Sau cel al jocheului, de pildă. » sur `fr 1902` « Mon nom. » +
+`fr 1903` « Ou celui du jockey, par exemple. ») est un bead **légitime** ; `ro n=1847`
+(« Stăteam amîndoi în picioare la marginea taluzului. » = le seul `fr 1910`, mais rattaché
+aussi à `fr 1909` « Pedro… ») est une **dérive**. Rien ne les sépare automatiquement —
+`bead_id` n'aide pas, il n'est renseigné que sur 13,7 % des liens.
+
+*Correctif* : ne pas chercher un compteur plus malin, rendre le cas **lisible**. La cellule
+est peinte **une seule fois, à cheval** sur ses segments source (`rowspan`), tagguée
+« 1 trad ↔ N segments », sur fond d'information et non d'alerte. Le doublon — ce qui
+déroutait — disparaît, et le lecteur juge sur pièces. Le geste reste offert (« ✂ Répartir »)
+sur la frontière basse du groupe, ce que `resolveFusedCellLinks` attend déjà : couper
+rétrécit le groupe et le bouton réapparaît pour la frontière suivante, donc les groupes de
+3+ (aucun aujourd'hui) se défont de proche en proche sans cas particulier.
+
+*Cas résiduel assumé* : un `rowspan` ne saute pas de ligne. Un groupe qu'une ligne d'ajout
+(D8) interromprait garde l'affichage dupliqué et le ⚠ — vérifié sur les cinq familles
+alignées du corpus : **0 cas** aujourd'hui.
+
+**(b) Le N-1.** Une cellule qui concatène plusieurs unités de la traduction. Elle n'avait
+**aucun marqueur, ni au repos ni au survol** : `_cell` joint les textes par un espace et la
+cellule paraît simplement longue. **554 dans le corpus**, dont **391 sur la seule colonne es
+de Lodge — 28,5 % de la colonne**, toutes comptées « alignées » par un bandeau qui n'en
+signalait que 41. L'échantillon dit ce que c'est : des notes du traducteur avalées dans la
+cellule voisine (« Oh, well, goodnight then. » ↔ « Más adelante, el mismo personaje presenta
+otra propuesta… ( N. del T. ). »).
+
+*Correctif* : une pastille « N phrases » **visible au repos** — on ne découvre pas au survol
+une anomalie dont on ignore l'existence (c'est le reproche d'ALI-21).
+
+**Le bandeau, enfin, range les trois dans le bon ordre** : `9/10 cellules alignées · 1 à
+réparer · 1 groupée · 391 à plusieurs phrases · 90 %`. Les deux formes sont nommées **à
+côté** du compte, jamais dedans : les taire ferait passer pour « aligné » ce que personne
+n'a regardé ; les compter comme fautes reviendrait à l'état d'avant.
+
+*Tests* : `alignMatrix.test.ts` (groupe formé, `groupSize`, continuation non rendue, comptes
+séparés, bandeau), `alignMatrixGrid.test.ts` (le texte partagé n'apparaît qu'une fois, le
+`rowspan`, le ✂ sur la bonne frontière).
 
 ### ALI-23 ✅ P1 — l'ordre rendu était celui de l'aligneur, pas celui du texte
 
