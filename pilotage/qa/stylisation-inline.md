@@ -16,6 +16,13 @@ Elle couvre ce que les tests ne peuvent pas voir. Les 1105 tests automatiques to
 happy-dom, où `getBoundingClientRect` rend des zéros : **le placement de la barre à
 l'écran n'est prouvé par rien**, et c'est le premier objet de cette passe.
 
+**Avant de commencer — vérifier ce qu'on exécute.** Le geste vit dans `tauri-prep`, que
+le shell embarque à la compilation : un binaire déjà construit ne le contient pas. Lancer
+`npm --prefix tauri-shell run tauri -- dev`. Un doute se lève en dix secondes : la couche
+**Segmentation** rend l'italique depuis avril, bien avant ce lot — si elle ne le montre pas
+non plus, c'est le build qui est en retard, pas le code. (Perdu une fois le 25 août 2026
+sur un binaire du 29 juin.)
+
 **Ce qui est hors périmètre, et ne doit pas être signalé comme un défaut** — le geste
 n'existe pas encore dans la couche **Segmentation** (rendu propre, tranche suivante) ni
 dans la **matrice d'alignement** (les cellules ne transportent pas encore `text_raw`). La
