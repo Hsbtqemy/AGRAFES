@@ -243,6 +243,15 @@ a{color:var(--outremer)}
   margin:0 0 1.2rem;font:400 var(--t2)/1.5 var(--mo)}
 .perime b{font-weight:600}
 
+/* La barre de carte : une piste pleine largeur, discrète, sous le pied. Elle ne porte ni
+   axe ni mois — c'est la comparaison d'une carte à l'autre qui informe. */
+.mini{display:block;position:relative;height:3px;margin:.55rem 0 0;border-radius:2px;
+  background:var(--verge)}
+.mini>span{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--minium)}
+.s-clos .mini>span,.s-liv .mini>span{background:var(--pl-close-bg)}
+.s-ven .mini>span{background:var(--outremer)}
+.s-dif .mini>span{background:var(--minium);opacity:.6}
+
 /* ---- frise ---- */
 /* Pas de SVG : une piste en position relative et des barres en pourcentage. Un SVG en
    largeur 100 % dans une colonne qui se dimensionne sur son contenu se résout en rond
@@ -687,6 +696,7 @@ function vueChantiers(){
   const dif = tri(D.chantiers.filter(c => c.statut === "différé"));
   const fer = tri(D.chantiers.filter(c => !OUVERT(c.statut)));
 
+  const ech = echelle();
   const carte = c => {
     const r = c.reste.filter(x => !x.fait).length;
     return `<article class="carte s-${slug(c.statut)}">${plaque(c)}
@@ -700,6 +710,7 @@ function vueChantiers(){
             ${c.dernier ? `<span>${c.dernier.hash} · ${c.dernier.date}</span>` : ""}
             ${c.front ? `<span class="fr${c.front.integre ? "" : " nf"}">${esc(c.front.ref)}</span>` : ""}
           </p>
+          ${barreCarte(c, ech)}
         </div>
       </article>`;
   };
@@ -889,6 +900,47 @@ function vueFil(){
           <span class="s">${ligne(c.sujet)}</span></div>`).join("")}</div>`).join("")}`;
 }
 
+/* L'échelle du temps, partagée par la frise et par les barres des cartes. Extraite ici
+   parce que deux calculs finiraient par diverger : une barre de carte et une barre de
+   frise qui ne diraient pas la même durée seraient pires qu'une seule des deux.
+
+   L'axe part du premier COMMIT, pas du premier document. Mesuré : les dates d'entrée
+   d'audits précédaient le travail de 33 jours, un quart de la largeur ne portant aucune
+   barre. Le vide qui RESTE à l'intérieur n'est pas comprimé : il n'y en a qu'un, il ne
+   rapprocherait qu'un seul chantier, et une échelle brisée détruirait la seule chose que
+   ces barres servent à faire — comparer des durées. */
+const JOUR = 864e5;
+const tps = d => Date.parse(d + "T00:00:00");
+
+function echelle(){
+  const toutes = [], travaux = [];
+  for (const c of D.chantiers) {
+    for (const d of [c.premier?.date, c.dernier?.date, c.auditDate, c.ficheDate]) if (d) toutes.push(d);
+    if (c.premier) travaux.push(c.premier.date);
+  }
+  for (const p of D.passes) for (const d of [p.entree, p.derniere]) if (d) toutes.push(d);
+  if (!toutes.length) return null;
+  const a = travaux.length ? Math.min(...travaux.map(tps)) : Math.min(...toutes.map(tps));
+  const b = Math.max(...toutes.map(tps), tps(D.dernierJour || new Date().toISOString().slice(0, 10)));
+  /* Une marge d'un jour de chaque côté : sans elle, le premier commit colle au bord et se
+     lit comme une troncature plutôt que comme un début. */
+  const lo = a - JOUR, amp = (b + JOUR) - lo;
+  return { lo, amp, b,
+    avant: d => tps(d) < lo,
+    pc: d => Math.max(0, (tps(d) - lo) / amp * 100).toFixed(2) };
+}
+
+/* La même barre que sur la frise, posée sur une carte. Sans axe ni étiquette : ce qui se
+   lit d'une carte à l'autre est la LONGUEUR et la POSITION, pas une date — la date exacte
+   est déjà deux lignes plus haut. Un chantier sans commit n'a pas de piste du tout,
+   plutôt qu'une piste vide qui se lirait comme une durée nulle. */
+function barreCarte(c, e){
+  if (!e || !c.premier) return "";
+  const d1 = e.pc(c.premier.date), d2 = e.pc(c.dernier.date);
+  return `<span class="mini" title="${esc(c.premier.date)} → ${esc(c.dernier.date)}"><span
+    style="left:${d1}%;width:max(3px,${(d2 - d1).toFixed(2)}%)"></span></span>`;
+}
+
 /* ---------------- frise ---------------- */
 /* Ce que la carte d'un chantier ne peut pas dire : sa FORME dans le temps. Mesuré sur
    quinze fiches, deux chantiers affichaient une carte identique — même statut, silence
@@ -897,34 +949,13 @@ function vueFil(){
    commit seul ne distingue pas les deux ; les deux bornes, si.
    Pas de liens entre chantiers : la relation qui existe entre eux est la collision de
    fichiers, elle se dérive et ne se dessine pas en graphe. */
-const JOUR = 864e5;
-
 function vueFrise(){
-  const t = d => Date.parse(d + "T00:00:00");
-  const toutes = [], travaux = [];
-  for (const c of D.chantiers) {
-    for (const d of [c.premier?.date, c.dernier?.date, c.auditDate, c.ficheDate]) if (d) toutes.push(d);
-    if (c.premier) travaux.push(c.premier.date);
-  }
-  for (const p of D.passes) for (const d of [p.entree, p.derniere]) if (d) toutes.push(d);
-  if (!toutes.length) return vide(
+  const e = echelle();
+  if (!e) return vide(
     `<p>Rien à situer dans le temps : aucun commit ne cite un code de chantier, et
      aucune fiche n'est encore entrée dans le dépôt.</p>`);
-
-  /* L'axe part du premier COMMIT, pas du premier document. Mesuré : les dates d'entrée
-     d'audits précédaient le travail de 33 jours, un quart de la largeur ne portant
-     aucune barre. Ce qui tombe avant n'est pas perdu — c'est marqué hors-champ au bord
-     gauche, avec sa vraie date au survol.
-     Le vide qui RESTE à l'intérieur (29 jours mesurés) n'est pas comprimé : il n'y en a
-     qu'un, il ne rapprocherait qu'un seul chantier, et une échelle brisée détruirait la
-     seule chose que cette vue sert à faire — comparer des durées. */
-  const a = travaux.length ? Math.min(...travaux.map(t)) : Math.min(...toutes.map(t));
-  const b = Math.max(...toutes.map(t), t(D.dernierJour || new Date().toISOString().slice(0, 10)));
-  /* Une marge d'un jour de chaque côté : sans elle, le premier commit colle au bord et
-     se lit comme une troncature plutôt que comme un début. */
-  const lo = a - JOUR, amp = (b + JOUR) - lo;
-  const avant = d => t(d) < lo;
-  const pc = d => Math.max(0, (t(d) - lo) / amp * 100).toFixed(2);
+  const { lo, b, avant, pc } = e;
+  const t = tps;
 
   /* Traits de mois. Le premier de chaque mois compris dans l'intervalle : les mois n'ont
      pas la même longueur, un dégradé répété ne tomberait pas juste. */
