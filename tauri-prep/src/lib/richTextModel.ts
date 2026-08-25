@@ -244,6 +244,23 @@ export function domOffsetToPlain(plain: string, domOffset: number): number {
   return i;
 }
 
+/**
+ * L'inverse de `domOffsetToPlain` : où tombe, à l'écran, un offset du texte nu.
+ *
+ * Sert à retrouver la sélection après un geste : la ligne est réaffichée, ses nœuds sont
+ * neufs, mais les bornes qu'on a gardées sont en coordonnées de texte nu. Le texte nu
+ * étant invariant sous la pose d'une balise, elles désignent encore le même passage.
+ */
+export function plainOffsetToDom(plain: string, plainOffset: number): number {
+  let seen = 0;
+  let i = 0;
+  while (i < plain.length && i < plainOffset) {
+    i += _entityLength(plain, i);
+    seen++;
+  }
+  return seen;
+}
+
 /** Longueur du texte tel que le DOM l'affiche (entités résolues). */
 export function domLength(plain: string): number {
   let seen = 0;

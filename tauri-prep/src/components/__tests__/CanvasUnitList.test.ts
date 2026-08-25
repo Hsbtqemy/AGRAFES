@@ -371,6 +371,105 @@ describe("stylisation inline (§5, DESIGN_inline_restyling)", () => {
     span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
     expect(bar()).toBeNull();
   });
+  it("refuse une ligne nue portant une entité XML — son texte n'est pas ce qu'on croit", () => {
+    // `text_norm` hérite de l'échappement de `text_raw`. Sur une ligne SANS balise, le
+    // rendu ré-échappe : « &amp; » s'affiche tel quel (item ouvert de RICH-01). Le garde
+    // de cohérence le voit — 23 caractères à l'écran contre 19 attendus — et refuse.
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    const text = "Marks &amp; Spencer plc";
+    list.setData({ docId: 1, units: [unit(1, { text_norm: text, text_raw: text })] });
+    list.render();
+    expect(host.querySelector(".prep-conv-unit-text")!.textContent).toBe("Marks &amp; Spencer plc");
+    selectInRow(8, 15);
+    expect(bar()?.hidden ?? true).toBe(true);
+  });
+
+  it("repose la sélection au bon endroit malgré une entité XML avant elle", async () => {
+    // Sur une ligne DÉJÀ balisée, le navigateur résout l'entité : cinq caractères en base
+    // pour un seul à l'écran. Une restauration naïve décalerait la sélection de quatre.
+    const saved: string[] = [];
+    const list = new CanvasUnitList(host, { onStyleText: async (_id, r) => { saved.push(r); } });
+    list.setData({ docId: 1, units: [unit(1, {
+      text_norm: "Marks &amp; Spencer plc",
+      text_raw: '<hi rend="bold">Marks</hi> &amp; Spencer plc',
+    })] });
+    list.render();
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text")!;
+    expect(span.textContent).toBe("Marks & Spencer plc"); // l'entité est affichée résolue
+
+    const node = [...span.childNodes].find((n) => (n.textContent ?? "").includes("Spencer"))!;
+    const range = document.createRange();
+    range.setStart(node, 3);  // « Spencer » dans le nœud « & Spencer plc »
+    range.setEnd(node, 10);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    expect(bar()!.hidden).toBe(false);
+
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(saved).toEqual(['<hi rend="bold">Marks</hi> &amp; <hi rend="italic">Spencer</hi> plc']);
+    expect(window.getSelection()!.toString()).toBe("Spencer"); // et pas « encer p »
+  });
+
+  it("garde le surlignage et la barre après un style, pour enchaîner I puis G", async () => {
+    const saved: Array<[number, string]> = [];
+    const list = new CanvasUnitList(host, { onStyleText: async (id, r) => { saved.push([id, r]); } });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    selectInRow(3, 6);
+
+    const press = (t: string) => bar()!.querySelector<HTMLElement>(`.prep-conv-stylebar-btn--${t}`)!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+
+    press("italic");
+    await flush();
+    // La barre reste, et la sélection aussi : le second style s'applique sans re-viser.
+    expect(bar()!.hidden).toBe(false);
+    const sel = window.getSelection()!;
+    expect(sel.isCollapsed).toBe(false);
+    expect(sel.toString()).toBe("mot");
+
+    press("bold");
+    await flush();
+    expect(saved).toEqual([
+      [10, 'un <hi rend="italic">mot</hi> ici'],
+      [10, 'un <hi rend="bold italic">mot</hi> ici'],
+    ]);
+  });
+
+  it("le même bouton retire ce qu'il vient de poser, sans passer par Annuler", async () => {
+    const saved: string[] = [];
+    const list = new CanvasUnitList(host, { onStyleText: async (_id, r) => { saved.push(r); } });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    selectInRow(3, 6);
+
+    const italic = () => bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!;
+    italic().dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(italic().getAttribute("aria-pressed")).toBe("true"); // l'état suit le texte
+
+    italic().dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(saved).toEqual(['un <hi rend="italic">mot</hi> ici', "un mot ici"]);
+    expect(italic().getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("la sélection reposée couvre le même passage à travers les balises neuves", async () => {
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    selectInRow(0, 6); // « un mot », à cheval sur ce qui deviendra deux nœuds
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    // La ligne porte désormais « un <em>mot</em> ici » : la sélection traverse les nœuds.
+    expect(host.querySelector(".prep-conv-unit-text em")).not.toBeNull();
+    expect(window.getSelection()!.toString()).toBe("un mot");
+  });
 });
 
 describe("stylisation inline — gardes de la passe adverse", () => {
@@ -421,9 +520,10 @@ describe("stylisation inline — gardes de la passe adverse", () => {
     expect(bar()!.hidden).toBe(true);
   });
 
-  it("attend la fin d'une correction avant de styliser", async () => {
+  /** Ouvre l'éditeur sur l'unité 1 d'une liste de deux, et rend la main sur les deux lignes. */
+  async function withOpenEditor(styled: string[][] = []) {
     const list = new CanvasUnitList(host, {
-      onStyleText: async () => {},
+      onStyleText: async (id, raw) => { styled.push([String(id), raw]); },
       onEditText: async () => {},
     });
     list.setData({
@@ -434,11 +534,35 @@ describe("stylisation inline — gardes de la passe adverse", () => {
       ],
     });
     list.render();
-    host.querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click(); // éditeur ouvert
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click();
     await flush();
-    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text"); // celui de l'autre ligne
-    if (span) selectAll(span);
+    return list;
+  }
+
+  it("ne propose rien sur la ligne en cours de correction : elle n'a plus de texte", async () => {
+    await withOpenEditor();
+    // La textarea a remplacé le span : il n'y a pas de texte balisable à sélectionner.
+    const row = host.querySelector<HTMLElement>('.prep-conv-unit-row[data-uid="10"]')!;
+    expect(row.querySelector(".prep-conv-unit-text")).toBeNull();
     expect(bar()?.hidden ?? true).toBe(true);
+  });
+
+  it("stylise une AUTRE ligne pendant une correction, sans perdre la frappe", async () => {
+    const styled: string[][] = [];
+    await withOpenEditor(styled);
+    const ta = host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!;
+    ta.value = "je tape encore";
+
+    const other = host.querySelector<HTMLElement>('.prep-conv-unit-row[data-uid="20"] .prep-conv-unit-text')!;
+    selectAll(other);
+    expect(bar()!.hidden).toBe(false);
+
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(styled).toEqual([["20", '<hi rend="italic">autre ligne</hi>']]);
+    // Le rendu déclenché par la stylisation ne doit pas avoir effacé la correction.
+    expect(host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!.value).toBe("je tape encore");
   });
 
   it("marque l'état du bouton pour les lecteurs d'écran", () => {
@@ -551,5 +675,70 @@ describe("stylisation inline — où l'on relâche la souris", () => {
     sel.addRange(range);
     document.body.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
     expect(bar()?.hidden ?? true).toBe(true);
+  });
+});
+
+describe("éditeur inline — le brouillon survit à un rendu", () => {
+  function editing() {
+    const list = new CanvasUnitList(host, { onEditText: async () => {}, onStyleText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1), unit(2)] });
+    list.render();
+    host.querySelector<HTMLElement>('.prep-conv-unit-row[data-uid="10"] .prep-conv-unit-edit')!.click();
+    const ta = host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")!;
+    ta.value = "correction en cours";
+    ta.dispatchEvent(new window.Event("input", { bubbles: true }));
+    return { list, ta };
+  }
+
+  const openEditor = () => host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor");
+
+  it("une frappe dans la recherche ne perd pas la correction en cours", () => {
+    const { list } = editing();
+    list.setSearch("unit");
+    expect(openEditor()!.value).toBe("correction en cours");
+  });
+
+  it("une assignation de rôle ne perd pas la correction en cours", () => {
+    const { list } = editing();
+    list.setUnitsRole([20], "titre");
+    expect(openEditor()!.value).toBe("correction en cours");
+  });
+
+  it("le curseur est reposé où il était, pas rejeté à la fin", () => {
+    const { list, ta } = editing();
+    ta.setSelectionRange(4, 4);
+    list.setSearch("unit");
+    const after = openEditor()!;
+    expect([after.selectionStart, after.selectionEnd]).toEqual([4, 4]);
+  });
+
+  it("ne vole pas le focus au champ qui a provoqué le rendu", () => {
+    const { list } = editing();
+    const search = document.createElement("input");
+    document.body.appendChild(search);
+    search.focus();
+    list.setSearch("unit"); // ce que fait le champ de recherche à chaque frappe
+    expect(document.activeElement).toBe(search);
+  });
+
+  it("rend le focus à la zone de saisie si elle l'avait", () => {
+    const { list, ta } = editing();
+    ta.focus();
+    list.setSearch("unit");
+    expect(document.activeElement).toBe(openEditor());
+  });
+
+  it("ouvrir le stylo sur une autre unité n'y reporte pas la frappe", () => {
+    editing();
+    host.querySelector<HTMLElement>('.prep-conv-unit-row[data-uid="20"] .prep-conv-unit-edit')!.click();
+    expect(openEditor()!.value).toBe("unit 2");
+  });
+
+  it("le brouillon est oublié après annulation", () => {
+    const { list } = editing();
+    host.querySelectorAll<HTMLElement>(".prep-conv-unit-editor-actions button")[1].click();
+    list.render();
+    host.querySelector<HTMLElement>('.prep-conv-unit-row[data-uid="10"] .prep-conv-unit-edit')!.click();
+    expect(openEditor()!.value).toBe("unit 1");
   });
 });

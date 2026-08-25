@@ -80,3 +80,44 @@ export function selectionRangeIn(
   // à rebours : le tri ci-dessous est une ceinture, pas un cas courant.
   return a < b ? { start: a, end: b } : { start: b, end: a };
 }
+
+/**
+ * Reposer une sélection sur `container` à partir de bornes du texte **affiché**.
+ *
+ * L'inverse de `selectionRangeIn`, pour une seule raison : après un geste de stylisation
+ * la ligne est réaffichée — ses nœuds texte sont neufs, découpés autrement par les
+ * `<em>` / `<strong>` qui viennent d'apparaître. Sans cela le surlignage disparaît au
+ * premier clic, et poser le second style, ou défaire le premier, oblige à re-sélectionner.
+ *
+ * Rend `false` si les bornes ne tombent pas dans le texte du conteneur : on préfère ne
+ * rien sélectionner qu'un passage voisin.
+ */
+export function selectRangeIn(container: HTMLElement, start: number, end: number): boolean {
+  const doc = container.ownerDocument;
+  const selection = doc?.defaultView?.getSelection();
+  if (!doc || !selection || start >= end) return false;
+
+  const locate = (offset: number): { node: Node; offset: number } | null => {
+    const walker = doc.createTreeWalker(container, 4 /* SHOW_TEXT */);
+    let seen = 0;
+    let current: Node | null = walker.nextNode();
+    let last: { node: Node; offset: number } | null = null;
+    while (current !== null) {
+      const len = (current.textContent ?? "").length;
+      // `<=` et non `<` : une borne posée juste à la fin d'un nœud lui appartient encore,
+      // ce qui garde la fin de sélection collée au texte plutôt qu'au nœud suivant.
+      if (offset <= seen + len) return { node: current, offset: offset - seen };
+      seen += len;
+      last = { node: current, offset: len };
+      current = walker.nextNode();
+    }
+    return offset === seen ? last : null;
+  };
+
+  const a = locate(start);
+  const b = locate(end);
+  if (!a || !b) return false;
+  selection.removeAllRanges();
+  selection.setBaseAndExtent(a.node, a.offset, b.node, b.offset);
+  return true;
+}

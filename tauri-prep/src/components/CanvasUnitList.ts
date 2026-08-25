@@ -15,9 +15,9 @@ import type { ConventionRole, UnitRecord } from "../lib/sidecarClient.ts";
 import { richTextToHtml } from "../lib/sidecarClient.ts";
 import {
   applyMark, canStyle, domLength, domOffsetToPlain, hasMark, isRichInSync, parseRich,
-  type RichToken,
+  plainOffsetToDom, type RichToken,
 } from "../lib/richTextModel.ts";
-import { selectionRangeIn } from "../lib/richSelection.ts";
+import { selectRangeIn, selectionRangeIn } from "../lib/richSelection.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import {
   filterUnits,
@@ -66,6 +66,11 @@ export class CanvasUnitList {
   private _lastClickedIdx = -1;
   /** The unit whose in-place editor is open (single editor at a time), or null. */
   private _editingUid: number | null = null;
+  /** Frappe en cours dans l'éditeur, relevée avant chaque rendu et resemée après lui.
+   *  Sans elle, tout rendu (une frappe dans la recherche, une assignation de rôle, une
+   *  stylisation) reseme la textarea depuis le modèle et efface la correction en silence.
+   *  Même parade que `_textDraft` dans `SegmentPane`. */
+  private _editDraft: { text: string; start: number; end: number; focused: boolean } | null = null;
   /** Barre de stylisation flottante (créée à la première sélection utile). */
   private _styleBar: HTMLElement | null = null;
   /** L'écoute de sélection est posée une seule fois, pas à chaque rendu. */
@@ -115,6 +120,7 @@ export class CanvasUnitList {
     this._selected.clear();
     this._lastClickedIdx = -1;
     this._editingUid = null; // a context change closes any open editor (F1)
+    this._editDraft = null;
     this._hideStyleBar();    // ... et emporte la barre de stylisation avec lui
   }
 
@@ -135,6 +141,7 @@ export class CanvasUnitList {
     this._searchQuery = "";
     this._lastClickedIdx = -1;
     this._editingUid = null;
+    this._editDraft = null;
     this._hideStyleBar();
   }
 
@@ -151,6 +158,7 @@ export class CanvasUnitList {
 
   render(): void {
     const area = this._host;
+    this._captureEditDraft(); // avant que le rendu n'emporte la textarea
 
     if (this._docId === null) {
       area.innerHTML = `<div class="prep-conv-empty">S&#233;lectionnez un document.</div>`;
@@ -325,10 +333,10 @@ export class CanvasUnitList {
 
   /** Lit la sélection faite dans une ligne et présente la barre I/G, ou la retire. */
   private _onTextSelected(unitId: number): void {
-    // Pendant une correction, le texte n'est pas à sa place : le geste attend, comme le
-    // clic de sélection de ligne.
-    if (this._editingUid !== null) return this._hideStyleBar();
-
+    // Une correction ouverte ailleurs n'interdit plus de styliser : le rendu qui suit
+    // resème la textarea depuis `_editDraft`, donc la frappe survit. Sur la ligne en
+    // cours de correction, il n'y a pas de texte à sélectionner — une textarea ne porte
+    // que du texte nu — et la recherche du `span` ci-dessous n'aboutit tout simplement pas.
     const u = this._units.find((x) => x.unit_id === unitId);
     const row = this._host.querySelector<HTMLElement>(`.prep-conv-unit-row[data-uid="${unitId}"]`);
     const span = row?.querySelector<HTMLElement>(".prep-conv-unit-text");
@@ -413,14 +421,40 @@ export class CanvasUnitList {
     const next = applyMark(base, target.start, target.end, token, on);
     if (next === base) return this._hideStyleBar();
 
+    // Bornes à l'écran, relevées avant le rendu : elles serviront à reposer la sélection
+    // sur les nœuds neufs. Poser une balise ne change pas le texte nu, donc elles
+    // désignent toujours le même passage.
+    const plain = parseRich(base).plain;
+    const domStart = plainOffsetToDom(plain, target.start);
+    const domEnd = plainOffsetToDom(plain, target.end);
+
     try {
       await cb(u.unit_id, next);
     } catch {
       return; // l'hôte a signalé l'erreur ; on garde la sélection pour réessayer
     }
     u.text_raw = next; // le geste ne touche pas text_norm
-    this._hideStyleBar();
-    this.render();
+    this.render();     // le rendu retire la barre et refait la ligne…
+    this._restoreStyleSelection(target, domStart, domEnd); // … on la remet en place
+  }
+
+  /** Reposer la sélection et la barre sur la ligne réaffichée, après un style appliqué.
+   *
+   *  Sans cela le surlignage tombe au premier clic : poser le second style, ou défaire
+   *  celui qu'on vient de poser, obligerait à re-sélectionner le passage. La barre
+   *  revient avec l'état à jour, donc le même bouton retire ce qu'il a mis. */
+  private _restoreStyleSelection(
+    target: { unitId: number; start: number; end: number },
+    domStart: number,
+    domEnd: number,
+  ): void {
+    const u = this._units.find((x) => x.unit_id === target.unitId);
+    const row = this._host.querySelector<HTMLElement>(`.prep-conv-unit-row[data-uid="${target.unitId}"]`);
+    const span = row?.querySelector<HTMLElement>(".prep-conv-unit-text");
+    // La ligne peut avoir quitté l'affichage (filtre, changement de document) : on n'insiste pas.
+    if (!u || !span || !selectRangeIn(span, domStart, domEnd)) return;
+    this._styleTarget = target;
+    this._showStyleBar(span, this._styleBase(u), target.start, target.end);
   }
 
   // ─── Stylo: in-place text correction (D-C8) ───────────────────────────────
@@ -440,24 +474,45 @@ export class CanvasUnitList {
     });
   }
 
+  /** Relève la frappe en cours (texte, caret, focus) avant que le rendu ne la détruise. */
+  private _captureEditDraft(): void {
+    if (this._editingUid === null) return;
+    const ta = this._host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor");
+    // La textarea encore à l'écran peut être celle d'une *autre* unité (on vient d'ouvrir
+    // ailleurs) : on ne relève une frappe que pour l'unité qu'elle concerne.
+    if (!ta || ta.dataset.uid !== String(this._editingUid)) return;
+    this._editDraft = {
+      text: ta.value,
+      start: ta.selectionStart ?? ta.value.length,
+      end: ta.selectionEnd ?? ta.value.length,
+      // On ne rend le focus que si la textarea l'avait : sinon un rendu déclenché depuis
+      // la recherche le lui volerait en pleine frappe.
+      focused: ta.ownerDocument.activeElement === ta,
+    };
+  }
+
   private _openEditor(uid: number): void {
     this._editingUid = uid;
+    this._editDraft = null; // on ouvre sur le texte enregistré, pas sur une frappe d'ailleurs
     this.render();
     this._host.querySelector<HTMLTextAreaElement>(".prep-conv-unit-editor")?.focus();
   }
 
   private _cancelEdit(): void {
     this._editingUid = null;
+    this._editDraft = null; // la frappe abandonnee ne doit pas reapparaitre a la reouverture
     this.render();
   }
 
   /** Swap the text span for an auto-sized textarea in place (port of legacy A). */
   private _mountEditor(el: HTMLElement, u: UnitRecord): void {
-    const current = u.text_norm ?? "";
+    const draft = this._editDraft;
+    const current = draft ? draft.text : (u.text_norm ?? "");
     const wrap = document.createElement("div");
     wrap.className = "prep-conv-unit-editor-wrap";
     const ta = document.createElement("textarea");
     ta.className = "prep-conv-unit-editor";
+    ta.dataset.uid = String(u.unit_id);
     ta.value = current;
     // Auto-grow to fit the content, but CAP at the CSS max-height so a huge unit (a whole
     // non-segmented doc) never gets an absurd inline height like 43160px — beyond the cap the
@@ -480,6 +535,12 @@ export class CanvasUnitList {
     if (textSpan) textSpan.replaceWith(wrap); else el.appendChild(wrap);
     el.classList.add("prep-conv-unit-row--editing");
     autoGrow(); // size to content now that the textarea is in the DOM
+    if (draft) {
+      // On repose le caret là où il était ; le focus n'est rendu que s'il était ici, pour
+      // ne pas l'arracher au champ (recherche, barre I/G) qui a provoqué le rendu.
+      ta.setSelectionRange(draft.start, draft.end);
+      if (draft.focused) ta.focus();
+    }
 
     const commit = (): void => { void this._saveEdit(u, ta.value); };
     save.addEventListener("click", (e) => { e.stopPropagation(); commit(); });
@@ -503,6 +564,7 @@ export class CanvasUnitList {
     }
     u.text_norm = text; // reflect the saved text locally (β edits text_norm, D-C1)
     this._editingUid = null;
+    this._editDraft = null;
     this.render();
   }
 }

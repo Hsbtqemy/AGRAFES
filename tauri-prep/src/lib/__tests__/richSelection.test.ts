@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from "vitest";
-import { selectionRangeIn } from "../richSelection.ts";
+import { selectRangeIn, selectionRangeIn } from "../richSelection.ts";
 import { richTextToHtml } from "../sidecarClient.ts";
 
 let host: HTMLElement;
@@ -85,5 +85,49 @@ describe("selectionRangeIn — refus", () => {
   it("rend null sans sélection du tout", () => {
     host.textContent = "un mot ici";
     expect(selectionRangeIn(host, null)).toBeNull();
+  });
+});
+
+describe("selectRangeIn — reposer une sélection sur des nœuds neufs", () => {
+  it("retrouve un passage à cheval sur plusieurs nœuds texte", () => {
+    const span = document.createElement("span");
+    span.innerHTML = 'un <em>mot</em> ici';
+    document.body.appendChild(span);
+    expect(selectRangeIn(span, 0, 6)).toBe(true);
+    expect(document.getSelection()!.toString()).toBe("un mot");
+  });
+
+  it("colle la fin de sélection à la fin d'un nœud plutôt qu'au suivant", () => {
+    const span = document.createElement("span");
+    span.innerHTML = 'un <em>mot</em> ici';
+    document.body.appendChild(span);
+    expect(selectRangeIn(span, 3, 6)).toBe(true);
+    const range = document.getSelection()!.getRangeAt(0);
+    expect(range.toString()).toBe("mot");
+    expect(range.endContainer.textContent).toBe("mot"); // et non " ici" à l'offset 0
+  });
+
+  it("accepte une borne posée tout à la fin du texte", () => {
+    const span = document.createElement("span");
+    span.innerHTML = 'un <em>mot</em>';
+    document.body.appendChild(span);
+    expect(selectRangeIn(span, 3, 6)).toBe(true);
+    expect(document.getSelection()!.toString()).toBe("mot");
+  });
+
+  it("refuse des bornes qui débordent, plutôt que de viser à côté", () => {
+    const span = document.createElement("span");
+    span.textContent = "court";
+    document.body.appendChild(span);
+    expect(selectRangeIn(span, 2, 99)).toBe(false);
+    expect(selectRangeIn(span, 4, 4)).toBe(false); // vide
+  });
+
+  it("fait l'aller-retour avec selectionRangeIn", () => {
+    const span = document.createElement("span");
+    span.innerHTML = 'un <em>mot</em> ici';
+    document.body.appendChild(span);
+    selectRangeIn(span, 2, 7);
+    expect(selectionRangeIn(span, document.getSelection())).toEqual({ start: 2, end: 7 });
   });
 });

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseRich, renderRich, applyMark, hasMark, clearMarks, canStyle,
-  domOffsetToPlain, domLength,
+  applyMark, canStyle, clearMarks, domLength, domOffsetToPlain, hasMark, parseRich, plainOffsetToDom, renderRich,
 } from "../richTextModel.ts";
 
 describe("parseRich / renderRich — aller-retour", () => {
@@ -153,5 +152,26 @@ describe("robustesse — balisage mal formé et lignes non stylables", () => {
     // donc la stylisation serait invisible : le modèle refuse de la produire.
     const raw = "a < b";
     expect(applyMark(raw, 0, 1, "italic", true)).toBe(raw);
+  });
+});
+
+describe("plainOffsetToDom — l'inverse, pour reposer une sélection", () => {
+  it("est l'exact inverse de domOffsetToPlain sur un texte sans entité", () => {
+    const plain = "un mot ici";
+    for (let i = 0; i <= plain.length; i++) {
+      expect(plainOffsetToDom(plain, i)).toBe(i);
+      expect(domOffsetToPlain(plain, i)).toBe(i);
+    }
+  });
+
+  it("replie les entités : cinq caractères en base, un seul à l'écran", () => {
+    const plain = "Marks &amp; Spencer";
+    expect(plainOffsetToDom(plain, 6)).toBe(6);   // avant l'esperluette
+    expect(plainOffsetToDom(plain, 11)).toBe(7);  // après : &amp; a compté pour 1
+    expect(plainOffsetToDom(plain, plain.length)).toBe(domLength(plain));
+    // Aller-retour sur chaque borne affichable.
+    for (let d = 0; d <= domLength(plain); d++) {
+      expect(plainOffsetToDom(plain, domOffsetToPlain(plain, d))).toBe(d);
+    }
   });
 });
