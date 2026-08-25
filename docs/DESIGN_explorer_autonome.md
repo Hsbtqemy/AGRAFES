@@ -251,6 +251,18 @@ C'est le sens premier de la demande, et c'est là que se trouve le seul gain de 
   ~30 s » (`shell.ts:2435`) : sur ce binaire, l'avertissement n'a plus d'objet. Mesure à
   n=3 avec un fort écart-type côté référence (antivirus probable sur 224 Mo déballés) —
   l'ordre de grandeur tient, la précision non.
+- **Les quatre routes de modèles tiennent** (vérifié le 25 août, à la demande d'une autre
+  session) : `GET /models`, `POST /models/active` et `POST /models/remove` répondent **à
+  l'identique** avec et sans spaCy — elles lisent le système de fichiers et la base, et le
+  test « modèle embarqué » (`_is_model_bundled` → `importlib.util.find_spec`) rend *absent*
+  des deux côtés. Première sonde trompeuse (200 contre 400) : c'était l'état du dossier de
+  modèles que ma propre sonde avait modifié entre les deux passes, pas spaCy. Rejouée avec
+  `AGRAFES_MODELS_DIR` détourné vers un dossier vide, la divergence disparaît. **Seul
+  `/annotate` tombe.** Deux réserves : sur un binaire *de CI*, où les neuf modèles sont
+  embarqués, `find_spec` les trouve et `source=bundled` existe — le preset explorer les
+  perdrait, différence de contenu et non de comportement ; et l'issue du job
+  `/models/download` n'a été suivie sur aucun des deux binaires (nom de modèle inexistant
+  employé exprès, pour ne rien poser sur la machine).
 - **Conséquence produit** : un corpus non annoté ne pourra pas l'être depuis Explorer. La
   recherche grammaticale sait déjà le dire (`rechercheModule` calcule une *portée annotée*
   à partir de `token_count`) ; le message devra nommer le manque, pas rendre zéro résultat.
