@@ -1,25 +1,28 @@
 ---
 chantier: RICH-01
-statut: à venir
+statut: interrompu
 ---
 
 # RICH-01 — stylisation inline : ce que l'import perd encore, ce que l'export invente
 
-**Point de départ** — trois lots livrés le 24 août 2026 (`0806c66`, `b5491e5`, `4d21d69`) ; ce qui reste est l'asymétrie TEI, mesurée mais jamais tracée, 24 août 2026.
+**Arrêté sur** — geste de stylisation livré dans les trois couches du canvas (`9928be4`), modèle figé dans `docs/DESIGN_inline_restyling.md` ; restent l'asymétrie TEI, les deux autres surfaces et la trace de main, 25 août 2026.
 
 ## Reste
 
 - [ ] L'import TEI aplatit les `<hi>` par `itertext()` (`tei_importer.py:169`) alors que l'export les reconstruit (`tei.py:50`) : réimporter un export perd la stylisation, silencieusement
 - [ ] Trancher si l'import TEI doit accepter d'autres `rend` que les six tokens connus (garder tel quel ? mapper vers le plus proche ? refuser ?) — la décision manque avant d'écrire la ligne de code
-- [ ] Vérifier le même aller-retour sur `readable_text` en `source_field=text_raw` et sur le `# text =` de CoNLL-U (`conllu_export.py:85`) : ils impriment aujourd'hui le balisage en toutes lettres
+- [x] Vérifier l'aller-retour sur `readable_text` et le `# text =` de CoNLL-U — fait : CoNLL-U lit `COALESCE(text_raw, text_norm)` et `readable_text` offre déjà `source_field` ; le constat est désormais suivi dans **SORT-01**, qui en porte deux items
 - [ ] ODT — `odt_extract_style_map` ne lit que `office:automatic-styles` et ne résout pas `style:parent-style-name` : un span héritant d'un style nommé italique passe à travers (0 cas sur les 23 ODT locaux, donc dette assumée tant que rien ne le contredit)
 - [ ] Décider si `text_norm` doit cesser de porter les entités XML (`&amp;`) sur les lignes riches : `normalize()` tourne sur un `text_raw` déjà échappé, donc une ligne riche contenant `&` s'affiche « &amp; » et se cherche mal en FTS
 - [ ] Vérifier sur données réelles quelle proportion des lignes **entièrement** en gras est un titre ou un intertitre plutôt qu'une emphase — 598 cas mesurés sur les `.docx` locaux, dont 589 sous 120 caractères, mais la longueur est un proxy et non une preuve
 - [ ] Si la proportion tient, trancher où le signal s'applique : pré-remplissage du rôle à l'import, ou simple proposition dans la couche Rôles — sans jamais retirer le `<hi rend="bold">` de `text_raw`, dont l'aller-retour TEI dépend
-- [ ] Rendre l'original consultable dès que le verbatim diverge du texte courant : le repli « voir l'original d'import » ne s'affiche que si `text_source ≠ text_raw` (`importOriginal.ts:20`), or l'import les pose identiques — la condition qui manque est celle que `_foldNorm` calcule déjà, et le repli n'est câblé que dans la couche Segmentation
+- [ ] Rendre l'original consultable sur une ligne **corrigée** : depuis le geste, une ligne *restylée* l'offre déjà (le repli s'ouvre puisque `text_raw` diverge alors de `text_source`), mais une ligne seulement corrigée ne l'offre toujours pas — `hasImportOriginal` se règle sur `text_source`, que l'import pose égal à `text_raw` ; et le repli n'est câblé que dans la couche Segmentation
 - [ ] Trancher la consultation de la stylisation dans le concordancier : la lecture page par page existe déjà (`_fetch_unit_texts`), le coût réel est la projection des offsets KWIC, calculés sur `text_norm`, vers un `text_raw` que chaque balise décale
-- [ ] Implémenter le geste de restylisation selon `docs/DESIGN_inline_restyling.md` (modèle figé le 25 août : italique et gras seuls, style par caractère, canvas + matrice, trace de main obligatoire) — chantier entièrement front, le moteur accepte déjà les deux colonnes dans un seul appel
-- [ ] Mesurer d'abord, sur les lignes réellement corrigées du corpus, la proportion de fragments stylés retrouvables sans ambiguïté : c'est ce qui décide si la réapplication automatique existe ou si l'on se contente de montrer l'original
+- [x] Implémenter le geste de restylisation dans le canvas — livré le 25 août pour les couches Rôles, Curation et Annotation (`CanvasUnitList`), sans aucun changement moteur
+- [ ] Porter le geste dans la couche **Segmentation** : `SegmentPane` a son propre rendu et n'hérite donc pas de la primitive du canvas
+- [ ] Porter le geste dans la **matrice** (D-R3, la surface qui compte pour la traduction) : suppose d'abord de transporter `text_raw` jusqu'aux cellules, `MatrixCell` ne portant que `text`
+- [ ] Trancher **D-R4**, la trace d'une stylisation posée à la main — en même temps que la même question pour les tokens dans `ANN-01`, pour ne pas inventer deux mécanismes ; noter que l'export TEI ne recopie que l'attribut `rend` (`tei.py:80`), donc un `resp` serait perdu à la sortie
+- [x] Mesurer, sur les lignes réellement corrigées du corpus, la proportion de fragments stylés retrouvables sans ambiguïté — fait le 25 août : 24 unités stylées, **une seule** corrigée depuis, donc rien à mesurer et réapplication automatique écartée
 
 ## QA
 
@@ -42,6 +45,8 @@ le 24 août :
   le formatage direct, `run.italic` valant `None` dans ce cas.
 - `4d21d69` — le balisage devient visible dans les couches Rôles, Curation et Annotation
   (`CanvasUnitList`), qui affichaient du texte plat.
+
+**Livré le 25 août.** Le modèle pur (`richTextModel`, style par caractère), la lecture de sélection (`richSelection`), le geste et sa barre I/G dans les trois couches que sert `CanvasUnitList`, plus une passe adverse qui a rattrapé quatre gardes — dont le refus de styliser une ligne repeinte par la surcouche de tokens, où les offsets auraient visé à côté. Commits `69c3799`, `0dd89a0`, `9928be4` ; passe de QA `qa/stylisation-inline.md`. Ces commits ne citent pas le code du chantier dans leur sujet, contrairement à l'usage du dépôt : le journal ne les rattachera donc pas tout seul, d'où leur rappel ici.
 
 **Ce que la mesure a dit, et qui recadre la priorité.** Sur les 53 documents en base dont
 le fichier source a été retrouvé en local : 3 runs en italique direct, **0** via style de
