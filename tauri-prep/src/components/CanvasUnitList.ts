@@ -231,6 +231,12 @@ export class CanvasUnitList {
         // While a row is being edited, clicks never change the selection — the user
         // must save/cancel first (avoids losing the edit to an accidental select).
         if (this._editingUid !== null) return;
+        // Un glisser de sélection de texte se termine par un `click` sur la ligne. Le
+        // traiter comme un clic de sélection rerendrait la liste — ce qui emporterait la
+        // barre de stylisation qui vient d'apparaître, et détruirait la sélection que
+        // l'utilisateur vient de faire. Sélectionner du texte n'est pas cliquer la ligne.
+        const textSel = el.ownerDocument.defaultView?.getSelection();
+        if (textSel && !textSel.isCollapsed && el.contains(textSel.anchorNode)) return;
         const uid = parseInt(el.dataset.uid!, 10);
         if ((e as MouseEvent).shiftKey && this._lastClickedIdx >= 0) {
           const lo = Math.min(this._lastClickedIdx, idx);

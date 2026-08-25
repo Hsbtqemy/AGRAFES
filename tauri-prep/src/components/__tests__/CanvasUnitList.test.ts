@@ -455,3 +455,42 @@ describe("stylisation inline — gardes de la passe adverse", () => {
     expect(bold.getAttribute("aria-pressed")).toBe("false");
   });
 });
+describe("stylisation inline — le clic qui suit le glisser", () => {
+  const bar = () => document.querySelector<HTMLElement>(".prep-conv-stylebar");
+
+  it("la barre survit au `click` que le navigateur émet après un glisser de sélection", () => {
+    // Un glisser de sélection se termine par mouseup PUIS click sur la ligne. Si ce clic
+    // est traité comme une sélection de ligne, il rerend la liste — et emporte la barre.
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text")!;
+    const range = document.createRange();
+    range.setStart(span.firstChild!, 3);
+    range.setEnd(span.firstChild!, 6);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    expect(bar()!.hidden).toBe(false);
+
+    span.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(bar()!.hidden).toBe(false); // toujours là, la sélection de texte n'est pas un clic de ligne
+  });
+
+  it("un clic simple sélectionne toujours la ligne", () => {
+    const seen: number[] = [];
+    const list = new CanvasUnitList(host, {
+      onStyleText: async () => {},
+      onSelectionChange: (s) => seen.push(s.size),
+    });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    window.getSelection()!.removeAllRanges(); // pas de sélection de texte
+    host.querySelector<HTMLElement>(".prep-conv-unit-row")!
+      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    expect(seen).toEqual([1]);
+  });
+});
