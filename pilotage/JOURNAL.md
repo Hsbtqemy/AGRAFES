@@ -5,9 +5,19 @@ statut: interrompu
 
 # JOURNAL — journal de bord local
 
-**Arrêté sur** — le tableau de bord compte les points de reprise périmés (5 sur 14), commit `0241e00`, 24 août 2026.
+**Arrêté sur** — l'outil quitte ce dépôt : pris en dépendance depuis
+[`Hsbtqemy/pilote`](https://github.com/Hsbtqemy/pilote), commit `34bc6e0`, 25 août 2026.
 
 ## Reste
+
+### Ce que la sortie de l'outil laisse à trancher
+- [ ] Les items « Ce qui manque à l'outil » ci-dessous décrivent maintenant un **autre
+      dépôt**. Décider s'ils déménagent dans le `pilotage/` de Pilote ou restent ici
+      comme besoins d'AGRAFES formulés côté client. Les laisser à cheval garantit qu'ils
+      seront lus deux fois et traités zéro
+- [ ] L'item « `livré` contre le front » existe **en double** : ici et dans le `P-4` de
+      Pilote, écrit indépendamment. C'est la première collision entre les deux dossiers,
+      et un avant-goût de ce que le point précédent coûte si on ne tranche pas
 
 ### Ce qui manque à l'outil
 
