@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from multicorpus_engine.services.errors import NotFoundError
+from multicorpus_engine.services.errors import NotFoundError, ValidationError
 from multicorpus_engine.services.matrix_export_service import build_alignment_matrix
 
 
@@ -441,3 +441,93 @@ def test_matrix_uncovered_carries_both_planes(db_conn: sqlite3.Connection) -> No
     assert orphan, m["uncovered"]
     assert orphan[0]["text_norm"] == "orphan normalisé"
     assert orphan[0]["text_raw"] == "ORPHAN brut"  # clé historique conservée
+
+
+# ─── Colonnes visibles : target_doc_ids (1.6.77, ALI-18 correctif 2) ────────────
+
+
+def test_matrix_scoped_to_one_translation_column(db_conn: sqlite3.Connection) -> None:
+    """`target_doc_ids` ne projette que les colonnes demandées — et TOUT ce qui est
+    parallèle aux langues suit : headers, languages, language_doc_ids, cells, cell_links,
+    cell_statuses, uncovered, anchor_status. Une seule de ces listes qui resterait à
+    l'échelle famille désindexerait tous les gestes de la grille (ils adressent la
+    cellule par `col`, un rang dans `translationLangs`)."""
+    _setup_family(db_conn)
+    m = build_alignment_matrix(db_conn, 1, [3])  # RO seulement
+
+    assert m["headers"] == ["paragraphe", "segment", "fr", "ro"]
+    assert m["languages"] == ["fr", "ro"]
+    assert m["language_doc_ids"] == [1, 3]
+    # La colonne EN a disparu de la ligne : le 1-2 roumain reste, la tranche « morning » non.
+    assert m["rows"][0] == [1, 1, "le matin.", "buna ziua"]
+    assert m["rows"][1] == [1, 2, "le soir.", ""]
+    # Les tableaux ∥ langues ont tous un seul rang de traduction.
+    assert all(len(r) == 1 for r in m["cell_links"])
+    assert all(len(r) == 1 for r in m["cell_statuses"])
+    assert len(m["uncovered"]) == 1
+    assert len(m["anchor_status"]) == 2  # moyeu + RO
+
+
+def test_matrix_scope_keeps_family_column_order(db_conn: sqlite3.Connection) -> None:
+    """L'ordre des colonnes reste celui de la famille, pas celui de la requête : masquer
+    puis réafficher une langue ne doit pas rebattre la grille sous les yeux."""
+    _setup_family(db_conn)
+    m = build_alignment_matrix(db_conn, 1, [3, 2])  # demandé RO puis EN
+    assert m["languages"] == ["fr", "en", "ro"]
+
+
+def test_matrix_scope_omitted_projects_every_language(db_conn: sqlite3.Connection) -> None:
+    """Le défaut est inchangé — c'est ce que continue d'utiliser l'export CSV, qui
+    n'expose pas le paramètre."""
+    _setup_family(db_conn)
+    assert build_alignment_matrix(db_conn, 1)["languages"] == ["fr", "en", "ro"]
+    assert build_alignment_matrix(db_conn, 1, None)["languages"] == ["fr", "en", "ro"]
+
+
+def test_matrix_scope_rejects_a_doc_outside_the_family(db_conn: sqlite3.Connection) -> None:
+    """Un id étranger est refusé, pas ignoré : une colonne vide serait indiscernable
+    d'une traduction non alignée."""
+    _setup_family(db_conn)
+    db_conn.execute(
+        "INSERT INTO documents (title,language,doc_role,created_at)"
+        " VALUES ('ES','es','translation',datetime('now'))"
+    )
+    db_conn.commit()
+    other = db_conn.execute("SELECT doc_id FROM documents WHERE title='ES'").fetchone()[0]
+    with pytest.raises(ValidationError) as exc:
+        build_alignment_matrix(db_conn, 1, [other])
+    assert exc.value.details["unknown_doc_ids"] == [other]
+
+
+def test_matrix_scope_empty_list_projects_the_hub_alone(db_conn: sqlite3.Connection) -> None:
+    """Liste vide ≠ omis : c'est « aucune traduction », le moyeu seul. La distinction
+    compte — `None` doit rester le seul chemin vers « toutes les langues »."""
+    _setup_family(db_conn)
+    m = build_alignment_matrix(db_conn, 1, [])
+    assert m["languages"] == ["fr"]
+    assert m["rows"][0] == [1, 1, "le matin."]
+
+
+def test_matrix_link_counts_are_per_column_and_include_rejected(db_conn: sqlite3.Connection) -> None:
+    """`link_counts` est l'échelle qu'une relance scopée doit annoncer. Rejetés compris,
+    comme `link_count` — c'est ce que voit l'index unique de l'aligneur. `manual` isole
+    les liens que `preserve_accepted` ne protège PAS (ALI-15)."""
+    _setup_family(db_conn)
+    # un lien rejeté et un lien manuel sur la colonne RO
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at,status) VALUES ('r',2,4,2,1,3,datetime('now'),'rejected')"
+    )
+    db_conn.execute(
+        "INSERT INTO alignment_links (run_id,pivot_unit_id,target_unit_id,external_id,"
+        "pivot_doc_id,target_doc_id,created_at) VALUES ('manual',2,5,2,1,3,datetime('now'))"
+    )
+    db_conn.commit()
+    m = build_alignment_matrix(db_conn, 1)
+    by_doc = {c["target_doc_id"]: c for c in m["link_counts"]}
+    assert by_doc[2] == {"target_doc_id": 2, "links": 2, "manual": 0}
+    assert by_doc[3] == {"target_doc_id": 3, "links": 4, "manual": 1}  # 2 + rejeté + manuel
+    # Scopé : la liste suit les colonnes projetées, `link_count` reste famille-entière.
+    scoped = build_alignment_matrix(db_conn, 1, [3])
+    assert [c["target_doc_id"] for c in scoped["link_counts"]] == [3]
+    assert scoped["link_count"] == m["link_count"] == 6

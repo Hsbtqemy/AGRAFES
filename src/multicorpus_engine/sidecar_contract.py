@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.76"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.77"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -435,6 +435,29 @@ API_VERSION = CONTRACT_VERSION
 #         rendait un 500 avec pile d'appel -- une faute de frappe passait pour une panne.
 #         Les deux routes rendent desormais 400 « Requete de recherche invalide ». Les deux
 #         codes etaient deja declares, donc aucun schema ne bouge.
+
+# 1.6.77: l'alignement se travaille une langue a la fois. Deux routes gagnent le meme
+#         parametre optionnel `target_doc_ids` (liste d'entiers) :
+#         - POST /align/matrix ne projette que ces colonnes de traduction. Omis = toutes,
+#           comme avant, et comme /export/matrix qui n'expose pas le parametre. La reponse
+#           gagne aussi `link_counts` (non schematisee, ∥ aux traductions projetees) :
+#           effectif et part manuelle de chaque paire, rejetes compris.
+#         - POST /families/{id}/align n'aligne que ces enfants. Omis = toute la famille.
+#         POURQUOI. Un corpus reel se travaille par paire (VO + une traduction) : personne
+#         n'aligne quatre langues d'un coup. Cote projection, chaque colonne de traduction
+#         pese ~0,63 Mo de charge utile sur la famille de reference (2,21 Mo compact pour
+#         fr+en/es/ro, dont 71 % de `cell_links`), et le rendu est lineaire en cellules --
+#         donc afficher une langue au lieu de trois divise par deux le DOM et enleve 57 %
+#         du fil, sur les 21 rechargements que declenchent les gestes (ALI-18).
+#         Cote run, c'est plus grave qu'une question de cout : « Recalcul global » purgeait
+#         TOUTES les paires de la famille, et `preserve_accepted` ne sauve que
+#         `status='accepted'` -- un lien pose a la main (`status IS NULL`) etait donc
+#         detruit en reparant une AUTRE langue (ALI-15, cas mesure en base). Le filtre est
+#         pose avant le controle de segmentation et avant la boucle : une colonne hors
+#         perimetre n'entre pas dans le run. Un id etranger a la famille est un 400 sur les
+#         deux routes -- projeter une colonne vide la rendrait indiscernable d'une
+#         traduction non alignee.
+#         Aucun chemin ne bouge : deux schemas de requete gagnent une propriete optionnelle.
 
 # 1.6.76: le Controle nomme le segment comme la matrice le nomme. `AlignLinkRecord`
 #         (POST /align/audit) gagne `pivot_segment` : le rang 1-base du pivot parmi les
@@ -3868,6 +3891,10 @@ def openapi_spec() -> dict[str, Any]:
                                               "description": "Keep accepted links when replace_existing=true"},
                         "skip_unready": {"type": "boolean", "default": False,
                                          "description": "Skip pairs where child is not segmented (vs. error)"},
+                        "target_doc_ids": {
+                            "type": "array", "items": {"type": "integer"},
+                            "description": "Optional (1.6.77) — align only these children. Omitted = the whole family. An out-of-scope column is neither purged nor realigned nor reported skipped.",
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -4830,6 +4857,10 @@ def openapi_spec() -> dict[str, Any]:
                     "required": ["family_root_id"],
                     "properties": {
                         "family_root_id": {"type": "integer", "description": "The hub (parent/original) doc — rows = its segments, columns = it + its translations."},
+                        "target_doc_ids": {
+                            "type": "array", "items": {"type": "integer"},
+                            "description": "Optional (1.6.77) — project only these translation columns. Omitted = all of them (historical behaviour). A doc that is not a translation of this family is a 400.",
+                        },
                     },
                 },
                 "ExportMatrixRequest": {

@@ -447,6 +447,13 @@
           "family_root_id": {
             "description": "The hub (parent/original) doc — rows = its segments, columns = it + its translations.",
             "type": "integer"
+          },
+          "target_doc_ids": {
+            "description": "Optional (1.6.77) — project only these translation columns. Omitted = all of them (historical behaviour). A doc that is not a translation of this family is a 400.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -2120,6 +2127,13 @@
               "length_bounded"
             ],
             "type": "string"
+          },
+          "target_doc_ids": {
+            "description": "Optional (1.6.77) — align only these children. Omitted = the whole family. An out-of-scope column is neither purged nor realigned nor reported skipped.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
           }
         },
         "type": "object"
@@ -4485,8 +4499,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.76",
-    "x-contract-version": "1.6.76"
+    "version": "1.6.77",
+    "x-contract-version": "1.6.77"
   },
   "openapi": "3.0.3",
   "paths": {

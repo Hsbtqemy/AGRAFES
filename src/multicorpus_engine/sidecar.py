@@ -6702,6 +6702,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
           preserve_accepted: bool, default true — keep accepted links when replace_existing=true
           skip_unready     : bool, default false — if true, skip pairs where child is not segmented;
                              if false (default), return an error listing unready children
+          target_doc_ids   : list[int], optional (ALI-15) — align only these children; omitted
+                             means the whole family. A child outside the family is a 400. The
+                             purge of replace_existing is per exact pair, so an out-of-scope
+                             column keeps its links (including its manual ones).
 
         Returns per-pair results with links_created, and a summary.
         Refuses to align two children against each other (only parent↔child pairs).
@@ -6761,6 +6765,41 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 code=ERR_BAD_REQUEST, http_status=400,
             )
             return
+
+        # Relance scopée (ALI-15) — n'aligner que les colonnes demandées. Omis = toute la
+        # famille, comportement historique. Le filtre est posé AVANT le contrôle de
+        # segmentation et avant la boucle : une colonne non demandée n'est ni purgée, ni
+        # réalignée, ni même signalée « ignorée » — elle n'entre pas dans ce run. C'est ce
+        # qui rend « Recalcul global » scopable : `_prepare_alignment_replace` purge par
+        # paire exacte, donc une colonne hors périmètre garde ses liens, y compris ceux
+        # posés à la main (que `preserve_accepted` ne protège pas).
+        raw_targets = body.get("target_doc_ids")
+        if raw_targets is not None:
+            if not isinstance(raw_targets, list) or not all(
+                isinstance(t, int) and not isinstance(t, bool) for t in raw_targets
+            ):
+                self._send_error(
+                    "target_doc_ids must be a list of integers",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+            known = {r[0] for r in child_rows}
+            unknown = [t for t in raw_targets if t not in known]
+            if unknown:
+                self._send_error(
+                    f"target_doc_ids contains documents that are not children of family_root_id={family_root_id}",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                    details={"unknown_doc_ids": unknown},
+                )
+                return
+            if not raw_targets:
+                self._send_error(
+                    "target_doc_ids is empty — nothing to align",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+            wanted = set(raw_targets)
+            child_rows = [r for r in child_rows if r[0] in wanted]
 
         child_ids = [r[0] for r in child_rows]
         child_rel  = {r[0]: r[2] for r in child_rows}   # doc_id → relation_type
@@ -8060,21 +8099,44 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         Same projection as the CSV export (services/matrix_export_service.build_alignment_matrix)
         but **returned in the response** for the alignment grid to render, instead of written to
-        disk. Body: { family_root_id }. Returns { headers, rows, languages, hub_doc_id } plus the
-        additive identifier fields for grid gestures: hub_unit_ids / language_doc_ids (3a) and
-        cell_links (A2 — per-cell link_id/target/cut/raw, rejected links excluded).
+        disk. Body: { family_root_id, target_doc_ids? }. Returns { headers, rows, languages,
+        hub_doc_id } plus the additive identifier fields for grid gestures: hub_unit_ids /
+        language_doc_ids (3a) and cell_links (A2 — per-cell link_id/target/cut/raw, rejected
+        links excluded).
+
+        `target_doc_ids` (optional, ALI-18) restricts the projection to those translation
+        columns; omitted = all of them (historical behaviour, and what /export/matrix uses).
+        A doc that is not a translation of this family is a 400, not an empty column.
         """
-        from multicorpus_engine.services.errors import NotFoundError
+        from multicorpus_engine.services.errors import NotFoundError, ValidationError
         from multicorpus_engine.services.matrix_export_service import build_alignment_matrix
 
         family_root_id = body.get("family_root_id")
         if not isinstance(family_root_id, int) or isinstance(family_root_id, bool):
             self._send_error("family_root_id must be an integer", code=ERR_BAD_REQUEST, http_status=400)
             return
+        # Colonnes visibles (ALI-18) — omis = toutes les traductions, comportement historique.
+        raw_targets = body.get("target_doc_ids")
+        target_doc_ids = None
+        if raw_targets is not None:
+            if not isinstance(raw_targets, list) or not all(
+                isinstance(t, int) and not isinstance(t, bool) for t in raw_targets
+            ):
+                self._send_error(
+                    "target_doc_ids must be a list of integers",
+                    code=ERR_BAD_REQUEST, http_status=400,
+                )
+                return
+            target_doc_ids = raw_targets
         try:
-            matrix = build_alignment_matrix(self._conn(), family_root_id)
+            matrix = build_alignment_matrix(self._conn(), family_root_id, target_doc_ids)
         except NotFoundError as exc:
             self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=404)
+            return
+        except ValidationError as exc:
+            self._send_error(
+                exc.message, code=ERR_BAD_REQUEST, http_status=400, details=exc.details,
+            )
             return
         self._send_json(success_payload(matrix))
 

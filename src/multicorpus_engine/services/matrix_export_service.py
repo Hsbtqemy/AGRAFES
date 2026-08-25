@@ -29,11 +29,11 @@ from __future__ import annotations
 
 import json as _json
 import sqlite3
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from ..anchoring import anchor_status_for_doc
 from ..coarse_grain import STRUCTURAL_ROLES
-from .errors import NotFoundError
+from .errors import NotFoundError, ValidationError
 
 #: D10 — the omission token; a deliberately untranslated cell is never empty
 #: (empty is ambiguous with "not aligned yet").
@@ -72,7 +72,11 @@ def _cell(links: list[dict[str, Any]]) -> str:
     return " ".join(p.strip() for p in parts if p.strip()).strip()
 
 
-def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dict:
+def build_alignment_matrix(
+    conn: sqlite3.Connection,
+    family_root_id: int,
+    target_doc_ids: Optional[Sequence[int]] = None,
+) -> dict:
     """Project the family's aligned form into a hub-anchored multilingual matrix.
 
     Returns ``{"headers": [...], "rows": [[...], ...], "languages": [...],
@@ -119,6 +123,19 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
       the hub; an unanchored text (``kind=None``) makes the aligner drift, so the barre
       « Aligner » warns before running. Read-only, derived (``anchoring.anchor_status_for_doc``).
 
+    ``target_doc_ids`` (ALI-18 correctif 2) restricts the projection to those translation
+    columns — ``None`` (the default, and what the CSV export uses) projects them all. The
+    family itself is unchanged: only the columns rendered/serialised shrink, which is what
+    makes a gesture on one language stop paying for the others (a translation column of the
+    reference corpus weighs ≈ 0,63 Mo of payload). Column ORDER stays the family's own, not
+    the request's, so hiding then re-showing a language does not reshuffle the grid. An id
+    that is not a translation of this family raises :class:`ValidationError` rather than
+    projecting an empty column indistinguishable from an unaligned one.
+
+    ``link_counts`` (∥ the projected translations) carries each pair's link total and its
+    manual share, **rejected links included** — the scale a column-scoped re-run confirm has
+    to announce. ``link_count`` stays family-wide on purpose (the aligner's own gate).
+
     Raises :class:`NotFoundError` when the hub doc is missing.
     """
     hub = conn.execute(
@@ -138,6 +155,34 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
             (family_root_id,),
         ).fetchall()
     ]
+
+    # Colonnes visibles (ALI-18 correctif 2) — restreindre la projection aux traductions
+    # demandées. La famille reste la famille : c'est la PROJECTION qui rétrécit, jamais son
+    # périmètre logique. Tout ce qui suit (cellules, cell_links, uncovered, additions,
+    # anchor_status, headers) dérive de `translations`, donc filtrer ici suffit et rien ne
+    # peut diverger. `link_count` reste délibérément à l'échelle de la famille : c'est le
+    # compte sur lequel la barre « Aligner » ouvre sa confirmation, et il ne doit pas
+    # rétrécir avec l'affichage (revue tranche 5) — l'échelle colonne est `link_counts`.
+    #
+    # `None` = toutes les langues : c'est le comportement historique, et celui de l'export
+    # CSV, qui n'expose pas ce paramètre.
+    if target_doc_ids is not None:
+        wanted = [int(t) for t in target_doc_ids]
+        known = {tdoc for tdoc, _lang in translations}
+        unknown = [t for t in wanted if t not in known]
+        if unknown:
+            # Refuser plutôt qu'ignorer : un id inconnu vient d'une vue périmée (document
+            # détaché de la famille, autre corpus). Le projeter à vide donnerait une colonne
+            # vide indiscernable d'une traduction non alignée.
+            raise ValidationError(
+                "target_doc_ids contains documents that are not translations of "
+                f"family_root_id={family_root_id}",
+                details={"unknown_doc_ids": unknown, "family_root_id": family_root_id},
+            )
+        # L'ordre des colonnes reste celui de la famille, pas celui de la requête : la
+        # grille doit garder une disposition stable quand on masque puis réaffiche.
+        keep = set(wanted)
+        translations = [t for t in translations if t[0] in keep]
 
     hub_units = conn.execute(
         "SELECT unit_id, text_raw, meta_json, unit_status, n, unit_role, text_norm"
@@ -352,6 +397,37 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         "SELECT COUNT(*) FROM alignment_links WHERE pivot_doc_id=?", (family_root_id,)
     ).fetchone()[0]
 
+    # Effectif PAR COLONNE, ∥ aux traductions projetées — rejetés compris, comme
+    # `link_count`, et pour la même raison : c'est ce que voit l'index unique de
+    # l'aligneur, pas ce que montre la grille. Une relance scopée à une colonne doit
+    # annoncer ce qu'elle va réécrire à l'échelle de CETTE colonne ; annoncer le total
+    # de la famille surestimerait la destruction d'un facteur égal au nombre de langues.
+    # `manual` compte les liens posés à la main (`run_id='manual'`) : `preserve_accepted`
+    # ne protège que `status='accepted'`, donc un recalcul les emporte — la confirmation
+    # doit pouvoir le dire (ALI-15, correctif 3).
+    link_counts = [
+        {
+            "target_doc_id": tdoc,
+            "links": int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM alignment_links"
+                    " WHERE pivot_doc_id=? AND target_doc_id=?",
+                    (family_root_id, tdoc),
+                ).fetchone()[0]
+                or 0
+            ),
+            "manual": int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM alignment_links"
+                    " WHERE pivot_doc_id=? AND target_doc_id=? AND run_id='manual'",
+                    (family_root_id, tdoc),
+                ).fetchone()[0]
+                or 0
+            ),
+        }
+        for tdoc, _lang in translations
+    ]
+
     # Upstream anchoring (1.6.59, DESIGN_upstream_anchoring §4) — per-language anchor status,
     # PARALLEL to `languages` (index 0 = hub). The barre « Aligner » warns before firing a run
     # that would drift because a text carries no anchor (Beigbeder EN). Read-only, derived on
@@ -367,6 +443,9 @@ def build_alignment_matrix(conn: sqlite3.Connection, family_root_id: int) -> dic
         "languages": [hub_lang, *[lang for _t, lang in translations]],
         "hub_doc_id": int(family_root_id),
         "link_count": int(link_count or 0),
+        # ∥ aux colonnes de traduction projetées (ALI-15/ALI-16) : effectif et part
+        # manuelle de chaque paire, rejetés compris.
+        "link_counts": link_counts,
         # Tranche 3a — identifiers for editable grid gestures. Parallel arrays:
         # hub_unit_ids[i] is the hub unit behind rows[i] (None on an addition row);
         # language_doc_ids[j] is the doc_id behind languages[j] (0 = hub).
