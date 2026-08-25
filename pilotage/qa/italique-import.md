@@ -50,7 +50,7 @@ les 16 unités sont bien là — mais le document est invisible au concordancier
 
 ### Couche Annotation
 
-- [ ] Sur un document non annoté, l'italique s'affiche comme dans les autres couches
+- [x] Sur un document non annoté, l'italique s'affiche comme dans les autres couches
 - [x] Sur une unité annotée, la prose colorée par catégorie remplace le texte : l'italique n'y apparaît pas, et c'est voulu
 - [x] Une unité annotée puis corrigée au stylo porte « ⟳ texte modifié — à réannoter » et montre le texte corrigé
 
@@ -78,10 +78,10 @@ les 16 unités sont bien là — mais le document est invisible au concordancier
 - [x] Les citations en italique du corps de l'article s'affichent en italique dans la couche Rôles
 - [x] Le texte cherché est inchangé : dans la recherche de la couche, un mot situé dans un passage italique retrouve son unité
 - [x] L'import d'un `.docx` sans aucune stylisation ne fait apparaître aucun balisage
-- [ ] Les 28 unités sont de type `line` — toutes en `structure` = l'import s'est fait en *lignes numérotées*, refaire en *DOCX paragraphes*
-- [ ] Dans le concordancier, une recherche sur un mot d'un passage italique trouve l'unité — suppose des unités `line`, les `structure` ne sont pas indexées
+- [x] Les 28 unités sont de type `line` — toutes en `structure` = l'import s'est fait en *lignes numérotées*, refaire en *DOCX paragraphes*
+- [x] Dans le concordancier, une recherche sur un mot d'un passage italique trouve l'unité — suppose des unités `line`, les `structure` ne sont pas indexées
 
 ### Non-régression sûreté
 
-- [ ] Importer un `.txt` en *txt_numbered_lines* dont une ligne est `[1] <hi rend="italic">x</hi><script>alert(1)</script>` (le marqueur est obligatoire, c'est le seul mode texte) : la ligne s'affiche en toutes lettres, aucune boîte d'alerte, aucun texte en italique
-- [ ] Le même fichier passé en couche Curation puis Annotation ne déclenche rien non plus
+- [x] Importer un `.txt` en *txt_numbered_lines* dont une ligne est `[1] <hi rend="italic">x</hi><script>alert(1)</script>` (le marqueur est obligatoire, c'est le seul mode texte) : la ligne s'affiche en toutes lettres, aucune boîte d'alerte, aucun texte en italique
+- [x] Le même fichier passé en couche Curation puis Annotation ne déclenche rien non plus
