@@ -30,7 +30,7 @@ audit: docs/DESIGN_explorer_autonome.md
 - [ ] EXA-01 — retirer les gestes d'écriture du concordancier : boutons « ⬆ Importer… » et « ⟳ Réindexer » (`tauri-app/src/ui/buildUI.ts:241-242`)
 - [ ] EXA-02 — retirer l'écriture de rôle d'unité du panneau métadonnées (`POST /units/set_role`, `tauri-app/src/lib/sidecarClient.ts:603`)
 - [ ] EXA-08 — reloger l'export CSV de la recherche grammaticale, dont la seconde entrée vit dans le mode « Publier » (`shell.ts:2889`) qu'Explorer n'aura pas
-- [ ] Refaire l'accueil du profil plutôt que griser : sans le module dans le bundle, la carte « Constituer » ne peut pas fonctionner — et gater aussi les onglets, les raccourcis ⌘2/⌘3 et le deep-link `?mode=constituer`, qui mène aujourd'hui droit à un `import()` de chunk absent
+- [ ] Refaire l'accueil du profil plutôt que griser : sans le module dans le bundle, la carte « Constituer » ne peut pas fonctionner — et gater aussi les onglets, les raccourcis ⌘2/⌘3 et le deep-link `?mode=constituer`, qui mène aujourd'hui droit à un `import()` de chunk absent. Aucune mention de Constituer : la diffusion étroite est un objectif
 - [ ] Traiter l'entrée CSS du profil : `main.ts` importe six feuilles de Prep en statique (`app.css` 215 KiB à elle seule), qu'aucune garde sur l'`import()` dynamique n'élimine — mesuré le 25 août
 - [ ] EXA-11 — remplacer l'accès aux métadonnées par une fiche technique en lecture (corpus + document), alimentée par les GET existants, sans endpoint neuf
 
@@ -100,6 +100,17 @@ télémétrie, mises à jour, raccourcis) servent Explorer autant que Prep. Écr
 application dédiée reviendrait à réécrire ces 85 % pour économiser 0,25 % de l'installeur.
 La réserve est réelle malgré tout : un second bundle donne à `shell.ts`, déjà gros, une
 seconde raison de changer.
+
+**Séquencement décidé le 25 août : les lots 2, 3 et 5 attendent que `refonte` redescende
+sur `dev` ; les lots 1 et 4 n'ont pas à attendre.** Mesuré sur trois couches : le code
+d'Explorer n'importe de Prep que `safeHtml`, `sidecarClient` et les six feuilles CSS de
+`main.ts` ; sur six mois, 26 commits touchent Prep **et** une surface d'Explorer sur 461 et
+97, et un seul est une notion de Prep qui a dû affleurer dans Explorer (`06dba21`, badge de
+curation propagée). Le couplage réel n'est pas le code mais **la production** : Explorer
+filtre `unit_role`, `unit_status`, les familles, le `token_count`, et affiche l'unité —
+soit exactement ce que R2 (deux grains), R5.4 (segmentation configurable), R4 (rôles) et R3
+(alignement) déplacent encore. Le lot moteur (lecture seule) et le lot packaging (preset
+sans spaCy) ne touchent rien de tout cela.
 
 Collision connue : le lot moteur touche `sidecar.py`, `cli.py`, `db/connection.py` et
 `runs.py` — noyau partagé avec A-01 (extraction `services/`, growth gate à +410 / 500) et

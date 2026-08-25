@@ -19,6 +19,10 @@ Trois contraintes énoncées au cadrage :
    corpus, exporter ses résultats, ouvrir un package publié sont souhaitables mais viennent après.
 3. Les métadonnées et les documents restent utiles, **mais repensés** : pas d'édition —
    une *fiche technique* (générale + détail) construite à partir de ce qui a été rempli dans Prep.
+4. **La diffusion est délibérément étroite.** C'est un outil universitaire : le second
+   livrable sert aussi à *maîtriser qui a accès à quoi*. Explorer ne fait donc **aucune
+   publicité pour Constituer** — pas de lien de téléchargement, pas de mention d'une
+   version complète. Ce qui est retiré du profil est retiré, pas montré comme verrouillé.
 
 ---
 
@@ -125,8 +129,8 @@ pour l'instant » ; ici le module n'est pas dans le bundle, l'`import()` échoue
 surfaces à gater sont quatre, pas une : les cartes d'accueil, les onglets d'en-tête, les
 raccourcis ⌘2/⌘3, et le **deep-link** `#constituer` / `?mode=constituer`, que
 `_normalizeMode` accepte encore et qui conduirait `_setMode` à charger un chunk absent.
-Si Explorer doit signaler que Constituer existe, c'est une mention avec un lien — pas un
-bouton mort.
+Explorer **ne signale pas** que Constituer existe : la diffusion étroite est un objectif
+(§0.4), pas un effet de bord.
 
 Réserve honnête : A fait porter à `shell.ts` une seconde raison de changer, et le fichier
 est déjà à 3 640 lignes. Si le second `tauri.conf` se met à diverger (icônes, identifiant,
@@ -308,6 +312,46 @@ corpus téléchargé, puis seulement ensuite D-EX7.
 
 L'ordre compte : le lot 1 sans le lot 2 laisse des boutons qui échouent en 403 ; le lot 2
 sans le lot 1 affiche une promesse que rien ne tient.
+
+---
+
+## 8.1 Séquencement — ce qui dépend de Prep, et ce qui n'en dépend pas
+
+Question posée le 25 août : un changement dans Prep peut-il induire un changement dans
+Explorer ? Mesuré sur trois couches.
+
+**Le code : couplage mince.** Les surfaces d'Explorer n'importent de Prep que
+`lib/safeHtml.ts` et `lib/sidecarClient.ts` — plus les **six feuilles CSS** de `main.ts`
+(§3.1), qui sont le seul vrai fil : le chrome du shell est habillé par le CSS de Prep.
+
+**L'historique : rare.** Sur six mois, **461 commits** touchent Prep, **97** une surface
+d'Explorer, **26 les deux**. À la lecture, ces 26 sont presque tous transverses (audits de
+sécurité, extraction du `sidecarCore` partagé, releases, fuites de listeners) ou des
+fonctions conçues des deux côtés à la fois (`token_stats`, collocations). **Un seul** est
+« une notion née dans Prep qui a dû affleurer dans Explorer » : `06dba21`, curation
+propagée → badge dans le concordancier.
+
+**Le modèle : c'est là que ça bouge.** Explorer n'est pas couplé au *code* de Prep, il l'est
+à sa *production*. Il affiche et filtre `unit_role`, `unit_status`, `doc_role`,
+`resource_type`, les étiquettes, les familles, le `token_count` — et surtout **l'unité
+elle-même**. Or les quatre chantiers ouverts portent exactement là-dessus : R2 (deux grains
+¶ ⊃ phrase, cas blob différé), R5.4 (segmentation configurable — resegmenter déplace toutes
+les bornes de KWIC), R4 (vocabulaire des rôles, qui est un filtre d'Explorer), R3
+(alignement, que la vue parallèle lit).
+
+**Conséquence, et elle n'est pas binaire :**
+
+| Lot | Dépend de la production de Prep ? |
+|---|---|
+| **1 — moteur lecture seule** | **non** — `cli.py`, `connection.py`, `_WRITE_PATHS`, `runs` |
+| **4 — preset sidecar + diffusion** | **non** — `build_sidecar.py`, budgets, CI, signature |
+| 2 — profil front | oui, par le CSS (toute refonte de `app.css` le déplace) |
+| 3 — fiche technique | oui, elle lit le modèle de métadonnées |
+| 5 — plusieurs corpus | oui, indirectement |
+
+Les lots 1 et 4 — la lecture seule et le binaire de 16 Mo, c'est-à-dire **la promesse et le
+livrable** — ne peuvent pas être périmés par le travail en cours sur Prep. Les lots 2, 3 et
+5 gagnent à attendre que `refonte` redescende sur `dev`.
 
 ---
 
