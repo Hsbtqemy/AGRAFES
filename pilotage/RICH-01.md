@@ -24,6 +24,7 @@ statut: à venir
 ## QA
 
 - qa/italique-import.md
+- qa/stylisation-inline.md
 
 ## Contexte
 
