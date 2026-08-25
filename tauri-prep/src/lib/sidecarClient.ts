@@ -1788,6 +1788,12 @@ export interface AlignMatrix {
    *  rejected re-aligns to nothing. The « déjà aligné ? » gate must use THIS, never the
    *  links the grid displays. */
   link_count?: number;
+  /** 1.6.77 — ∥ aux colonnes de traduction PROJETÉES : effectif de liens de chaque paire
+   *  et part posée à la main, **rejetés compris** (comme `link_count`, et pour la même
+   *  raison : c'est ce que voit l'index unique de l'aligneur, pas ce que montre la grille).
+   *  C'est l'échelle qu'une relance scopée à une colonne doit annoncer ; `link_count`, lui,
+   *  reste famille-entière. Absent sur un sidecar antérieur. */
+  link_counts?: MatrixLinkCount[];
   /** 1.6.59 (DESIGN_upstream_anchoring §4): parallel to `languages` (index 0 = hub) —
    *  whether each document carries an alignment anchor. A `kind: null` text makes the
    *  length-bounded aligner drift, so the barre « Aligner » warns before running. */
@@ -1826,8 +1832,27 @@ export interface MatrixUncoveredUnit {
   text_norm?: string;
 }
 
-export async function getAlignMatrix(conn: Conn, familyRootId: number): Promise<AlignMatrix> {
-  return conn.post("/align/matrix", { family_root_id: familyRootId }) as Promise<AlignMatrix>;
+/** 1.6.77 — effectif d'une colonne. `manual` isole les liens que `preserve_accepted`
+ *  ne protège PAS (`status IS NULL`) et qu'un recalcul emporterait donc. */
+export interface MatrixLinkCount {
+  target_doc_id: number;
+  links: number;
+  manual: number;
+}
+
+/**
+ * La projection de la famille. `targetDocIds` (1.6.77) la restreint à ces colonnes de
+ * traduction : omis = toutes, ce qui reste le chemin historique — un sidecar antérieur
+ * ignore simplement le paramètre et rend tout. Ne jamais s'en servir pour BORNER un geste
+ * destructif sans vérifier ce que le moteur a réellement fait : la projection est une vue,
+ * le périmètre d'un run se déclare au run (`alignFamily`).
+ */
+export async function getAlignMatrix(
+  conn: Conn, familyRootId: number, targetDocIds?: number[],
+): Promise<AlignMatrix> {
+  const body: Record<string, unknown> = { family_root_id: familyRootId };
+  if (targetDocIds !== undefined) body.target_doc_ids = targetDocIds;
+  return conn.post("/align/matrix", body) as Promise<AlignMatrix>;
 }
 
 /** 1.6.56 (D-W8) — per-cell « non traduit » on the (hub unit × target doc) pair;
@@ -1980,6 +2005,15 @@ export interface FamilyAlignOptions {
   preserve_accepted?: boolean;
   /** Skip pairs where child is not segmented instead of returning an error */
   skip_unready?: boolean;
+  /**
+   * 1.6.77 (ALI-15) — n'aligner que ces enfants ; omis = toute la famille.
+   *
+   * Ce n'est pas un filtre d'affichage : c'est le périmètre de DESTRUCTION. Avec
+   * `replace_existing`, la purge est faite par paire exacte, donc une colonne hors de
+   * cette liste garde ses liens — y compris ceux posés à la main, que `preserve_accepted`
+   * ne protège pas (il ne sauve que `status='accepted'`).
+   */
+  target_doc_ids?: number[];
 }
 
 export interface FamilyAlignPairResult {

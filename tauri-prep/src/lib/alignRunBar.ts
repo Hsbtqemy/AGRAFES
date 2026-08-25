@@ -67,17 +67,56 @@ export function buildAlignAdvancedHtml(): string {
  * new links on top of the old ones (and create collisions). Saying « n'ajoute que les
  * liens manquants » was simply false.
  */
-export function buildAlignRerunConfirmHtml(linkCount: number): string {
+export interface RerunScope {
+  /** Les langues que le run va réécrire — vide quand il porte sur toute la famille. */
+  targets: string[];
+  /** Les langues qu'il n'ira PAS toucher (colonnes masquées). */
+  spared: string[];
+  /** Liens posés à la main dans le périmètre : `preserve_accepted` ne les protège pas. */
+  manual: number;
+}
+
+/**
+ * La phrase qui manquait : ce que le recalcul détruit, et ce qu'il épargne.
+ *
+ * Sans périmètre (toutes les colonnes visibles) on retombe mot pour mot sur l'ancien
+ * libellé — c'est le même geste qu'avant, il doit se lire pareil.
+ */
+function _scopeLine(scope?: RerunScope): string {
+  if (!scope || scope.targets.length === 0) return "";
+  const t = scope.targets.join(", ");
+  const head = ` Le recalcul ne portera que sur <strong>${t}</strong>.`;
+  const spared = scope.spared.length > 0
+    ? ` <strong>${scope.spared.join(", ")}</strong> ${scope.spared.length > 1 ? "sont épargnées" : "est épargnée"}`
+      + ` — masquée${scope.spared.length > 1 ? "s" : ""}, donc hors du run.`
+    : "";
+  // ALI-15 correctif 3 : un lien manuel a `status IS NULL`, donc `preserve_accepted` ne
+  // le sauve pas. Le compter ici est la seule chose qui distingue « je refais un calcul »
+  // de « je perds une heure de travail à la main ».
+  const manual = scope.manual > 0
+    ? ` <strong>${scope.manual}</strong> de ces liens ${scope.manual > 1 ? "ont été posés" : "a été posé"}`
+      + ` à la main et ${scope.manual > 1 ? "seront supprimés" : "sera supprimé"}`
+      + ` (« Conserver les liens validés » ne protège que les liens validés).`
+    : "";
+  return head + spared + manual;
+}
+
+export function buildAlignRerunConfirmHtml(linkCount: number, scope?: RerunScope): string {
+  const scoped = scope && scope.targets.length > 0;
+  const what = scoped ? "Cette sélection porte déjà" : "Cette famille porte déjà";
+  const recalcLabel = scoped && scope.spared.length > 0
+    ? `Recalculer ${scope.targets.join(", ")}`
+    : "Recalcul global";
   return `<div class="prep-matrix-align-confirm" role="group" aria-label="Famille déjà alignée">`
-    + `<span>Cette famille porte déjà <strong>${linkCount}</strong> lien${linkCount > 1 ? "s" : ""}`
-    + ` (liens rejetés compris).</span>`
+    + `<span>${what} <strong>${linkCount}</strong> lien${linkCount > 1 ? "s" : ""}`
+    + ` (liens rejetés compris).${_scopeLine(scope)}</span>`
     + `<button type="button" id="matrix-align-complete" class="btn btn-secondary btn-sm">`
     + `Compléter <small>(garde les liens existants — mais avec une AUTRE stratégie, ou après une`
   + ` modification de la segmentation, les nouveaux appariements s'AJOUTENT : l'unicité porte sur`
   + ` la paire d'unités, pas sur le segment. Un « Compléter » a déjà doublé une famille de 5 593`
   + ` liens.)</small></button>`
     + `<button type="button" id="matrix-align-recalc" class="btn btn-danger btn-sm">`
-    + `Recalcul global <small>(supprime les liens puis réaligne)</small></button>`
+    + `${recalcLabel} <small>(supprime les liens puis réaligne)</small></button>`
     + `<button type="button" id="matrix-align-cancel" class="btn btn-ghost btn-sm">Annuler</button>`
     + `</div>`;
 }

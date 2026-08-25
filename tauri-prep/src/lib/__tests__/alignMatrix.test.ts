@@ -43,13 +43,24 @@ describe("buildMatrixView", () => {
     expect(v.rows[1].hasWarning).toBe(true);
   });
 
-  it("marks a repeated non-empty cell as fused (the uncut 2-1)", () => {
+  it("groupe le 2-1 non coupé : la traduction est portée UNE fois, à cheval", () => {
     const v = buildMatrixView(SAMPLE);
-    // first EN_shared occurrence is ok, the second (row 4) is fused
-    expect(v.rows[2].cells.find((c) => c.lang === "en")!.status).toBe("ok");
-    expect(v.rows[3].cells.find((c) => c.lang === "en")!.status).toBe("fused");
-    // ro on the same rows differs → not fused
+    // EN_shared couvre les segments 3 et 4 : la première ligne porte le groupe, la
+    // seconde est absorbée. Avant, les deux affichaient le même texte avec un ⚠ —
+    // un doublon présenté comme une faute, alors que c'est le cas normal d'une
+    // traduction qui n'a pas coupé au même endroit que la source.
+    const g = v.rows[2].cells.find((c) => c.lang === "en")!;
+    expect(g.status).toBe("grouped");
+    expect(g.groupSize).toBe(2);
+    expect(v.rows[3].cells.find((c) => c.lang === "en")!.status).toBe("continuation");
+    // ro on the same rows differs → not grouped
     expect(v.rows[3].cells.find((c) => c.lang === "ro")!.status).toBe("ok");
+  });
+
+  it("un groupe n'est PAS une alerte : la ligne absorbée ne porte pas de ⚠", () => {
+    const v = buildMatrixView(SAMPLE);
+    expect(v.rows[2].hasWarning).toBe(false);
+    expect(v.rows[3].hasWarning).toBe(false);
   });
 
   it("leaves a clean 1-1 row without warnings", () => {
@@ -58,12 +69,15 @@ describe("buildMatrixView", () => {
     expect(v.rows[0].cells.every((c) => c.status === "ok")).toBe(true);
   });
 
-  it("computes completeness (warnings = empty + fused)", () => {
+  it("compte les groupes à part : « à réparer » ne retient que ce qui l'est vraiment", () => {
     const v = buildMatrixView(SAMPLE);
-    // 5 rows × 2 langs = 10 cells ; warnings = 1 empty + 1 fused = 2 → 80 %
+    // 5 lignes × 2 langues = 10 cellules. Une seule est à réparer (la cellule EN vide) ;
+    // le 2-1 est un groupe, pas un trou. Le compteur disait 2 « à réparer » — sur le
+    // corpus de référence, il en annonçait 179 dont 176 étaient des groupes.
     expect(v.stats.totalCells).toBe(10);
-    expect(v.stats.warningCells).toBe(2);
-    expect(v.stats.completionPct).toBe(80);
+    expect(v.stats.warningCells).toBe(1);
+    expect(v.stats.groupedCells).toBe(1);
+    expect(v.stats.completionPct).toBe(90);
   });
 
   it("flags paragraph starts for visual grouping", () => {
@@ -114,7 +128,8 @@ describe("buildMatrixView — topological statuses (cell_links, A2)", () => {
       cell_links: [[[lk(1, 91), lk(2, 92)]], [[lk(3, 92)]]],
     } as AlignMatrix);
     expect(v.hasCellLinks).toBe(true);
-    expect(v.rows[1].cells[0].status).toBe("fused");
+    expect(v.rows[0].cells[0].status).toBe("grouped");
+    expect(v.rows[1].cells[0].status).toBe("continuation");
   });
 
   it("does NOT flag identical texts on distinct target units (refrain false positive)", () => {
@@ -150,8 +165,12 @@ describe("buildMatrixView — topological statuses (cell_links, A2)", () => {
         [[lk(3, 91, { char_start: 5, char_end: 9 })]],
       ],
     } as AlignMatrix);
-    expect(v.rows[1].cells[0].status).toBe("ok");    // boundary resolved
-    expect(v.rows[2].cells[0].status).toBe("fused"); // tail pair still fused
+    // La première frontière est résolue (fenêtres distinctes) ; la queue reste partagée
+    // — donc groupée, et toujours signalée comme telle (D-W13). Ce qui change est le mot,
+    // pas la détection : elle porte le ✂ « Répartir » au lieu d'un ⚠ « à réparer ».
+    expect(v.rows[1].cells[0].status).toBe("grouped");
+    expect(v.rows[1].cells[0].groupSize).toBe(2);
+    expect(v.rows[2].cells[0].status).toBe("continuation");
   });
 
   it("carries the identities: hubUnitId per row, links per cell, translationDocIds", () => {
@@ -171,7 +190,8 @@ describe("buildMatrixView — topological statuses (cell_links, A2)", () => {
       rows: [["1", 1, "FR1", "SAME"], ["1", 2, "FR2", "SAME"]],
     } as AlignMatrix);
     expect(v.hasCellLinks).toBe(false);
-    expect(v.rows[1].cells[0].status).toBe("fused");
+    expect(v.rows[0].cells[0].status).toBe("grouped");
+    expect(v.rows[1].cells[0].status).toBe("continuation");
   });
 });
 
@@ -305,9 +325,12 @@ describe("buildMatrixView — statuts D-W8/D8/D-W14 (1.6.56)", () => {
 describe("matrixSummaryLine", () => {
   it("renders the completeness strip", () => {
     const line = matrixSummaryLine(buildMatrixView(SAMPLE));
-    expect(line).toContain("8/10");
-    expect(line).toContain("2 à réparer");
-    expect(line).toContain("80%");
+    expect(line).toContain("9/10");
+    expect(line).toContain("1 à réparer");
+    // Les groupes sont nommés À CÔTÉ du compte, jamais dedans : les taire ferait passer
+    // pour « aligné » ce que personne n'a regardé, les compter comme fautes crierait au loup.
+    expect(line).toContain("1 groupée");
+    expect(line).toContain("90%");
     expect(line).not.toContain("hors matrice");
   });
 });

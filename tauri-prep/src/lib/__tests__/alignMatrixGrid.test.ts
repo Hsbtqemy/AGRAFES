@@ -37,11 +37,22 @@ describe("buildMatrixGridHtml", () => {
     expect(html).not.toContain("prep-matrix-seg-btn");
   });
 
-  it("tags cells by status (ok / empty / fused)", () => {
+  it("tags cells by status (ok / empty / grouped)", () => {
     const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
     expect(html).toContain("prep-matrix-cell--ok");
     expect(html).toContain("prep-matrix-cell--empty");
-    expect(html).toContain("prep-matrix-cell--fused");
+    expect(html).toContain("prep-matrix-cell--grouped");
+  });
+
+  it("le 2-1 est peint une seule fois, à cheval sur ses lignes", () => {
+    const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
+    // Une cellule à cheval, et le texte partagé n'apparaît qu'UNE fois : c'est le doublon
+    // qui déroutait les utilisateurs qui disparaît.
+    expect(html).toContain('rowspan="2"');
+    expect(html.split("SHARED").length - 1).toBe(1);
+    expect(html).toContain("1 trad &#8596; 2 segments");
+    // Le geste reste offert, sur la frontière basse du groupe (ligne 3, index 3).
+    expect(html).toContain('class="prep-matrix-cut-btn" data-cut-row="3"');
   });
 
   it("marks rows with warnings and paragraph starts", () => {

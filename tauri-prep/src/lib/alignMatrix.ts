@@ -28,7 +28,20 @@
 import type { AlignMatrix, MatrixCellLink, MatrixUncoveredUnit } from "./sidecarClient.ts";
 import { cellsShareFusedTarget } from "./alignCellCut.ts";
 
-export type CellStatus = "ok" | "empty" | "fused" | "non_traduit";
+export type CellStatus =
+  | "ok"
+  /** Aucune traduction alignée (∅). */
+  | "empty"
+  /** Première ligne d'un GROUPE : une traduction qui couvre plusieurs segments source
+   *  contigus. Peinte une seule fois, à cheval sur ses lignes. État neutre, pas alerte. */
+  | "grouped"
+  /** Ligne absorbée par le `rowspan` du groupe au-dessus — jamais rendue en `<td>`. */
+  | "continuation"
+  /** Le cas résiduel : une traduction partagée avec une ligne NON contiguë (une ligne
+   *  d'ajout s'est intercalée). Impossible à peindre en `rowspan` — on retombe sur
+   *  l'affichage dupliqué historique, et ça reste une anomalie à signaler. */
+  | "fused"
+  | "non_traduit";
 
 export interface MatrixCellView {
   lang: string;
@@ -39,6 +52,8 @@ export interface MatrixCellView {
   /** Which axis marked the cell non_traduit: "cell" (per-cell table — clearable from
    *  the cell) or "hub" (global unit_status, whole row — managed source-side). */
   nonTraduitAxis: "cell" | "hub" | null;
+  /** Sur un `grouped` : le nombre de lignes que la cellule couvre (≥ 2). 1 ailleurs. */
+  groupSize: number;
 }
 
 export interface MatrixRowView {
@@ -71,6 +86,12 @@ export interface MatrixStats {
   completionPct: number;
   /** D-W14 — units invisible in the grid (no active link, no status), all columns. */
   uncoveredUnits: number;
+  /** Groupes 2-1 : une traduction qui couvre plusieurs segments source contigus. C'est un
+   *  état du texte, pas une faute — compté à part, jamais dans `warningCells`. */
+  groupedCells: number;
+  /** Cellules qui concatènent plusieurs unités de la traduction (N-1). Invisibles jusqu'ici :
+   *  391 sur une seule colonne du corpus de référence, comptées « alignées » sans un signe. */
+  multiCells: number;
 }
 
 export interface MatrixView {
@@ -151,6 +172,7 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
         status: "ok" as CellStatus,
         links: [],
         nonTraduitAxis: null,
+        groupSize: 1,
       }));
       rows.push({
         paragraph,
@@ -190,8 +212,7 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
       }
       prevByLang[i] = text;
       prevHubLinks[i] = links;
-      if (status === "empty" || status === "fused") warningCells++;
-      return { lang, text, status, links, nonTraduitAxis };
+      return { lang, text, status, links, nonTraduitAxis, groupSize: 1 };
     });
 
     rows.push({
@@ -202,10 +223,66 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
       hubUnitId: hubUnitIds ? (hubUnitIds[rowIdx] ?? null) : null,
       addition: null,
       cells,
-      hasWarning: cells.some((c) => c.status === "empty" || c.status === "fused"),
+      hasWarning: false,   // décidé par la seconde passe, une fois les groupes formés
       paragraphStart: paragraph !== prevParagraph,
     });
     prevParagraph = paragraph;
+  });
+
+  // ── Seconde passe : former les GROUPES (le 2-1 lisible) ────────────────────
+  //
+  // Mesuré sur le corpus de référence : 338 groupes, tous de taille 2, tous à segments
+  // source CONTIGUS — pas un seul dispersé. Autrement dit, ce que la grille signalait
+  // « à réparer » (176 des 179 alertes de la famille Modiano) est le cas normal : la
+  // traduction n'a pas coupé là où la source a coupé. Et la forme d'un bead légitime est
+  // rigoureusement celle d'une dérive : rien ne les distingue automatiquement. Les compter
+  // comme des fautes était donc doublement faux — ça criait au loup, et ça noyait les 3
+  // vraies cellules vides dans 176 fausses.
+  //
+  // La réponse n'est pas un compteur plus malin, c'est un AFFICHAGE qui rend le cas
+  // lisible : peindre la traduction UNE fois, à cheval sur ses segments source. Le doublon
+  // — ce qui déroute — disparaît, et le lecteur juge sur pièces.
+  //
+  // Contrainte de correction : un `rowspan` ne saute pas de ligne. Un groupe interrompu par
+  // une ligne d'ajout (D8) reste donc `fused`, affiché comme avant.
+  let groupedCells = 0;
+  let multiCells = 0;
+  translationLangs.forEach((_lang, j) => {
+    let i = 0;
+    while (i < rows.length) {
+      const start = rows[i];
+      if (start.addition || start.cells[j]?.status !== "ok") { i++; continue; }
+      let end = i;
+      while (
+        end + 1 < rows.length
+        && !rows[end + 1].addition
+        && rows[end + 1].cells[j]?.status === "fused"
+      ) end++;
+      if (end > i) {
+        start.cells[j].status = "grouped";
+        start.cells[j].groupSize = end - i + 1;
+        for (let k = i + 1; k <= end; k++) rows[k].cells[j].status = "continuation";
+        groupedCells++;
+      }
+      i = end + 1;
+    }
+  });
+
+  // ── Comptes ────────────────────────────────────────────────────────────────
+  //
+  // `warningCells` ne retient plus que ce qui est réellement à réparer : une cellule vide,
+  // ou une fusion non contiguë. Un groupe est fait, pas troué. Une `continuation` n'est pas
+  // une cellule de plus : c'est la même, vue depuis la ligne suivante.
+  rows.forEach((r) => {
+    if (r.addition) return;
+    r.cells.forEach((c) => {
+      if (c.status === "empty" || c.status === "fused") warningCells++;
+      // Même règle que la pastille de la grille : une cellule ∅ ou « non traduit » peut
+      // porter des liens (fenêtre de coupe qui tranche à vide) sans rien montrer. La
+      // compter ici annoncerait un nombre que rien à l'écran ne justifie.
+      if (c.links.length >= 2 && c.status !== "empty" && c.status !== "non_traduit") multiCells++;
+    });
+    r.hasWarning = r.cells.some((c) => c.status === "empty" || c.status === "fused");
   });
 
   const totalCells = hubRowCount * translationLangs.length;
@@ -224,15 +301,24 @@ export function buildMatrixView(data: AlignMatrix): MatrixView {
     uncovered,
     linkCount: data.link_count ?? null,
     rows,
-    stats: { totalCells, warningCells, completionPct, uncoveredUnits },
+    stats: { totalCells, warningCells, completionPct, uncoveredUnits, groupedCells, multiCells },
   };
 }
 
 /** One-line completeness summary for the header strip (D-W5 — an aid, not a verdict: D-W12). */
 export function matrixSummaryLine(view: MatrixView): string {
-  const { totalCells, warningCells, completionPct, uncoveredUnits } = view.stats;
+  const { totalCells, warningCells, completionPct, uncoveredUnits, groupedCells, multiCells }
+    = view.stats;
   const ok = totalCells - warningCells;
-  const base = `${ok}/${totalCells} cellules alignées · ${warningCells} à réparer · ${completionPct}%`;
+  const parts = [`${ok}/${totalCells} cellules alignées`, `${warningCells} à réparer`];
+  // Les deux formes de multisegment, nommées — et rangées du bon côté. Un groupe n'est pas
+  // une faute (c'est la traduction qui n'a pas coupé au même endroit), une cellule à
+  // plusieurs phrases non plus ; mais les taire fait passer pour « aligné » ce que personne
+  // n'a regardé. Elles se lisent donc à côté du compte, jamais dedans.
+  if (groupedCells > 0) parts.push(`${groupedCells} groupée${groupedCells > 1 ? "s" : ""}`);
+  if (multiCells > 0) parts.push(`${multiCells} à plusieurs phrases`);
+  parts.push(`${completionPct}%`);
+  const base = parts.join(" · ");
   // D-W14 — the completeness line must not lie: surface what the grid cannot show.
   return uncoveredUnits > 0 ? `${base} · ${uncoveredUnits} hors matrice` : base;
 }

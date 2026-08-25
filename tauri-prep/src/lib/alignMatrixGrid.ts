@@ -36,7 +36,16 @@ export function buildMatrixGridHtml(view: MatrixView): string {
         + ` title="${orphans} unité(s) de cette traduction ne sont couvertes par aucun lien — ouvrir la liste">`
         + `${orphans} hors matrice</button>`
       : "";
-    return `<th class="prep-matrix-th">${_esc(l)}${badge}${segBtn(view.translationDocIds[i])}</th>`;
+    // ALI-15 — « ⇄ » : relancer l'aligneur sur CETTE paire seule. Le geste manquait
+    // complètement : réparer une langue obligeait à passer par « Recalcul global », qui
+    // purge toutes les paires de la famille — liens manuels des AUTRES langues compris,
+    // puisque `preserve_accepted` ne sauve que les liens validés (cas mesuré en base).
+    const docId = view.translationDocIds[i];
+    const alignBtn = docId != null
+      ? ` <button type="button" class="prep-matrix-col-align-btn" data-align-doc="${docId}"`
+        + ` title="Réaligner cette colonne seule — les autres langues ne sont pas touchées">&#8646;</button>`
+      : "";
+    return `<th class="prep-matrix-th">${_esc(l)}${badge}${alignBtn}${segBtn(docId)}</th>`;
   }).join("");
   const thead =
     `<thead><tr>`
@@ -69,6 +78,17 @@ export function buildMatrixGridHtml(view: MatrixView): string {
     }
 
     const cells = r.cells.map((c, colIdx) => {
+      // Ligne absorbée par le `rowspan` du groupe ouvert au-dessus : ne rien émettre du
+      // tout. C'est ce qui fait disparaître le doublon — la traduction est peinte une fois.
+      if (c.status === "continuation") return "";
+      // Une cellule qui concatène plusieurs unités de la traduction (N-1) porte sa
+      // multiplicité AU REPOS. Elle ne la portait nulle part : sur une colonne du corpus
+      // de référence, 391 cellules sur 1 372 (28,5 %) sont dans ce cas, comptées
+      // « alignées » et sans un signe — c'est le plus gros angle mort de la grille, et
+      // celui qu'on découvre en lisant une note du traducteur sous une réplique.
+      const multiBadge = c.links.length >= 2 && c.status !== "empty" && c.status !== "non_traduit"
+        ? `<span class="prep-matrix-multi" title="Cette cellule réunit ${c.links.length} phrases de la traduction pour ce seul segment source">${c.links.length} phrases</span> `
+        : "";
       // D-W13 — cell ↺ on any cell whose links carry a cut (hover-revealed):
       // « cette traduction redevient entière » (clears + deletes the manual links).
       const uncutBtn = view.hasCellLinks && c.links.some((l) => l.char_start != null)
@@ -132,6 +152,22 @@ export function buildMatrixGridHtml(view: MatrixView): string {
         // vide) : sans ↺/✕ ici, ce lien serait inannulable et irretirable (uncutBtn/removeBtn
         // se gardent seuls sur les liens, donc no-op sur une cellule réellement vide).
         inner = `<span class="prep-matrix-empty" title="Aucune traduction alignée">&#8709;</span>${ntBtn}${mergeBackBtn}${attachBtn}${uncutBtn}${removeBtn}`;
+      } else if (c.status === "grouped") {
+        // Le 2-1 rendu lisible : une traduction qui couvre plusieurs segments source
+        // contigus, peinte UNE fois à cheval sur eux. Ce n'est pas une alerte — c'est le
+        // cas normal quand la traduction ne coupe pas au même endroit que la source (338
+        // groupes sur le corpus de référence, tous contigus). Le ✂ reste offert, sur la
+        // PREMIÈRE frontière du groupe : `rowIdx + 1`, la ligne basse de cette frontière,
+        // exactement ce que `resolveFusedCellLinks` attend. Couper rétrécit le groupe, et
+        // le bouton réapparaît pour la frontière suivante — les groupes de 3+ se défont
+        // donc de proche en proche, sans cas particulier.
+        const cutBtn =
+          ` <button type="button" class="prep-matrix-cut-btn" data-cut-row="${rowIdx + 1}" data-cut-col="${colIdx}"`
+          + ` title="Répartir cette traduction entre les ${c.groupSize} segments qu'elle couvre">&#9986; Répartir</button>`;
+        const tag = `<span class="prep-matrix-group-tag"`
+          + ` title="Une seule traduction pour ${c.groupSize} segments source — la traduction n'a pas coupé au même endroit. Ce n'est pas une erreur.">`
+          + `1 trad &#8596; ${c.groupSize} segments</span>`;
+        inner = `${tag} ${_esc(c.text)}${cutBtn}${uncutBtn}${removeBtn}${reviewBtn}`;
       } else if (c.status === "fused") {
         // Tranche 3b — the cut gesture lives on the fused (repeating) cell; its bead
         // pairs this row with the one above, so row 0 (defensive) gets no button.
@@ -167,7 +203,8 @@ export function buildMatrixGridHtml(view: MatrixView): string {
           : "";
         inner = `${_esc(c.text)}${anyBtn}${mergeBtn}${uncutBtn}${removeBtn}${attachBtn}${reviewBtn}${editBtn}`;
       }
-      return `<td class="prep-matrix-cell prep-matrix-cell--${statusCls}">${inner}</td>`;
+      const span = c.status === "grouped" && c.groupSize > 1 ? ` rowspan="${c.groupSize}"` : "";
+      return `<td class="prep-matrix-cell prep-matrix-cell--${statusCls}"${span}>${multiBadge}${inner}</td>`;
     }).join("");
 
     const rowCls =

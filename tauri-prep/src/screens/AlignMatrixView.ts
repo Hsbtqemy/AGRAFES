@@ -19,7 +19,9 @@
  * Both cuts use the two-panel move-only picker (§3.2). Sub-view of ActionsScreen.
  */
 
-import type { Conn, FamilyRecord, MatrixCellLink, FamilyAlignOptions, AlignBatchAction } from "../lib/sidecarClient.ts";
+import type {
+  Conn, FamilyRecord, MatrixCellLink, FamilyAlignOptions, AlignBatchAction, AnchorStatus,
+} from "../lib/sidecarClient.ts";
 import {
   getFamilies, getAlignMatrix, batchUpdateAlignLinks, createAlignLink, deleteAlignLink,
   setAlignCellStatus, bulkSetUnitStatus, alignFamily, resolveCollisions,
@@ -34,6 +36,11 @@ import {
 import type { UndoableGesture } from "../lib/alignUndoGesture.ts";
 import { buildPickerRowHtml } from "../lib/alignPickerRow.ts";
 import { getCurrentDbPath } from "../lib/db.ts";
+import {
+  buildVisibleColsHtml, loadVisibleCols, saveVisibleCols, targetDocIdsParam,
+  alignScopeOf, langList,
+} from "../lib/alignVisibleCols.ts";
+import type { MatrixColumn, AlignScope } from "../lib/alignVisibleCols.ts";
 import type { AlignStrategy } from "../lib/alignRunBar.ts";
 import {
   ALIGN_DEFAULTS, STRATEGY_LABELS, buildAlignAdvancedHtml, buildAlignRerunConfirmHtml,
@@ -41,6 +48,7 @@ import {
   undoableRunIds,
   formatRunUndoOutcome,
   buildRunUndoOfferHtml,
+  type RerunScope,
   saveRunOffer,
   loadRunOffer,
   clearRunOffer,
@@ -114,6 +122,25 @@ export class AlignMatrixView {
    *  not to the family forever (revue m4/n2): a re-import that re-breaks the anchoring, or a
    *  switch to another family, re-arms the gate. */
   private _anchorAckFamilyId: number | null = null;
+  /** Les colonnes de traduction de la famille SÉLECTIONNÉE, dans l'ordre de la grille.
+   *  Lues dans `_families` (donc connues AVANT tout chargement) et non dans la matrice :
+   *  une projection scopée ne contient précisément pas les colonnes masquées, s'en servir
+   *  rendrait une langue masquée impossible à réafficher. */
+  private _familyCols: MatrixColumn[] = [];
+  /** Les doc_ids affichés. C'est à la fois le `target_doc_ids` de la projection et le
+   *  périmètre des gestes destructifs : on ne réécrit jamais une colonne masquée. */
+  private _visibleCols: Set<number> = new Set();
+  /** Famille pour laquelle `_familyCols`/`_visibleCols` ont été calculés. `_loadFamilies`
+   *  est rejoué à chaque activation d'écran et à chaque changement de documents : sans ce
+   *  témoin, revenir sur l'écran relirait la préférence stockée et écraserait une bascule
+   *  faite il y a dix secondes — invisible, et rageant. */
+  private _colsFamilyId: number | null = null;
+  /** Le sidecar chargé honore-t-il `target_doc_ids` (1.6.77) ? `link_counts` est son
+   *  marqueur, sur le modèle de `hasCellLinks`/`hasTextNorm`. La question n'est pas
+   *  cosmétique : un sidecar antérieur **ignore le paramètre**, donc une relance qu'on
+   *  croit bornée à une colonne purgerait la famille entière. Sur la projection l'oubli
+   *  est bénin (on reçoit trop de colonnes) ; sur un run il est destructeur. */
+  private _scopeSupported = false;
 
   constructor(
     private _getConn: () => Conn | null,
@@ -141,6 +168,9 @@ export class AlignMatrixView {
       + `<button type="button" id="matrix-revision-fine" class="btn btn-ghost btn-sm prep-matrix-revfine-btn"`
       + ` title="Contrôle — revue statut / collisions / qualité, lien par lien">&#9998; Contrôle</button>`
       + `</div>`
+      // Colonnes visibles (§2.1/D-W7) — une barre de langues, pas un menu : l'ensemble
+      // affiché est l'information la plus structurante de l'écran, elle reste sous les yeux.
+      + `<div id="matrix-cols-host" class="prep-matrix-cols-host"></div>`
       + buildAlignAdvancedHtml()
       + `<div id="matrix-align-strip" class="prep-matrix-align-strip" aria-live="polite"></div>`
       + `<div id="matrix-grid-area" class="prep-matrix-grid-area">`
@@ -168,6 +198,10 @@ export class AlignMatrixView {
       // Même raison pour le bandeau d'annulation : il nomme un geste fait AILLEURS, et
       // son bouton agirait sur des liens que la nouvelle grille ne montre pas.
       this._undoBanner.disarm();
+      // Les colonnes appartiennent à la famille : changer de famille change la barre, et
+      // reprendre la préférence mémorisée de CETTE famille (jamais celle de la précédente,
+      // dont les doc_ids ne veulent rien dire ici).
+      this._syncVisibleCols();
     });
     loadBtn.addEventListener("click", () => void this._loadMatrix());
     alignBtn.addEventListener("click", () => void this._onAlignClick());
@@ -186,6 +220,18 @@ export class AlignMatrixView {
       hint.textContent = s?.hint ?? "";
       root.querySelector<HTMLElement>("#matrix-align-sim-field")!
         .toggleAttribute("hidden", strategySel.value !== "similarity");
+    });
+    // Les chips sont délégués comme les gestes de la grille : la barre est repeinte à
+    // chaque bascule, un binding par bouton ne survivrait pas.
+    root.querySelector<HTMLElement>("#matrix-cols-host")?.addEventListener("click", (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest("#matrix-cols-all")) { void this._setVisibleCols(this._familyCols.map((c) => c.docId)); return; }
+      const chip = t.closest<HTMLButtonElement>(".prep-matrix-col-chip");
+      if (!chip) return;
+      const docId = Number(chip.dataset.colDoc);
+      const next = new Set(this._visibleCols);
+      if (next.has(docId)) next.delete(docId); else next.add(docId);
+      void this._setVisibleCols([...next]);
     });
     // Gesture buttons are delegated once here — bindings survive every grid re-render.
     const area = root.querySelector<HTMLElement>("#matrix-grid-area")!;
@@ -244,6 +290,9 @@ export class AlignMatrixView {
       // R6 — ¶ toggle: designate this segment as a paragraph start (or remove its boundary).
       const paraBtn = t.closest<HTMLButtonElement>(".prep-matrix-para-btn");
       if (paraBtn) { void this._onParagraphToggle(Number(paraBtn.dataset.paraRow)); return; }
+      // ALI-15 — « ⇄ » d'en-tête : réaligner CETTE colonne seule, sans changer l'affichage.
+      const colAlignBtn = t.closest<HTMLButtonElement>(".prep-matrix-col-align-btn");
+      if (colAlignBtn) { void this._onAlignClick(Number(colAlignBtn.dataset.alignDoc)); return; }
       // Header shortcut → open this document's Segmentation layer (Brut).
       const segBtn = t.closest<HTMLButtonElement>(".prep-matrix-seg-btn");
       if (segBtn) this._cb.onOpenSegmentation?.(Number(segBtn.dataset.segDoc));
@@ -313,6 +362,14 @@ export class AlignMatrixView {
     // The anchoring ack is keyed by family_id, but a conn change invalidates ALL ids: the
     // same family_id on the new DB is a different family — it must be re-warned.
     this._anchorAckFamilyId = null;
+    // Les colonnes sont des doc_ids : le même entier désigne un autre document dans un
+    // autre corpus. Les garder ferait poster un `target_doc_ids` étranger à la famille —
+    // que le moteur refuse en 400, mais qui aurait surtout MASQUÉ la bonne colonne.
+    this._familyCols = [];
+    this._visibleCols = new Set();
+    this._colsFamilyId = null;
+    this._scopeSupported = false;
+    this._renderVisibleCols();
     const area = this._root?.querySelector<HTMLElement>("#matrix-grid-area");
     if (area) setHtml(area, raw('<p class="prep-matrix-hint">Connexion chang&#233;e &#8212; recharger la matrice.</p>'));
     const summary = this._root?.querySelector<HTMLElement>("#matrix-summary");
@@ -364,6 +421,111 @@ export class AlignMatrixView {
       if (btn) btn.disabled = none;
     }
     if (none) this._closeAlignStrip();
+    // La barre de langues ne peut être peinte qu'ici : elle lit `_families`.
+    this._syncVisibleCols();
+    this._syncAlignEnabled();
+  }
+
+  /**
+   * « Aligner » n'a de sens que s'il reste une colonne à aligner. Tout masquer est un
+   * état licite (lire la source seule), mais poster `target_doc_ids: []` est un 400 :
+   * mieux vaut un bouton éteint qui dit pourquoi qu'une erreur du moteur.
+   */
+  private _syncAlignEnabled(): void {
+    const btn = this._root?.querySelector<HTMLButtonElement>("#matrix-align");
+    if (!btn) return;
+    const noFamily = this._selectedFamilyId === null;
+    const noColumn = this._familyCols.length > 0 && this._visibleCols.size === 0;
+    btn.disabled = noFamily || noColumn;
+    btn.title = noColumn
+      ? "Aucune langue affichée — afficher au moins une traduction pour aligner"
+      : "Aligner cette famille (longueurs ¶ — le mode se change dans « Avancé »)";
+  }
+
+  // ─── Colonnes visibles (§2.1/D-W7, ALI-15 + ALI-18) ─────────────────────────
+
+  /**
+   * Recalculer la barre de langues pour la famille sélectionnée.
+   *
+   * Les colonnes viennent de `_families` — donc de `/families`, chargé avant toute
+   * matrice — et non du payload de la matrice : une projection scopée ne contient pas
+   * les colonnes masquées, s'en servir rendrait une langue masquée impossible à
+   * réafficher. L'ordre est celui des doc_ids, celui-là même que projette le moteur
+   * (`ORDER BY d.doc_id`), pour que chip et colonne se lisent dans le même ordre.
+   */
+  private _syncVisibleCols(): void {
+    const fam = this._families.find((f) => f.family_id === this._selectedFamilyId);
+    this._familyCols = (fam?.children ?? [])
+      .map((c) => ({ docId: c.doc_id, lang: c.doc?.language ?? "?" }))
+      .sort((a, b) => a.docId - b.docId);
+    if (this._selectedFamilyId === null) {
+      this._visibleCols = new Set();
+    } else if (this._colsFamilyId === this._selectedFamilyId) {
+      // Même famille : la sélection en cours fait foi, simplement réintersectée avec les
+      // colonnes du jour (une traduction détachée entre-temps doit disparaître de la barre).
+      const every = new Set(this._familyCols.map((c) => c.docId));
+      const kept = [...this._visibleCols].filter((d) => every.has(d));
+      this._visibleCols = kept.length > 0 || this._visibleCols.size === 0 ? new Set(kept) : every;
+    } else {
+      this._visibleCols = loadVisibleCols(
+        sessionStorage, getCurrentDbPath(), this._selectedFamilyId, this._familyCols);
+    }
+    this._colsFamilyId = this._selectedFamilyId;
+    this._renderVisibleCols();
+    this._syncAlignEnabled();
+  }
+
+  /** Peindre la barre. Les effectifs viennent du dernier payload chargé — donc absents
+   *  tant qu'on n'a rien chargé, et limités aux colonnes projetées, ce qui est exact :
+   *  on n'affiche un chiffre que là où on l'a mesuré. */
+  private _renderVisibleCols(): void {
+    const host = this._root?.querySelector<HTMLElement>("#matrix-cols-host");
+    if (!host) return;
+    const counts = new Map<number, number>();
+    for (const c of this._matrix?.link_counts ?? []) counts.set(c.target_doc_id, c.links);
+    setHtml(host, raw(buildVisibleColsHtml(this._familyCols, this._visibleCols, counts.size ? counts : undefined)));
+  }
+
+  /**
+   * Changer l'ensemble visible : mémoriser, repeindre, et recharger si une matrice est
+   * à l'écran — puisque c'est le moteur qui projette les colonnes, l'affichage ne peut
+   * pas changer sans une nouvelle projection (invariant « ce qui est chargé est ce qui
+   * est affiché »).
+   *
+   * Refusé pendant un run ou un geste en vol : ce n'est pas seulement une course
+   * d'affichage, `_loadMatrix` remplace `_view`, sur lequel le geste en cours résout ses
+   * `link_id` (même garde F5 que le reste de l'écran).
+   */
+  private async _setVisibleCols(docIds: number[]): Promise<void> {
+    if (this._aligning || this._cutBusy || this._loading) {
+      this._cb.toast?.("Un geste est en cours — réessayer dans un instant", true);
+      return;
+    }
+    if (this._selectedFamilyId === null) return;
+    this._visibleCols = new Set(docIds);
+    saveVisibleCols(sessionStorage, getCurrentDbPath(), this._selectedFamilyId, [...this._visibleCols]);
+    this._renderVisibleCols();
+    this._syncAlignEnabled();
+    // Une confirmation de recalcul armée nomme un périmètre : celui d'avant la bascule.
+    // La laisser en place ferait cliquer « Recalculer » sur une phrase devenue fausse.
+    this._closeAlignStrip();
+    if (this._loadedFamilyId === this._selectedFamilyId) await this._loadMatrix();
+  }
+
+  /**
+   * Le périmètre d'un run : les colonnes affichées, et celles qu'il n'ira pas toucher.
+   *
+   * `only` (le « ⇄ » d'un en-tête de colonne, ALI-15 correctif 1) le réduit à UNE paire,
+   * sans toucher à l'affichage : réaligner une langue et la regarder sont deux gestes
+   * différents, et coupler les deux obligerait à masquer trois colonnes pour en refaire une.
+   */
+  private _alignScope(only?: number): AlignScope {
+    if (only !== undefined) {
+      const target = this._familyCols.find((c) => c.docId === only);
+      if (!target) return { scoped: true, targets: [], spared: this._familyCols };
+      return { scoped: true, targets: [target], spared: this._familyCols.filter((c) => c.docId !== only) };
+    }
+    return alignScopeOf(this._familyCols, this._visibleCols);
   }
 
   private async _loadMatrix(): Promise<void> {
@@ -375,7 +537,21 @@ export class AlignMatrixView {
     setHtml(area, raw('<p class="prep-matrix-hint">Chargement&#8230;</p>'));
     summary.textContent = "";
     try {
-      const matrix = await getAlignMatrix(conn, this._selectedFamilyId);
+      // Projection scopée (ALI-18) : une colonne masquée n'est ni calculée, ni sérialisée,
+      // ni transmise. `undefined` quand tout est visible — c'est le chemin historique de
+      // la route, celui qu'un sidecar antérieur à 1.6.77 comprend aussi.
+      const requested = targetDocIdsParam(this._familyCols, this._visibleCols);
+      const matrix = await getAlignMatrix(conn, this._selectedFamilyId, requested);
+      this._scopeSupported = matrix.link_counts !== undefined;
+      // Et le dire si l'affichage ne correspond pas à ce qui a été demandé : la grille
+      // rend la charge utile, les chips rendent l'intention — un sidecar qui ignore le
+      // paramètre les fait diverger en silence.
+      if (requested !== undefined
+          && (matrix.language_doc_ids ?? []).length - 1 !== requested.length) {
+        this._cb.toast?.(
+          "Sidecar trop ancien : les langues masquées restent chargées et affichées (recompiler le sidecar)",
+          true);
+      }
       const view = buildMatrixView(matrix);
       this._matrix = matrix;
       this._view = view;
@@ -400,6 +576,8 @@ export class AlignMatrixView {
         setHtml(area, raw(notice + buildMatrixGridHtml(view)));
         summary.textContent = matrixSummaryLine(view);
       }
+      // Les effectifs par colonne viennent d'arriver (ALI-16) : repeindre la barre.
+      this._renderVisibleCols();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // A failed load must INVALIDATE the view: leaving the previous family's one in
@@ -408,6 +586,7 @@ export class AlignMatrixView {
       this._matrix = null;
       this._view = null;
       this._loadedFamilyId = null;
+      this._scopeSupported = false;   // la capacité appartient au payload, qui n'est pas arrivé
       setHtml(area, raw(`<p class="prep-matrix-error">Erreur&nbsp;: ${_esc(msg)}</p>`));
       this._cb.toast?.("✗ Erreur chargement matrice", true);
     } finally {
@@ -425,7 +604,7 @@ export class AlignMatrixView {
   }
 
   /** The options behind the button: the assumed default, overridden by « Avancé ». */
-  private _alignOptions(): FamilyAlignOptions {
+  private _alignOptions(only?: number): FamilyAlignOptions {
     const root = this._root;
     const strategy = this._alignStrategy();
     const preserve = root?.querySelector<HTMLInputElement>("#matrix-align-preserve")?.checked ?? true;
@@ -435,6 +614,18 @@ export class AlignMatrixView {
     if (strategy === "similarity") {
       opts.sim_threshold =
         parseFloat(root?.querySelector<HTMLInputElement>("#matrix-align-sim")?.value ?? "0.8") || 0.8;
+    }
+    // ALI-15 — le run suit l'affichage : on ne réécrit jamais une colonne masquée. Quand
+    // tout est visible on n'envoie rien (chemin historique de la route) ; sinon on déclare
+    // le périmètre, et c'est LUI qui borne la purge de `replace_existing`, paire par paire.
+    const scope = this._alignScope(only);
+    // `targets` vide ⇒ NE PAS scoper. Deux états distincts se ressemblent ici : « toutes
+    // les colonnes sont masquées » (que `_syncAlignEnabled` éteint déjà) et « on ne connaît
+    // pas encore les colonnes » (`/families` pas revenu, ou famille sans enfant listé). Le
+    // second doit retomber sur le chemin historique — poster `target_doc_ids: []` ferait un
+    // 400 sur un geste qui marchait avant ce chantier.
+    if (scope.scoped && scope.targets.length > 0) {
+      opts.target_doc_ids = scope.targets.map((c) => c.docId);
     }
     return opts;
   }
@@ -453,6 +644,29 @@ export class AlignMatrixView {
     return view.rows.reduce((n, r) => n + r.cells.reduce((m, c) => m + c.links.length, 0), 0);
   }
 
+  /**
+   * Les liens que le run À VENIR va rencontrer — à l'échelle de son périmètre.
+   *
+   * Non scopé : le compte de la famille, inchangé. Scopé : la somme des colonnes visibles,
+   * parce que la question posée par la confirmation est « ce que je vais réécrire est-il
+   * déjà aligné ? », pas « la famille l'est-elle ». Aligner l'espagnol pour la première
+   * fois ne doit pas déclencher une confirmation destructive parce que l'anglais, lui,
+   * est aligné depuis juin.
+   *
+   * Repli sur le compte famille-entière quand `link_counts` manque (sidecar antérieur à
+   * 1.6.77) : la confirmation prévient alors trop, jamais trop peu.
+   */
+  private _scopeLinkCounts(only?: number): { links: number; manual: number } {
+    const scope = this._alignScope(only);
+    const counts = this._matrix?.link_counts;
+    if (!scope.scoped || !counts) return { links: this._loadedLinkCount(), manual: 0 };
+    const wanted = new Set(scope.targets.map((c) => c.docId));
+    return counts.filter((c) => wanted.has(c.target_doc_id)).reduce(
+      (acc, c) => ({ links: acc.links + c.links, manual: acc.manual + c.manual }),
+      { links: 0, manual: 0 },
+    );
+  }
+
   /** True when the loaded view really describes the family we are about to align. */
   private _viewMatchesSelection(conn: Conn): boolean {
     return this._view !== null
@@ -460,9 +674,19 @@ export class AlignMatrixView {
       && this._loadedConn === conn;
   }
 
-  private async _onAlignClick(): Promise<void> {
+  private async _onAlignClick(only?: number): Promise<void> {
     const conn = this._getConn();
     if (!conn || this._selectedFamilyId === null || this._aligning || this._cutBusy) return;
+    // « ⇄ » sur une colonne masquée n'a pas de sens : le bouton vit dans l'en-tête, donc
+    // dans la projection, donc la colonne est visible. Le garde vaut pour un appel programmatique.
+    if (only !== undefined && !this._familyCols.some((c) => c.docId === only)) return;
+    // Tout masqué : le bouton est éteint, mais la porte d'ancrage réentre ici après son
+    // « Aligner quand même ». Sans ce garde, `_alignOptions` retomberait sur le chemin non
+    // scopé et réaligner « rien » réécrirait TOUTE la famille — l'exact inverse du contrat.
+    if (only === undefined && this._familyCols.length > 0 && this._visibleCols.size === 0) {
+      this._cb.toast?.("✗ Aucune langue affichée — afficher au moins une traduction", true);
+      return;
+    }
     // The confirm hinges on whether the family ALREADY has links — so it must look at the
     // family we are about to align, not at whatever is on screen: the button is live as
     // soon as a family is picked (no « Charger » needed), and a family switch leaves the
@@ -479,18 +703,47 @@ export class AlignMatrixView {
     if (this._matrix && this._anchorAckFamilyId !== this._selectedFamilyId) {
       // m1 — evaluate against the strategy about to run: the gate must reflect what THIS run
       // will do (the fold-away « Avancé » may have switched to external_id, which is safe).
-      const warnings = anchorWarnings(this._matrix, this._alignStrategy());
+      // Et contre son PÉRIMÈTRE : un « ⇄ » sur l'espagnol ne doit pas être barré par un
+      // défaut d'ancrage du roumain, que ce run ne touchera pas.
+      const warnings = anchorWarnings(this._anchorScopeOf(only), this._alignStrategy());
       if (warnings.length > 0) {
-        this._showAnchorGate(warnings, this._selectedFamilyId);
+        this._showAnchorGate(warnings, this._selectedFamilyId, only);
         return;
       }
     }
-    const existing = this._loadedLinkCount();
-    if (existing > 0) {
-      this._showRerunConfirm(existing);
+    // Garde dure (même famille que « Sidecar trop ancien — identifiants de cellule
+    // absents ») : sans preuve que le moteur honore `target_doc_ids`, un run qu'on
+    // annonce borné à une colonne remettrait à plat TOUTE la famille. Mieux vaut refuser
+    // le geste que l'exécuter plus large que ce que la phrase promet.
+    if (this._alignScope(only).scoped && !this._scopeSupported) {
+      this._cb.toast?.(
+        "✗ Sidecar trop ancien pour borner un alignement à une colonne — recompiler le sidecar,"
+        + " ou réafficher toutes les langues pour aligner la famille entière", true);
       return;
     }
-    await this._runAlign(this._alignOptions(), this._selectedFamilyId, 0);
+    const { links: existing } = this._scopeLinkCounts(only);
+    if (existing > 0) {
+      this._showRerunConfirm(existing, only);
+      return;
+    }
+    await this._runAlign(this._alignOptions(only), this._selectedFamilyId, 0);
+  }
+
+  /**
+   * La charge d'ancrage réduite aux colonnes du run — moyeu TOUJOURS inclus (index 0 :
+   * un moyeu sans ancre fait dériver toutes les colonnes, quel que soit le périmètre).
+   * `anchor_status` est ∥ `languages`, donc les deux se filtrent du même mouvement.
+   */
+  private _anchorScopeOf(only?: number): { languages: string[]; anchor_status?: AnchorStatus[] } {
+    const m = this._matrix;
+    if (!m) return { languages: [] };
+    if (only === undefined) return m;
+    const col = (m.language_doc_ids ?? []).indexOf(only);
+    if (col <= 0 || !m.anchor_status) return m;   // colonne absente de la projection : ne rien taire
+    return {
+      languages: [m.languages[0], m.languages[col]],
+      anchor_status: [m.anchor_status[0], m.anchor_status[col]],
+    };
   }
 
   /** Tear down the open confirm strip (a corpus/family switch must not leave it armed). */
@@ -563,14 +816,25 @@ export class AlignMatrixView {
     });
   }
 
-  private _showRerunConfirm(linkCount: number): void {
+  private _showRerunConfirm(linkCount: number, only?: number): void {
     const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
     if (!strip) return;
     // Capture WHAT the strip is about: its buttons must never rewrite a family the user
     // has meanwhile moved away from, nor a different corpus (revue tranche 5, critique).
     const familyId = this._selectedFamilyId;
     const conn = this._getConn();
-    setHtml(strip, raw(buildAlignRerunConfirmHtml(linkCount)));
+    // Le périmètre est capturé AVEC la bande : ses boutons doivent décrire, et détruire,
+    // exactement ce que la phrase annonce — pas ce que les chips diront tout à l'heure.
+    // (`_setVisibleCols` ferme d'ailleurs la bande, cette capture est la deuxième ceinture.)
+    const scope = this._alignScope(only);
+    const rerun: RerunScope | undefined = scope.scoped
+      ? {
+        targets: scope.targets.map((c) => c.lang),
+        spared: scope.spared.map((c) => c.lang),
+        manual: this._scopeLinkCounts(only).manual,
+      }
+      : undefined;
+    setHtml(strip, raw(buildAlignRerunConfirmHtml(linkCount, rerun)));
     const close = () => setHtml(strip, raw(""));
     const run = (replace: boolean) => {
       close();
@@ -579,7 +843,18 @@ export class AlignMatrixView {
         this._cb.toast?.("✗ La sélection a changé — relancer « Aligner »", true);
         return;
       }
-      void this._runAlign({ ...this._alignOptions(), replace_existing: replace }, familyId, linkCount);
+      // Et le périmètre lui-même : « Recalculer en » ne doit pas partir sur es parce que
+      // les chips ont bougé entre l'affichage de la phrase et le clic sur le bouton.
+      // `only` compris : sans lui, un « ⇄ » d'en-tête comparerait son périmètre d'UNE
+      // colonne à l'ensemble visible et se refuserait tout seul.
+      const now = this._alignScope(only);
+      const same = now.targets.length === scope.targets.length
+        && now.targets.every((c, i) => c.docId === scope.targets[i].docId);
+      if (!same) {
+        this._cb.toast?.("✗ Les langues affichées ont changé — relancer « Aligner »", true);
+        return;
+      }
+      void this._runAlign({ ...this._alignOptions(only), replace_existing: replace }, familyId, linkCount);
     };
     strip.querySelector<HTMLButtonElement>("#matrix-align-cancel")?.addEventListener("click", close);
     strip.querySelector<HTMLButtonElement>("#matrix-align-complete")?.addEventListener("click", () => run(false));
@@ -592,7 +867,7 @@ export class AlignMatrixView {
    * (now past the gate) flows on to the rerun confirm / the run. Captures what the gate is
    * about so its button never fires a run for a family/corpus the user moved away from.
    */
-  private _showAnchorGate(warnings: AnchorWarning[], familyId: number): void {
+  private _showAnchorGate(warnings: AnchorWarning[], familyId: number, only?: number): void {
     const strip = this._root?.querySelector<HTMLElement>("#matrix-align-strip");
     if (!strip) return;
     const conn = this._getConn();
@@ -606,7 +881,7 @@ export class AlignMatrixView {
         return;
       }
       this._anchorAckFamilyId = familyId;  // ack — do not warn again for this family
-      void this._onAlignClick();
+      void this._onAlignClick(only);
     });
   }
 
@@ -633,6 +908,7 @@ export class AlignMatrixView {
     const alignBtn = root?.querySelector<HTMLButtonElement>("#matrix-align");
     const loadBtn = root?.querySelector<HTMLButtonElement>("#matrix-load");
     const famSel = root?.querySelector<HTMLSelectElement>("#matrix-family");
+    const colsHost = root?.querySelector<HTMLElement>("#matrix-cols-host");
     const strip = root?.querySelector<HTMLElement>("#matrix-align-strip");
     this._aligning = true;
     // A run REWRITES the links the grid's gestures resolve through — freeze the gestures
@@ -642,6 +918,10 @@ export class AlignMatrixView {
     if (alignBtn) alignBtn.disabled = true;
     if (loadBtn) loadBtn.disabled = true;
     if (famSel) famSel.disabled = true;
+    // Les chips sont gelés comme les autres sélecteurs : une bascule en vol relancerait
+    // `_loadMatrix` par-dessus le rechargement d'après-run, et la grille afficherait le
+    // résultat de la course, pas celui du run (même raison F5 que le sélecteur de famille).
+    colsHost?.querySelectorAll<HTMLButtonElement>("button").forEach((b) => { b.disabled = true; });
     if (strip) strip.textContent = "Alignement en cours…";
     try {
       const res = await alignFamily(conn, familyId, opts);
@@ -680,9 +960,16 @@ export class AlignMatrixView {
       this._aligning = false;
       this._cutBusy = false;
       const none = this._selectedFamilyId === null;
-      if (alignBtn) alignBtn.disabled = none;
       if (loadBtn) loadBtn.disabled = none;
       if (famSel) famSel.disabled = false;
+      // Repeindre plutôt que réactiver : le run a changé les effectifs par colonne que
+      // les chips affichent.
+      this._renderVisibleCols();
+      // Et repasser par la règle plutôt que par `disabled = none` : celle-ci ignorerait
+      // le cas « aucune langue affichée ». Aucun chemin n'y mène aujourd'hui (les chips
+      // sont gelés pendant le run), mais dégeler en oubliant une condition est exactement
+      // la façon dont ce genre de bouton redevient cliquable à tort.
+      this._syncAlignEnabled();
     }
   }
 
