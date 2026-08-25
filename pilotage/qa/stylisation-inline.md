@@ -39,17 +39,17 @@ effet sur ce que cette passe vérifie.
 
 ### Le geste, dans les trois couches
 
-- [ ] Couche **Rôles** : sélectionner « Observer » dans l'unité n° 8 fait apparaître une barre à deux boutons, **I** puis **G**
-- [ ] Cliquer **I** met le mot en italique immédiatement, sans rechargement de la liste
-- [ ] Le même geste fonctionne à l'identique dans **Curation** et dans **Annotation** (sur une unité non annotée)
-- [ ] Sélectionner un passage déjà en italique affiche le bouton **I** en état actif, et cliquer dessus retire l'italique
-- [ ] Sélectionner un passage à cheval sur du texte nu et du texte italique affiche **I** inactif, et un clic uniformise toute la sélection en italique
+- [x] Couche **Rôles** : sélectionner « Observer » dans l'unité n° 8 fait apparaître une barre à deux boutons, **I** puis **G**
+- [x] Cliquer **I** met le mot en italique immédiatement, sans rechargement de la liste
+- [x] Le même geste fonctionne à l'identique dans **Curation** et dans **Annotation** (sur une unité non annotée)
+- [x] Sélectionner un passage déjà en italique affiche le bouton **I** en état actif, et cliquer dessus retire l'italique
+- [x] Sélectionner un passage à cheval sur du texte nu et du texte italique affiche **I** inactif, et un clic uniformise toute la sélection en italique
 - [ ] Poser **I** puis **G** sur la même sélection donne un passage à la fois italique et gras
 
 ### Ce que la stylisation ne doit pas déplacer
 
-- [ ] Le texte affiché est identique avant et après stylisation — seule la fonte change, aucun caractère n'apparaît ni ne disparaît
-- [ ] La recherche de la couche continue de trouver le mot stylisé exactement comme avant
+- [x] Le texte affiché est identique avant et après stylisation — seule la fonte change, aucun caractère n'apparaît ni ne disparaît
+- [x] La recherche de la couche continue de trouver le mot stylisé exactement comme avant
 - [ ] Dans le concordancier, le nombre d'occurrences du mot stylisé est inchangé après le geste
 - [ ] Une unité annotée conserve son annotation : aucun bandeau « ⟳ texte modifié — à réannoter » n'apparaît à cause d'une stylisation
 
@@ -60,12 +60,41 @@ effet sur ce que cette passe vérifie.
 - [ ] Dans la couche **Segmentation**, cette même ligne offre désormais le repli « voir l'original d'import », qu'elle n'offrait pas avant le geste
 - [ ] Le repli déplié montre bien la version d'origine, à double espace et avec son italique d'import
 
+### Enchaîner et défaire — la barre reste
+
+> Le surlignage et la barre survivent au geste : c'est ce qui permet de poser les deux
+> styles d'affilée, et de retirer celui qu'on vient de poser sans remonter à *Annuler*.
+
+- [ ] Poser **I** sur une sélection : le passage devient italique **et** reste surligné, la barre reste affichée au même endroit
+- [ ] Enchaîner **G** sans re-sélectionner : le passage devient italique *et* gras
+- [ ] Les deux boutons apparaissent alors « enfoncés »
+- [ ] Recliquer **G** retire le gras et laisse l'italique ; recliquer **I** rend le texte à son état de départ
+- [ ] Cette annulation ne consomme rien dans l'historique *Annuler* du haut de page — elle repasse par le même geste
+- [ ] Le surlignage reposé couvre exactement les mêmes mots, y compris quand le passage stylé a coupé la ligne en plusieurs morceaux
+- [ ] Cliquer ailleurs, ou faire défiler, retire la barre normalement
+
 ### Refus et gardes
 
 - [ ] Sur une unité **annotée** (prose colorée par catégorie), sélectionner du texte ne fait apparaître **aucune** barre — les offsets n'y seraient pas fiables
-- [ ] Ouvrir le stylo ✎ sur une ligne puis sélectionner du texte dans une autre ligne ne fait apparaître aucune barre
+- [ ] Sur une ligne **nue** contenant une esperluette (le texte affiche « &amp; » en toutes lettres), sélectionner du texte ne fait apparaître aucune barre — l'écran ne montre pas ce que la base contient, on refuse plutôt que de styliser à côté
+- [ ] Ouvrir le stylo ✎ sur une ligne : dans **cette** ligne, sélectionner du texte ne fait apparaître aucune barre (la textarea ne porte que du texte nu)
+- [ ] Stylo ✎ ouvert sur une ligne, taper une correction sans l'enregistrer, puis mettre du texte en italique dans **une autre** ligne : l'italique s'applique **et** la correction en cours est toujours à l'écran, intacte
 - [ ] Un simple clic sans glisser (sélection vide) ne fait apparaître aucune barre
 - [ ] Changer de document alors qu'une barre est affichée la fait disparaître
+
+### Correction en cours — ce qui ne doit plus l'effacer
+
+> Avant ce lot, tout rafraîchissement de la liste ressemait la zone de saisie depuis la
+> base : la frappe en cours disparaissait sans un mot. Ces points vérifient qu'elle tient.
+
+- [ ] Stylo ✎ ouvert, taper une correction, puis taper dans le champ **Rechercher** : la correction est toujours là, et le curseur reste dans le champ de recherche (il n'est pas aspiré par la zone de saisie)
+- [ ] Même chose dans la couche **Rôles** : stylo ✎ ouvert avec une correction en cours, assigner un rôle à une sélection faite avant — la correction survit
+- [ ] Une recherche qui **masque** la ligne en cours de correction, puis vidée : la ligne revient avec la correction encore en place
+- [ ] Le curseur revient là où il était dans le texte, pas rejeté à la fin
+- [ ] **Annuler** puis rouvrir le stylo sur la même ligne : la zone de saisie affiche le texte enregistré, pas la frappe abandonnée
+- [ ] Enregistrer puis rouvrir : même chose, le texte enregistré
+- [ ] Stylo ✎ ouvert sur une ligne, puis ✎ sur une **autre** ligne : la seconde s'ouvre sur son propre texte, jamais sur la frappe de la première
+- [ ] Changer de document alors qu'une correction est en cours : rien n'est reporté sur le document suivant
 
 ### Placement de la barre — non couvert par les tests
 
