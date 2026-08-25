@@ -14,6 +14,8 @@ statut: à venir
 - [ ] Vérifier le même aller-retour sur `readable_text` en `source_field=text_raw` et sur le `# text =` de CoNLL-U (`conllu_export.py:85`) : ils impriment aujourd'hui le balisage en toutes lettres
 - [ ] ODT — `odt_extract_style_map` ne lit que `office:automatic-styles` et ne résout pas `style:parent-style-name` : un span héritant d'un style nommé italique passe à travers (0 cas sur les 23 ODT locaux, donc dette assumée tant que rien ne le contredit)
 - [ ] Décider si `text_norm` doit cesser de porter les entités XML (`&amp;`) sur les lignes riches : `normalize()` tourne sur un `text_raw` déjà échappé, donc une ligne riche contenant `&` s'affiche « &amp; » et se cherche mal en FTS
+- [ ] Vérifier sur données réelles quelle proportion des lignes **entièrement** en gras est un titre ou un intertitre plutôt qu'une emphase — 598 cas mesurés sur les `.docx` locaux, dont 589 sous 120 caractères, mais la longueur est un proxy et non une preuve
+- [ ] Si la proportion tient, trancher où le signal s'applique : pré-remplissage du rôle à l'import, ou simple proposition dans la couche Rôles — sans jamais retirer le `<hi rend="bold">` de `text_raw`, dont l'aller-retour TEI dépend
 
 ## QA
 
@@ -51,6 +53,10 @@ complète dans python-docx : 0,305 ms par appel, soit 0,30 s → 10,65 s sur un 
 un. Toute évolution de ce module doit garder cette barrière — et la garder *testée sur de
 vrais documents python-docx*, puisque les doublures n'ont pas de `_element` et la
 contournent entièrement.
+
+**Le gras n'a pas la forme de l'italique, et c'est le constat le moins attendu.** Sur les 66 770 paragraphes des `.docx` locaux, l'italique est de l'emphase inline — 2 085 des 2 247 paragraphes concernés (93 %) le portent sur un *fragment*. Le gras fait l'inverse : 598 des 832 (72 %) couvrent la **ligne entière**, dont 589 sous les 120 caractères. Ce sont des titres et des intertitres, et seuls 26 d'entre eux portent un style de paragraphe de titre — le seul signal que l'import regarde (`docx_paragraphs.py:61`). Les autres arrivent sans rôle : dans `8-CI-TrEn-2022_A Aligner.docx`, `n=1` (« Texte_8 ») et `n=2` (le titre de l'article) sont entièrement en gras avec `unit_role = None`, alors que la base porte déjà les rôles `titre` et `intertitre`. Autrement dit, un gras pleine ligne n'est pas de l'emphase : c'est un signal structurel encodé en stylisation inline.
+
+Deux « signaux automatiques évidents » sont déjà morts à la vérification sur ce dépôt. D'où la forme des deux items ci-dessus : mesurer d'abord, décider ensuite, coder en dernier.
 
 **Pourquoi l'asymétrie TEI mérite un code.** On exporte un balisage qu'on ne sait pas
 relire. Un utilisateur qui exporte en TEI puis réimporte croit récupérer son document et
