@@ -16,7 +16,7 @@
 import "../ui/annotation.css";
 import type { Conn, ConventionRole, TokenRecord, UnitRecord } from "../lib/sidecarClient.ts";
 import { escHtml as esc } from "../lib/diff.ts";
-import { listConventions, listUnits, listTokens, listModels, downloadModel, updateToken, updateUnitTextNorm } from "../lib/sidecarClient.ts";
+import { listConventions, listUnits, listTokens, listModels, downloadModel, updateToken, updateUnitTextNorm, updateUnitRichText } from "../lib/sidecarClient.ts";
 import { languageLabel, type ModelInfo } from "../lib/models.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { buildProseUnitInline, buildInterlinearSentence, UPOS_TAGS, type ProseToken } from "../ui/annotationProse.ts";
@@ -127,6 +127,7 @@ export class AnnotationPane {
         // Stylo: transversal in-place text correction (β immediate). Editing an annotated
         // unit's text invalidates its tokens → flag it stale (see _saveText).
         onEditText: (uid, textNorm) => this._saveText(uid, textNorm),
+        onStyleText: (uid, textRaw) => this._saveStyle(uid, textRaw),
       });
     }
 
@@ -336,6 +337,21 @@ export class AnnotationPane {
   }
 
   // ─── Stylo: in-place text correction (β immediate, transversal) ───────────
+
+  /** Stylisation inline (`docs/DESIGN_inline_restyling.md`) : persiste le `text_raw`
+   *  balisé. `text_norm` est renvoyé inchangé — le geste n'ajoute que des balises, donc
+   *  le texte cherchable, les tokens et les bornes d'alignement restent valables. */
+  private async _saveStyle(unitId: number, textRaw: string): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) throw new Error("Non connecté.");
+    const unit = this._units.find((u) => u.unit_id === unitId);
+    try {
+      await updateUnitRichText(conn, unitId, textRaw, unit?.text_norm ?? "");
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
 
   /** onEditText for the shared list: persist a stylo correction (β), keeping text_raw
    *  (D-C1, via updateUnitTextNorm) — the flag-stale + undo side effects live server-side.

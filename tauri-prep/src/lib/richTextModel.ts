@@ -21,6 +21,47 @@
  *    transporté sans être compris (note §6).
  */
 
+/** Balises `<hi>` ouvrantes et fermantes — miroir de `unicode_policy._HI_TAG_RE`. */
+const _STRIP_TAGS_RE = /<hi\b[^>]*>|<\/hi>/g;
+/** Invisibles + contrôles C0 (TAB/LF/CR gardés) — miroir de `_REMOVE_CHARS` + `_STRIP_CONTROLS`. */
+const _NORM_REMOVE_RE = /[\u200b\u200c\u200d\u2060\ufeff\u00ad\u0000-\u0008\u000b\u000c\u000e-\u001f]/g;
+/** NBSP/NNBSP/espaces fines + ¤ (ADR-002) — miroir de `_NORMALIZE_TO_SPACE`. */
+const _NORM_SPACE_RE = /[\u00a0\u202f\u2007\u2009\u00a4]/g;
+
+/** Retirer le balisage `<hi>` sans rien normaliser d'autre. */
+export function stripHiTags(text: string): string {
+  return text.replace(_STRIP_TAGS_RE, "");
+}
+
+/**
+ * Appliquer la politique de normalisation du moteur (ADR-003) à une chaîne balisée.
+ *
+ * Réplique `unicode_policy.normalize()` pas à pas, de sorte que sur une ligne intacte
+ * depuis l'import `foldNorm(text_raw) === text_norm` **exactement** — `text_norm` est
+ * précisément ce que l'importateur a produit en appelant `normalize()` sur `text_raw`.
+ * Vérifié par test différentiel sur 4 012 lignes réelles du corpus : zéro divergence.
+ */
+export function foldNorm(text: string): string {
+  return stripHiTags(text)
+    .normalize("NFC")
+    .replace(/\r\n?/g, "\n")
+    .replace(_NORM_SPACE_RE, " ")
+    .replace(_NORM_REMOVE_RE, "");
+}
+
+/**
+ * Vrai si le balisage de `raw` décrit encore `norm`.
+ *
+ * Faux dès qu'une correction a réécrit `text_norm` sans toucher `text_raw` — ce que font
+ * le stylo, la curation et le *marker lift*. C'est le test dont dépendent la garde
+ * d'affichage et le choix de la base à styliser : sur une ligne divergente, la
+ * stylisation repart du texte courant, pas du verbatim périmé.
+ */
+export function isRichInSync(raw: string | null | undefined, norm: string): boolean {
+  if (!raw) return false;
+  return foldNorm(raw) === foldNorm(norm);
+}
+
 /** Styles éditables à la main (D-R1). L'import en produit six ; on n'en ouvre que deux. */
 export const RICH_TOKENS = ["italic", "bold"] as const;
 export type RichToken = (typeof RICH_TOKENS)[number];

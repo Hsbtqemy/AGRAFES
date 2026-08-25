@@ -22,7 +22,7 @@ import {
   setDocumentTextStart,
   listUnits,
   liftMarkers,
-  updateUnitTextNorm,
+  updateUnitTextNorm, updateUnitRichText,
 } from "../lib/sidecarClient.ts";
 import {
   liftSummaryLine,
@@ -147,6 +147,7 @@ export class RolesPane {
         onClearTextStart: () => void this._setTextStart(null),
         // Stylo: transversal in-place text correction (β immediate).
         onEditText: (uid, textNorm) => this._saveText(uid, textNorm),
+        onStyleText: (uid, textRaw) => this._saveStyle(uid, textRaw),
         onStats: (t) => {
           const s = this._q("#prep-conv-search-stats");
           if (s) s.textContent = t;
@@ -161,6 +162,21 @@ export class RolesPane {
     // provided, so borne/rôle stay reachable without scrolling (R5.3). Else it stays in-pane.
     this._actionBarEl = this._q<HTMLElement>("#prep-conv-action-bar");
     if (this._dock && this._actionBarEl) this._dock.appendChild(this._actionBarEl);
+  }
+
+  /** Stylisation inline (`docs/DESIGN_inline_restyling.md`) : persiste le `text_raw`
+   *  balisé. `text_norm` est renvoyé inchangé — le geste n'ajoute que des balises, donc
+   *  le texte cherchable, les tokens et les bornes d'alignement restent valables. */
+  private async _saveStyle(unitId: number, textRaw: string): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) throw new Error("Non connecté.");
+    const unit = this._units.find((u) => u.unit_id === unitId);
+    try {
+      await updateUnitRichText(conn, unitId, textRaw, unit?.text_norm ?? "");
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }
 
   /** onEditText callback for the shared list: persist a stylo correction (β immediate).

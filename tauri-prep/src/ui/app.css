@@ -4902,6 +4902,36 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 .prep-conv-unit-row:hover .prep-conv-unit-edit { opacity: 1; }
 .prep-conv-unit-edit:hover { color: #0c4a46; background: #e8f5f3; }
+/* Barre de stylisation inline (docs/DESIGN_inline_restyling.md, D-R1 : italique + gras).
+   Flottante, posée au-dessus de la ligne sélectionnée, retirée dès que la sélection tombe. */
+.prep-conv-stylebar {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.16);
+}
+.prep-conv-stylebar[hidden] { display: none; }
+.prep-conv-stylebar-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #334155;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 3px;
+  min-width: 26px;
+}
+.prep-conv-stylebar-btn:hover { background: #e8f5f3; color: #0c4a46; }
+.prep-conv-stylebar-btn--on { background: #0c4a46; color: #ffffff; }
+.prep-conv-stylebar-btn--italic { font-style: italic; }
+.prep-conv-stylebar-btn--bold { font-weight: 700; }
+
 .prep-conv-unit-editor-wrap {
   flex: 1;
   display: flex;

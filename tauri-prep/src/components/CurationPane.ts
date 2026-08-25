@@ -13,7 +13,7 @@
 import type { Conn, ConventionRole, CurateRule, UnitRecord } from "../lib/sidecarClient.ts";
 import { escHtml as esc, highlightChanges } from "../lib/diff.ts";
 import {
-  listConventions, listUnits, curatePreview, curate, updateUnitTextNorm,
+  listConventions, listUnits, curatePreview, curate, updateUnitTextNorm, updateUnitRichText,
   listCurateExceptions, setCurateException, deleteCurateException,
   prepUndo, prepUndoEligibility,
 } from "../lib/sidecarClient.ts";
@@ -210,6 +210,7 @@ export class CurationPane {
         decorateRow: (u, el) => this._decorateRow(u, el),
         // Stylo: in-place text correction (β immediate, DESIGN_inline_text_correction.md).
         onEditText: (uid, textNorm) => this._saveText(uid, textNorm),
+        onStyleText: (uid, textRaw) => this._saveStyle(uid, textRaw),
         // Review filters (#2 status / #14 by-rule) hide non-matching units.
         rowFilter: (u) => this._rowVisible(u),
         onStats: (t) => {
@@ -861,6 +862,21 @@ export class CurationPane {
   }
 
   // ─── Stylo: persist an in-place text correction (β immediate) ──────────────
+
+  /** Stylisation inline (`docs/DESIGN_inline_restyling.md`) : persiste le `text_raw`
+   *  balisé. `text_norm` est renvoyé inchangé — le geste n'ajoute que des balises, donc
+   *  le texte cherchable, les tokens et les bornes d'alignement restent valables. */
+  private async _saveStyle(unitId: number, textRaw: string): Promise<void> {
+    const conn = this._getConn();
+    if (!conn) throw new Error("Non connecté.");
+    const unit = this._units.find((u) => u.unit_id === unitId);
+    try {
+      await updateUnitRichText(conn, unitId, textRaw, unit?.text_norm ?? "");
+    } catch (e) {
+      this._onError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+  }
 
   /** onEditText callback for CanvasUnitList: persist the correction (β) then drop the
    *  now-stale preview mark for that unit. Throws on failure so the editor stays open. */

@@ -13,6 +13,11 @@
  */
 import type { ConventionRole, UnitRecord } from "../lib/sidecarClient.ts";
 import { richTextToHtml } from "../lib/sidecarClient.ts";
+import {
+  applyMark, canStyle, domOffsetToPlain, hasMark, isRichInSync, parseRich,
+  type RichToken,
+} from "../lib/richTextModel.ts";
+import { selectionRangeIn } from "../lib/richSelection.ts";
 import { escHtml as esc } from "../lib/diff.ts";
 import {
   filterUnits,
@@ -42,6 +47,10 @@ export interface CanvasUnitListOptions {
    *  auto-sized textarea in place and persists ``newTextNorm`` via this callback (β,
    *  immediate). Reject to keep the editor open (the host surfaces the error). */
   onEditText?: (unitId: number, newTextNorm: string) => Promise<void>;
+  /** Stylisation inline (`docs/DESIGN_inline_restyling.md`, D-R1/D-R3). Fournie, elle fait
+   *  apparaître une barre I/G au-dessus de toute sélection faite dans une ligne, et
+   *  persiste le `text_raw` balisé. `text_norm` n'est jamais modifié par ce geste. */
+  onStyleText?: (unitId: number, newTextRaw: string) => Promise<void>;
 }
 
 export class CanvasUnitList {
@@ -57,6 +66,10 @@ export class CanvasUnitList {
   private _lastClickedIdx = -1;
   /** The unit whose in-place editor is open (single editor at a time), or null. */
   private _editingUid: number | null = null;
+  /** Barre de stylisation flottante (créée à la première sélection utile). */
+  private _styleBar: HTMLElement | null = null;
+  /** Sélection courante : unité visée + bornes dans le texte nu. */
+  private _styleTarget: { unitId: number; start: number; end: number } | null = null;
 
   constructor(host: HTMLElement, opts: CanvasUnitListOptions = {}) {
     this._host = host;
@@ -119,6 +132,7 @@ export class CanvasUnitList {
     this._searchQuery = "";
     this._lastClickedIdx = -1;
     this._editingUid = null;
+    this._hideStyleBar();
   }
 
   private get _filteredUnits(): UnitRecord[] {
@@ -247,10 +261,114 @@ export class CanvasUnitList {
       });
     }
 
+    // Stylisation inline (D-R3), seulement là où l'hôte a câblé la persistance.
+    if (this._opts.onStyleText) {
+      rows.forEach((el) => {
+        const uid = parseInt(el.dataset.uid!, 10);
+        el.querySelector<HTMLElement>(".prep-conv-unit-text")
+          ?.addEventListener("mouseup", () => this._onTextSelected(uid));
+      });
+    }
+
     area.querySelector<HTMLButtonElement>(".prep-conv-text-start-clear")?.addEventListener("click", (e) => {
       e.stopPropagation();
       this._opts.onClearTextStart?.();
     });
+  }
+
+  // ─── Stylisation inline (docs/DESIGN_inline_restyling.md) ─────────────────
+
+  /** Base à styliser : le verbatim s'il décrit encore le texte, sinon le texte courant.
+   *
+   *  Sur une ligne corrigée, le balisage d'import ne décrit plus rien — styliser repart
+   *  donc du texte courant, ce qui réécrit le verbatim et rétablit l'invariant. C'est le
+   *  retournement que D-C1 disait réversible ; `text_source` garde l'original d'import. */
+  private _styleBase(u: UnitRecord): string {
+    const norm = u.text_norm ?? "";
+    return isRichInSync(u.text_raw, norm) ? (u.text_raw ?? norm) : norm;
+  }
+
+  /** Lit la sélection faite dans une ligne et présente la barre I/G, ou la retire. */
+  private _onTextSelected(unitId: number): void {
+    const u = this._units.find((x) => x.unit_id === unitId);
+    const row = this._host.querySelector<HTMLElement>(`.prep-conv-unit-row[data-uid="${unitId}"]`);
+    const span = row?.querySelector<HTMLElement>(".prep-conv-unit-text");
+    if (!u || !span) return this._hideStyleBar();
+
+    const dom = selectionRangeIn(span, span.ownerDocument.defaultView?.getSelection() ?? null);
+    const base = this._styleBase(u);
+    if (!dom || !canStyle(base)) return this._hideStyleBar();
+
+    const plain = parseRich(base).plain;
+    const start = domOffsetToPlain(plain, dom.start);
+    const end = domOffsetToPlain(plain, dom.end);
+    if (start >= end) return this._hideStyleBar();
+
+    this._styleTarget = { unitId, start, end };
+    this._showStyleBar(span, base, start, end);
+  }
+
+  private _showStyleBar(span: HTMLElement, base: string, start: number, end: number): void {
+    const doc = span.ownerDocument;
+    let bar = this._styleBar;
+    if (!bar) {
+      bar = doc.createElement("div");
+      bar.className = "prep-conv-stylebar";
+      for (const token of ["italic", "bold"] as RichToken[]) {
+        const btn = doc.createElement("button");
+        btn.type = "button";
+        btn.className = `prep-conv-stylebar-btn prep-conv-stylebar-btn--${token}`;
+        btn.dataset.token = token;
+        btn.textContent = token === "italic" ? "I" : "G";
+        btn.title = token === "italic" ? "Italique" : "Gras";
+        // mousedown, pas click : un click ferait perdre la sélection avant l'appel.
+        btn.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void this._applyStyle(token);
+        });
+        bar.appendChild(btn);
+      }
+      span.ownerDocument.body.appendChild(bar);
+      this._styleBar = bar;
+    }
+    for (const btn of bar.querySelectorAll<HTMLElement>(".prep-conv-stylebar-btn")) {
+      const token = btn.dataset.token as RichToken;
+      btn.classList.toggle("prep-conv-stylebar-btn--on", hasMark(base, start, end, token));
+    }
+    const box = span.getBoundingClientRect();
+    bar.style.position = "absolute";
+    bar.style.left = `${box.left + (doc.defaultView?.scrollX ?? 0)}px`;
+    bar.style.top = `${box.top + (doc.defaultView?.scrollY ?? 0) - 28}px`;
+    bar.hidden = false;
+  }
+
+  private _hideStyleBar(): void {
+    this._styleTarget = null;
+    if (this._styleBar) this._styleBar.hidden = true;
+  }
+
+  /** Poser ou retirer le style sur la sélection courante, puis persister. */
+  private async _applyStyle(token: RichToken): Promise<void> {
+    const target = this._styleTarget;
+    const cb = this._opts.onStyleText;
+    if (!target || !cb) return;
+    const u = this._units.find((x) => x.unit_id === target.unitId);
+    if (!u) return;
+
+    const base = this._styleBase(u);
+    const on = !hasMark(base, target.start, target.end, token);
+    const next = applyMark(base, target.start, target.end, token, on);
+    if (next === base) return this._hideStyleBar();
+
+    try {
+      await cb(u.unit_id, next);
+    } catch {
+      return; // l'hôte a signalé l'erreur ; on garde la sélection pour réessayer
+    }
+    u.text_raw = next; // le geste ne touche pas text_norm
+    this._hideStyleBar();
+    this.render();
   }
 
   // ─── Stylo: in-place text correction (D-C8) ───────────────────────────────

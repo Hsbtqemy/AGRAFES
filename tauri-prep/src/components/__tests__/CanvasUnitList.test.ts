@@ -254,3 +254,121 @@ describe("balisage riche <hi> (§5)", () => {
     expect(textEl.querySelector("em")).toBeNull(); // le balisage périmé ne revient pas
   });
 });
+
+describe("stylisation inline (§5, DESIGN_inline_restyling)", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  /** Sélectionne `[from, to)` dans le texte de la première ligne, puis relâche la souris. */
+  function selectInRow(from: number, to: number): HTMLElement {
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text")!;
+    const node = span.firstChild!;
+    const range = document.createRange();
+    range.setStart(node, from);
+    range.setEnd(node, to);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    return span;
+  }
+
+  function bar(): HTMLElement | null {
+    return document.querySelector<HTMLElement>(".prep-conv-stylebar");
+  }
+
+  it("ne montre aucune barre tant qu'aucune sélection n'est faite", () => {
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    expect(bar()).toBeNull();
+  });
+
+  it("montre la barre I/G sur une sélection", () => {
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    selectInRow(3, 6);
+    expect(bar()).not.toBeNull();
+    expect(bar()!.hidden).toBe(false);
+    expect(bar()!.querySelectorAll(".prep-conv-stylebar-btn").length).toBe(2);
+  });
+
+  it("persiste le text_raw balisé sans toucher au text_norm", async () => {
+    const saved: Array<[number, string]> = [];
+    const list = new CanvasUnitList(host, {
+      onStyleText: async (uid, textRaw) => { saved.push([uid, textRaw]); },
+    });
+    const u = unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" });
+    list.setData({ docId: 1, units: [u] });
+    list.render();
+    selectInRow(3, 6);
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(saved).toEqual([[10, 'un <hi rend="italic">mot</hi> ici']]);
+    expect(u.text_norm).toBe("un mot ici"); // le geste n'ajoute que des balises
+  });
+
+  it("affiche l'italique après avoir stylisé", async () => {
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    selectInRow(3, 6);
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(host.querySelector(".prep-conv-unit-text em")?.textContent).toBe("mot");
+  });
+
+  it("bascule : une sélection déjà en italique se dé-italicise", async () => {
+    const saved: string[] = [];
+    const list = new CanvasUnitList(host, { onStyleText: async (_u, raw) => { saved.push(raw); } });
+    list.setData({
+      docId: 1,
+      units: [unit(1, { text_norm: "un mot ici", text_raw: 'un <hi rend="italic">mot</hi> ici' })],
+    });
+    list.render();
+    // « mot » est en italique : la sélection porte sur 3 caractères affichés à partir de 3.
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text")!;
+    const em = span.querySelector("em")!;
+    const range = document.createRange();
+    range.setStart(em.firstChild!, 0);
+    range.setEnd(em.firstChild!, 3);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(saved).toEqual(["un mot ici"]);
+  });
+
+  it("stylise le texte corrigé, pas le verbatim périmé", async () => {
+    const saved: string[] = [];
+    const list = new CanvasUnitList(host, { onStyleText: async (_u, raw) => { saved.push(raw); } });
+    list.setData({
+      docId: 1,
+      units: [unit(1, {
+        // Le verbatim décrit un texte que la curation a réécrit : styliser repart du courant.
+        text_raw: 'The <hi rend="italic">Observer</hi>,  14 Aug 2022',
+        text_norm: "The Observer, 14 Aug 2022",
+      })],
+    });
+    list.render();
+    selectInRow(4, 12); // « Observer » dans le texte corrigé
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--bold")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(saved).toEqual(['The <hi rend="bold">Observer</hi>, 14 Aug 2022']);
+  });
+
+  it("ne fait rien quand l'hôte ne câble pas la persistance", () => {
+    const list = new CanvasUnitList(host);
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text")!;
+    span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    expect(bar()).toBeNull();
+  });
+});

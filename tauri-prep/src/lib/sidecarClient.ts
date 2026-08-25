@@ -12,6 +12,7 @@
  */
 
 import { exists } from "@tauri-apps/plugin-fs";
+import { isRichInSync, stripHiTags } from "./richTextModel.ts";
 import {
   ensureRunning,
   getActiveConn,
@@ -113,28 +114,8 @@ export interface DocumentPreviewResponse {
 const _HI_RE = /<hi\b([^>]*)>(.*?)<\/hi>/gs;
 const _REND_RE = /\brend=["']([^"']*)["']/;
 
-/** Opening/closing <hi> tags — mirrors unicode_policy._HI_TAG_RE. */
-const _HI_TAG_RE = /<hi\b[^>]*>|<\/hi>/g;
-/** Invisibles + C0 controls (TAB/LF/CR kept) — mirrors unicode_policy._REMOVE_CHARS + _STRIP_CONTROLS. */
-const _NORM_REMOVE_RE = /[\u200b\u200c\u200d\u2060\ufeff\u00ad\u0000-\u0008\u000b\u000c\u000e-\u001f]/g;
-/** NBSP/NNBSP/figure/thin space + ¤ (ADR-002) — mirrors unicode_policy._NORMALIZE_TO_SPACE. */
-const _NORM_SPACE_RE = /[\u00a0\u202f\u2007\u2009\u00a4]/g;
-
-/**
- * Strip <hi> markup and apply the engine's normalisation policy (ADR-003).
- *
- * Mirrors `unicode_policy.normalize()` step for step, so that for a line untouched
- * since import `_foldNorm(text_raw) === text_norm` holds *exactly* — text_norm is
- * precisely what the importer produced by running normalize() on text_raw.
- */
-function _foldNorm(s: string): string {
-  return s
-    .replace(_HI_TAG_RE, "")
-    .normalize("NFC")
-    .replace(/\r\n?/g, "\n")
-    .replace(_NORM_SPACE_RE, " ")
-    .replace(_NORM_REMOVE_RE, "");
-}
+// Le pliage de normalisation et le retrait des balises vivent dans richTextModel :
+// une seule source de vérité, partagée avec le geste de stylisation.
 
 /**
  * Convert text_raw <hi rend="…"> markup to safe HTML for display.
@@ -159,14 +140,14 @@ function _foldNorm(s: string): string {
  */
 export function richTextToHtml(raw: string | null | undefined, fallback: string): string {
   if (!raw || !raw.includes("<hi")) return _esc(fallback);
-  if (_foldNorm(raw) !== _foldNorm(fallback)) return _esc(fallback);
+  if (!isRichInSync(raw, fallback)) return _esc(fallback);
   // Provenance guard — text segments are injected unescaped, which is only sound for
   // text the DOCX/ODT importers escaped themselves (& < > become entities). A plain
   // importer (txt, TEI) stores the line verbatim, so a source file that happens to
   // contain "<hi" would carry live markup into the page. Real <hi> markup never
   // leaves a bare angle bracket behind once the tags are removed: if one is there,
   // this is not importer markup and the whole line is escaped.
-  if (/[<>]/.test(raw.replace(_HI_TAG_RE, ""))) return _esc(fallback);
+  if (/[<>]/.test(stripHiTags(raw))) return _esc(fallback);
   let result = "";
   let last = 0;
   let m: RegExpExecArray | null;
@@ -2718,6 +2699,30 @@ export async function updateUnitText(
 /** The "stylo" inline correction (DESIGN_inline_text_correction.md, D-C1): edit
  *  text_norm only, keeping text_raw as the verbatim import provenance. Immediate (β),
  *  flags aligned translations stale + records an undoable action server-side. */
+/**
+ * Persister une stylisation : le texte balisé **et** le texte cherchable, en un appel.
+ *
+ * `POST /units/update_text` accepte les deux colonnes ensemble — vérifié sur le service
+ * réel. Le geste de stylisation n'ajoute et ne retire que des balises, donc `text_norm`
+ * est renvoyé **inchangé** : l'invariant de la garde d'affichage se retrouve satisfait,
+ * le FTS se réindexe sur le même texte, et aucune borne de coupe d'alignement n'est
+ * effacée (`cut_spans_cleared` reste à 0, l'endpoint ne les touche que si `text_norm`
+ * change). L'annulation Mode A fonctionne d'emblée : l'endpoint photographie les deux
+ * colonnes avant d'écrire.
+ */
+export async function updateUnitRichText(
+  conn: Conn,
+  unitId: number,
+  textRaw: string,
+  textNorm: string,
+): Promise<{ unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string }> {
+  return conn.post("/units/update_text", {
+    unit_id: unitId, text_raw: textRaw, text_norm: textNorm,
+  }) as Promise<{
+    unit_id: number; doc_id: number; n: number; text_raw: string; text_norm: string;
+  }>;
+}
+
 export async function updateUnitTextNorm(
   conn: Conn,
   unitId: number,
