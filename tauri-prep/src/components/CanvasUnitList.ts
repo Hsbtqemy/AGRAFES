@@ -14,7 +14,7 @@
 import type { ConventionRole, UnitRecord } from "../lib/sidecarClient.ts";
 import { richTextToHtml } from "../lib/sidecarClient.ts";
 import {
-  applyMark, canStyle, domOffsetToPlain, hasMark, isRichInSync, parseRich,
+  applyMark, canStyle, domLength, domOffsetToPlain, hasMark, isRichInSync, parseRich,
   type RichToken,
 } from "../lib/richTextModel.ts";
 import { selectionRangeIn } from "../lib/richSelection.ts";
@@ -113,6 +113,7 @@ export class CanvasUnitList {
     this._selected.clear();
     this._lastClickedIdx = -1;
     this._editingUid = null; // a context change closes any open editor (F1)
+    this._hideStyleBar();    // ... et emporte la barre de stylisation avec lui
   }
 
   /** Update the role of the given units in-place (after an assign) + re-render. */
@@ -220,6 +221,10 @@ export class CanvasUnitList {
       : "";
     setHtml(area, raw(topMarker + rowsHtml));
 
+    // Un rendu remplace les lignes, donc détruit la sélection du navigateur : la barre
+    // de stylisation ne doit jamais lui survivre (elle pointerait un texte disparu).
+    this._hideStyleBar();
+
     const rows = area.querySelectorAll<HTMLElement>(".prep-conv-unit-row");
     rows.forEach((el, idx) => {
       el.addEventListener("click", (e) => {
@@ -290,6 +295,10 @@ export class CanvasUnitList {
 
   /** Lit la sélection faite dans une ligne et présente la barre I/G, ou la retire. */
   private _onTextSelected(unitId: number): void {
+    // Pendant une correction, le texte n'est pas à sa place : le geste attend, comme le
+    // clic de sélection de ligne.
+    if (this._editingUid !== null) return this._hideStyleBar();
+
     const u = this._units.find((x) => x.unit_id === unitId);
     const row = this._host.querySelector<HTMLElement>(`.prep-conv-unit-row[data-uid="${unitId}"]`);
     const span = row?.querySelector<HTMLElement>(".prep-conv-unit-text");
@@ -299,9 +308,15 @@ export class CanvasUnitList {
     const base = this._styleBase(u);
     if (!dom || !canStyle(base)) return this._hideStyleBar();
 
-    const plain = parseRich(base).plain;
-    const start = domOffsetToPlain(plain, dom.start);
-    const end = domOffsetToPlain(plain, dom.end);
+    // Garde de cohérence : une couche peut avoir repeint la ligne — la surcouche de
+    // tokens de l'Annotation reconstruit le texte depuis les tokens, avec ses propres
+    // règles d'espacement. Les offsets lus à l'écran ne désigneraient alors plus le même
+    // texte, et le style atterrirait à côté. On refuse plutôt que de viser au hasard.
+    const plainText = parseRich(base).plain;
+    if ((span.textContent ?? "").length !== domLength(plainText)) return this._hideStyleBar();
+
+    const start = domOffsetToPlain(plainText, dom.start);
+    const end = domOffsetToPlain(plainText, dom.end);
     if (start >= end) return this._hideStyleBar();
 
     this._styleTarget = { unitId, start, end };
@@ -331,10 +346,17 @@ export class CanvasUnitList {
       }
       span.ownerDocument.body.appendChild(bar);
       this._styleBar = bar;
+      // Positionnée en coordonnées de page : un défilement la laisserait en arrière du
+      // texte qu'elle vise. En capture, pour attraper aussi les conteneurs défilants.
+      const drop = (): void => this._hideStyleBar();
+      doc.addEventListener("scroll", drop, { capture: true, passive: true });
+      doc.defaultView?.addEventListener("resize", drop, { passive: true });
     }
     for (const btn of bar.querySelectorAll<HTMLElement>(".prep-conv-stylebar-btn")) {
       const token = btn.dataset.token as RichToken;
-      btn.classList.toggle("prep-conv-stylebar-btn--on", hasMark(base, start, end, token));
+      const on = hasMark(base, start, end, token);
+      btn.classList.toggle("prep-conv-stylebar-btn--on", on);
+      btn.setAttribute("aria-pressed", String(on));
     }
     const box = span.getBoundingClientRect();
     bar.style.position = "absolute";

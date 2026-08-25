@@ -372,3 +372,86 @@ describe("stylisation inline (§5, DESIGN_inline_restyling)", () => {
     expect(bar()).toBeNull();
   });
 });
+
+describe("stylisation inline — gardes de la passe adverse", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  function selectAll(span: HTMLElement): void {
+    const range = document.createRange();
+    range.selectNodeContents(span); // robuste quand la ligne contient deja un <em>
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+  }
+  const bar = () => document.querySelector<HTMLElement>(".prep-conv-stylebar");
+
+  it("refuse une ligne repeinte par une couche (surcouche de tokens)", () => {
+    // L'Annotation reconstruit le texte depuis les tokens : les offsets à l'écran ne
+    // désignent plus le même texte, le style atterrirait à côté.
+    const list = new CanvasUnitList(host, {
+      onStyleText: async () => {},
+      decorateRow: (_u, el) => {
+        const span = el.querySelector<HTMLElement>(".prep-conv-unit-text");
+        if (span) span.textContent = "un mot ici repeint autrement";
+      },
+    });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    selectAll(host.querySelector<HTMLElement>(".prep-conv-unit-text")!);
+    expect(bar()?.hidden ?? true).toBe(true);
+  });
+
+  it("la barre ne survit pas à un rendu", () => {
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    selectAll(host.querySelector<HTMLElement>(".prep-conv-unit-text")!);
+    expect(bar()!.hidden).toBe(false);
+    list.render();
+    expect(bar()!.hidden).toBe(true);
+  });
+
+  it("la barre ne survit pas à un changement de document", () => {
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    list.render();
+    selectAll(host.querySelector<HTMLElement>(".prep-conv-unit-text")!);
+    list.clearSelectionQuiet();
+    expect(bar()!.hidden).toBe(true);
+  });
+
+  it("attend la fin d'une correction avant de styliser", async () => {
+    const list = new CanvasUnitList(host, {
+      onStyleText: async () => {},
+      onEditText: async () => {},
+    });
+    list.setData({
+      docId: 1,
+      units: [
+        unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" }),
+        unit(2, { text_norm: "autre ligne", text_raw: "autre ligne" }),
+      ],
+    });
+    list.render();
+    host.querySelector<HTMLButtonElement>(".prep-conv-unit-edit")!.click(); // éditeur ouvert
+    await flush();
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text"); // celui de l'autre ligne
+    if (span) selectAll(span);
+    expect(bar()?.hidden ?? true).toBe(true);
+  });
+
+  it("marque l'état du bouton pour les lecteurs d'écran", () => {
+    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
+    list.setData({
+      docId: 1,
+      units: [unit(1, { text_norm: "un mot ici", text_raw: '<hi rend="italic">un mot ici</hi>' })],
+    });
+    list.render();
+    selectAll(host.querySelector<HTMLElement>(".prep-conv-unit-text")!);
+    const italic = bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!;
+    const bold = bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--bold")!;
+    expect(italic.getAttribute("aria-pressed")).toBe("true");
+    expect(bold.getAttribute("aria-pressed")).toBe("false");
+  });
+});
