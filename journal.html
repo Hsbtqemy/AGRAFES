@@ -243,11 +243,23 @@ a{color:var(--outremer)}
   margin:0 0 1.2rem;font:400 var(--t2)/1.5 var(--mo)}
 .perime b{font-weight:600}
 
-/* La barre de carte : une piste pleine largeur, discrète, sous le pied. Elle ne porte ni
-   axe ni mois — c'est la comparaison d'une carte à l'autre qui informe. */
-.mini{display:block;position:relative;height:3px;margin:.55rem 0 0;border-radius:2px;
-  background:var(--verge)}
-.mini>span{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--minium)}
+/* La barre de carte : un segment posé sur une piste pleine largeur, sous le pied. Elle
+   ne porte ni axe ni mois — c'est la comparaison d'une carte à l'autre qui informe.
+
+   La PISTE doit se voir autant que le segment, et c'est tout l'enjeu : une barre seule,
+   au bas d'une carte, se lit comme une jauge de progression. « R3, de 45 à 99 % » se
+   comprendrait « presque fini » alors que R3 porte dix-huit restes. Une piste visible de
+   bord à bord, identique sur toutes les cartes, avec deux extrémités marquées, dit que
+   le segment est POSÉ quelque part et non qu'il REMPLIT depuis la gauche.
+
+   La couleur suit le texte (currentColor) plutôt qu'un ton fixe : la piste suit le texte, donc les deux thèmes,
+   et ne se confond pas avec le fond de la carte comme le faisait --verge. */
+.mini{display:block;position:relative;height:9px;margin:.6rem 0 0}
+.mini::before{content:"";position:absolute;left:0;right:0;top:3px;height:3px;
+  border-radius:2px;background:currentColor;opacity:.13}
+.mini::after{content:"";position:absolute;left:0;right:0;top:0;height:9px;
+  border-left:1px solid currentColor;border-right:1px solid currentColor;opacity:.22}
+.mini>span{position:absolute;top:3px;height:3px;border-radius:2px;background:var(--minium)}
 .s-clos .mini>span,.s-liv .mini>span{background:var(--pl-close-bg)}
 .s-ven .mini>span{background:var(--outremer)}
 .s-dif .mini>span{background:var(--minium);opacity:.6}
