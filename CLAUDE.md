@@ -109,15 +109,21 @@ IMPORTANT — respecter exactement `## Reste`, `## QA`, et les H3 de zone :
 l'outil ne lit que ces sections.
 
 - Fin de session : mettre à jour le `Reste` du chantier travaillé.
-- Avant de clore une session : `node pilotage/verifier.mjs` (code de retour non
-  nul = l'outil lira mal le dossier ; `--strict` rend les avertissements bloquants).
+- Avant de clore une session : `npm run verifier` (code de retour non nul =
+  l'outil lira mal le dossier ; `-- --strict` rend les avertissements bloquants).
 - QA visuelle : écrire une passe dans `pilotage/qa/`, jamais dans le fil de
   conversation. Regrouper les points par zone en H3.
 - Ne jamais cocher soi-même une case d'une passe de QA.
 - Ne pas créer de fichier pour un finding traité en un seul commit.
 
-Le journal se lit avec `node journal.mjs` puis `localhost:4123` (git + `pilotage/`,
+Le journal se lit avec `npm run journal` puis `localhost:4123` (git + `pilotage/`,
 lecture seule sauf les cases, dont l'écriture est bornée à `pilotage/`).
+
+L'outil n'habite plus ce dépôt : il vient de [`Hsbtqemy/pilote`](https://github.com/Hsbtqemy/pilote),
+pris en dépendance par le `package.json` racine — qui ne sert qu'à ça. Un `npm install`
+à la racine suffit après un clone ; `npm update pilote` prend la dernière version. Les
+quatre fichiers qui vivaient ici (`journal.mjs`, `journal.html`, `journal-contrat.mjs`,
+`pilotage/verifier.mjs`) étaient recopiés à la main à chaque lot de l'outil.
 
 ## Project conventions & gotchas
 
