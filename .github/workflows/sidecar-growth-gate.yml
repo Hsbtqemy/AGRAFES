@@ -4,7 +4,9 @@ name: Sidecar growth gate
 # par PRs incrémentales sous le radar.
 #
 # Mesure : croissance NETTE (insertions - deletions) sur fenêtre glissante
-# 90 jours, mesurée via git log --numstat. Seuil : 500 lignes.
+# 90 jours, mesurée via git log --numstat. Seuil : 2500 lignes depuis le
+# 2026-08-25 (500 auparavant) — relevé DÉLIBÉRÉMENT et temporairement, voir
+# « Pourquoi 2500 » plus bas.
 #
 # Override d'urgence : commit trailer `Sidecar-Growth-Override: <motif>` dans
 # le dernier commit (typiquement un CVE ou un fix sécurité critique).
@@ -42,7 +44,30 @@ jobs:
         id: growth
         run: |
           set -eu
-          THRESHOLD=500
+          # Pourquoi 2500, et pourquoi c'est provisoire (décidé le 2026-08-25).
+          #
+          # 500 était calibré sur le rythme du fichier APRÈS l'extraction A-01 :
+          # net +373 sur la fenêtre avr→juil, +557 sur mai→août. Le seuil était juste.
+          #
+          # Mais ce net est financé par un one-off : l'extraction des 17-18 juin pèse
+          # -1436 dans la fenêtre. Elle en sort le 15-16 septembre, et le gate lira
+          # alors +1995 SANS UN SEUL COMMIT DE PLUS. Le rythme réel du fichier, une
+          # fois ce crédit retiré, est d'environ +2691 ajoutées / -2134 retirées par
+          # 90 jours — un net autour de +560 tant que l'extraction de juin le finance, et sans elle une addition brute de +2691 sur 90 jours. 500 est donc inatteignable sans
+          # extraction continue, et un seuil qu'on ne peut pas tenir n'alerte plus :
+          # il devient un warning permanent qu'on apprend à ne plus lire.
+          #
+          # 2500 se tient juste au-dessus de ce rythme : il ne crie pas au loup le
+          # 16 septembre, et il se déclenche si la cadence accélère.
+          #
+          # Ce n'est PAS un renoncement à A-01, qui reste ouvert et devra reprendre :
+          # le vrai remède mesuré est de scinder le fichier par domaine (6516 lignes
+          # de handlers de domaine contre 3924 de socle). Voir pilotage/A-01.md.
+          THRESHOLD=2500
+          # Date à laquelle ce relèvement doit être rejugé : 90 jours après la sortie
+          # de fenêtre du 16 septembre, soit le premier moment où la mesure ne porte
+          # plus aucune trace de l'extraction de juin ni de son expiration.
+          THRESHOLD_REVIEW=2026-12-15
           DAYS=90
           FILE=src/multicorpus_engine/sidecar.py
 
@@ -51,6 +76,7 @@ jobs:
 
           echo "growth=$GROWTH" >> "$GITHUB_OUTPUT"
           echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
+          echo "review=$THRESHOLD_REVIEW" >> "$GITHUB_OUTPUT"
           echo "days=$DAYS" >> "$GITHUB_OUTPUT"
           echo "Sidecar net growth over last $DAYS days: $GROWTH lines (threshold: $THRESHOLD)"
 
@@ -83,6 +109,13 @@ jobs:
           THRESHOLD="${{ steps.growth.outputs.threshold }}"
           DAYS="${{ steps.growth.outputs.days }}"
           OVERRIDE="${{ steps.override.outputs.override }}"
+
+          # « Pour l'instant » ne se tient que si quelque chose le rappelle : sans
+          # cette date, un relèvement provisoire devient définitif par oubli.
+          REVIEW="${{ steps.growth.outputs.review }}"
+          if [ "$(date -u +%Y-%m-%d)" > "$REVIEW" ]; then
+            echo "::warning::Le seuil de $THRESHOLD était provisoire et devait être rejugé le $REVIEW. A-01 (scission de sidecar.py par domaine) est-il repris ? Voir pilotage/A-01.md."
+          fi
 
           if [ "$GROWTH" -le "$THRESHOLD" ]; then
             echo "✓ Sidecar growth ($GROWTH lines / $DAYS d) sous le seuil ($THRESHOLD). OK."
