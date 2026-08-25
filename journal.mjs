@@ -224,19 +224,37 @@ const rxCodes = (codes) =>
   new RegExp(`(^|[^A-Za-z0-9-])(${codes.map(echappe).join("|")})([^A-Za-z0-9-]|$)`);
 
 // Un commit qui touche 3 CHANTIERS ou plus est un fourre-tout : il ne date rien.
-// Compter les codes bruts serait faux depuis la remontée — un commit citant
-// ALI-01, ALI-10 et ALI-22 est du R3 pur, pas un fourre-tout.
-const fourretout = (sujet, proprietaire) =>
-  new Set((sujet.match(CFG.codes.chantier) || []).map(c => proprietaire[c] || c)).size >= 3;
+// Compter les codes bruts serait faux depuis la remontée — un commit citant ALI-01,
+// ALI-10 et ALI-22 est du R3 pur, pas un fourre-tout.
+//
+// Le compte se fait sur le vocabulaire DÉCLARÉ — les codes des fiches, plus ceux qu'elles
+// remontent de leurs audits — et non sur un motif générique. Un motif ne sait pas ce qui
+// est un chantier ICI : mesuré sur un dépôt réel, il prenait ADR-043 pour un chantier
+// dans douze sujets, et comptait R3.3 comme distinct de R3 alors que c'en est une
+// tranche. L'écart total est de huit verdicts sur mille cent quatre-vingt-deux, dont six
+// sans conséquence — le sujet ne cite alors aucun chantier connu et ne date rien.
+//
+// La DÉCOUVERTE, elle, garde son motif : index() doit reconnaître des codes qu'aucune
+// fiche ne déclare, pour renvoyer vers le document qui les a écrits. Attribuer demande un
+// vocabulaire, découvrir demande un motif — ce ne sont pas le même besoin, et le second
+// ne fausse que des liens, jamais un datage.
+const fourretout = (sujet, rx, proprietaire) =>
+  new Set([...sujet.matchAll(rx)].map(m => proprietaire[m[2]] || m[2])).size >= 3;
+
+// Le motif qui EXTRAIT d'un sujet tous les codes connus du dossier. Trié du plus long au
+// plus court : sans ça, R6 masquerait R6.5 dans l'alternance si les deux étaient déclarés.
+const rxVocabulaire = (codes) => new RegExp(
+  "(^|[^A-Za-z0-9-])(" + [...codes].sort((a, b) => b.length - a.length).map(echappe).join("|")
+  + ")(?=[^A-Za-z0-9-]|$)", "g");
 
 // Les commits d'un chantier, du plus récent au plus ancien. `tenue` = ceux qui ne
 // touchent que `pilotage/` : tenir le dossier n'est pas travailler sur le chantier
 // dont on parle — sans cette garde, une note « recompter l'item de R3 » remettait le
 // silence de R3 à zéro.
-const commitsDuChantier = (commits, codes, proprietaire, tenue) => {
+const commitsDuChantier = (commits, codes, rxVoc, proprietaire, tenue) => {
   const rx = rxCodes(codes);
   return commits.filter(c =>
-    rx.test(c.sujet) && !fourretout(c.sujet, proprietaire) && !tenue.has(c.hash));
+    rx.test(c.sujet) && !fourretout(c.sujet, rxVoc, proprietaire) && !tenue.has(c.hash));
 };
 
 // Front d'intégration : jusqu'où le travail est remonté. Dérivé, jamais déclaré.
@@ -577,12 +595,15 @@ async function build() {
   const rem = await remontee(chantiers);
   const proprietaire = {};
   for (const [ch, codes] of Object.entries(rem)) for (const c of codes) proprietaire[c] = ch;
+  // Le vocabulaire du dépôt, dérivé de son dossier : ce que les fiches déclarent, plus ce
+  // qu'elles remontent de leurs audits. Rien à régler, rien à tenir à jour.
+  const rxVoc = rxVocabulaire(new Set([...chantiers.map(c => c.code), ...Object.keys(proprietaire)]));
 
   const parCommit = fichiersParCommit(), sets = new Map();
   for (const ch of chantiers) {
     const codes = [ch.code, ...(rem[ch.code] || [])];
     ch.remontee = rem[ch.code] || null;
-    const liste = commitsDuChantier(commits, codes, proprietaire, tenue);
+    const liste = commitsDuChantier(commits, codes, rxVoc, proprietaire, tenue);
     const last = liste[0] || null;
     ch.dernier = last ? { hash: last.hash, date: last.date, sujet: last.sujet } : null;
     // L'autre borne. `dernier` seul ne distingue pas un sprint de trois jours d'une
