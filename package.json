@@ -8,6 +8,7 @@
   "scripts": {
     "journal": "pilote",
     "verifier": "pilote verifier",
-    "arreter": "pilote arreter"
+    "arreter": "pilote arreter",
+    "aide": "pilote aide"
   }
 }

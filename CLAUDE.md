@@ -121,7 +121,10 @@ l'outil ne lit que ces sections.
 - Ne pas créer de fichier pour un finding traité en un seul commit.
 
 Le journal se lit avec `npm run journal` puis `localhost:4123` (git + `pilotage/`,
-lecture seule sauf les cases, dont l'écriture est bornée à `pilotage/`).
+lecture seule sauf les cases, dont l'écriture est bornée à `pilotage/`). La commande est
+idempotente : la retaper sans vérifier si un serveur tourne est le geste prévu.
+`npm run arreter` ferme, `npm run aide` liste toutes les commandes et options — c'est le
+seul inventaire complet, vérifié contre le code.
 
 L'outil n'habite plus ce dépôt : il vient de [`Hsbtqemy/pilote`](https://github.com/Hsbtqemy/pilote),
 pris en dépendance par le `package.json` racine — qui ne sert qu'à ça. Un `npm install`
