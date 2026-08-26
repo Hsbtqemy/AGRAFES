@@ -876,6 +876,10 @@ export class CurationPane {
       this._onError(e instanceof Error ? e.message : String(e));
       throw e;
     }
+    // La stylisation enregistre une action `update_text`, exactement comme le stylo : sans
+    // ce rafraîchissement le bandeau continue d'annoncer l'action précédente, et l'on
+    // croit défaire une assignation de rôle en défaisant une mise en forme.
+    void this._refreshUndo();
   }
 
   /** onEditText callback for CanvasUnitList: persist the correction (β) then drop the

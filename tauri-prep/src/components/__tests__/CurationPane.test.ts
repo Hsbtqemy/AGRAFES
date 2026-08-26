@@ -851,3 +851,46 @@ describe("CurationPane — undo Apply (R6.5-B Lot D)", () => {
     expect(area?.textContent).toContain("boom reload");
   });
 });
+
+describe("CurationPane — le bandeau d'annulation suit la stylisation", () => {
+  const undoBtn = () => host.querySelector("#prep-cur-undo-btn") as HTMLButtonElement;
+
+  it("une stylisation rafraîchit le libellé, qui annonçait l'action précédente", async () => {
+    // Sans ce rafraîchissement, le bandeau continue d'annoncer « attribution d'un rôle »
+    // alors que la prochaine action annulable est la stylisation qu'on vient de poser :
+    // on croit défaire un rôle, on défait une mise en forme (signalé en QA le 25 août).
+    let elig: Record<string, unknown> = {
+      eligible: true, action_type: "set_role", action_id: 4, description: "Attribution d'un rôle",
+    };
+    const conn = fakeConn({ units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
+    // L'éligibilité change côté serveur dès que la stylisation est enregistrée.
+    const post = (conn as unknown as { post: (p: string, b?: unknown) => Promise<unknown> }).post;
+    (conn as unknown as { post: (p: string, b?: unknown) => Promise<unknown> }).post = async (path, body) => {
+      if (path === "/prep/undo/eligibility") return elig;
+      if (path === "/units/update_text") {
+        elig = { eligible: true, action_type: "update_text", action_id: 5, description: "Édition du texte (unité 10)" };
+        return { unit_id: 10, doc_id: 1, n: 1, text_raw: "", text_norm: "" };
+      }
+      return post(path, body);
+    };
+
+    const pane = new CurationPane(host, () => conn, () => {});
+    await pane.setDocument(1, null);
+    expect(undoBtn().textContent).toContain("Attribution d'un rôle");
+
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text")!;
+    const range = document.createRange();
+    range.setStart(span.firstChild!, 3);
+    range.setEnd(span.firstChild!, 6);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    document.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    await flush();
+
+    expect(undoBtn().textContent).toContain("Édition du texte");
+  });
+});
