@@ -36,6 +36,29 @@ from .unicode_policy import count_sep
 STRUCTURAL_ROLES: frozenset[str] = frozenset({"intertitre"})
 
 
+def structural_roles_for(conn: sqlite3.Connection) -> frozenset[str]:
+    """Structural role names read from the corpus catalogue (``unit_roles``).
+
+    ``unit_roles`` is per-corpus and user-editable (migration 013; ``category`` added by
+    018, which back-fills the known structural names). Reading it means a **custom**
+    structural role counts as a heading, and a role the user moved out of the category
+    stops counting — instead of the hard-coded default deciding for them. Same source as
+    the section-boundary query in ``sidecar.py`` and ``qa_report``.
+
+    Falls back to :data:`STRUCTURAL_ROLES` when the catalogue cannot be read at all
+    (a DB older than 013/018 has no table, or no ``category`` column). An *empty*
+    catalogue is not a fallback case: ``units.unit_role`` is a foreign key into this
+    table, so a role absent from it cannot be carried by any unit.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT name FROM unit_roles WHERE category = 'structure'"
+        ).fetchall()
+    except sqlite3.Error:
+        return STRUCTURAL_ROLES
+    return frozenset(r[0] for r in rows)
+
+
 def _parse_meta(meta_json: Any) -> dict:
     """Best-effort parse of a unit's ``meta_json`` column into a dict (never raises)."""
     if not meta_json:
@@ -194,7 +217,7 @@ def coarse_blocks_for_doc(
         }
         for r in rows
     ]
-    return derive_coarse_blocks(units)
+    return derive_coarse_blocks(units, structural_roles=structural_roles_for(conn))
 
 
 # --- R5.4c: ascendant coarse regrouping (non-destructive) -------------------
@@ -496,12 +519,14 @@ def set_paragraph_boundary_document(
         (doc_id, text_start_n),
     ).fetchall()
 
+    structural_roles = structural_roles_for(conn)
+
     units: list[dict[str, Any]] = []
     by_n: dict[int, sqlite3.Row] = {}
     target: sqlite3.Row | None = None
     for r in urows:
         is_line = r["unit_type"] == "line"
-        divider = (not is_line) or (r["unit_role"] in STRUCTURAL_ROLES)
+        divider = (not is_line) or (r["unit_role"] in structural_roles)
         pn = _parse_meta(r["meta_json"]).get("parent_n") if is_line else None
         units.append({"n": r["n"], "parent_n": pn, "divider": divider})
         by_n[r["n"]] = r
@@ -511,7 +536,7 @@ def set_paragraph_boundary_document(
     # Reject a target that is not an editable text segment — paratext, a structure unit, an
     # intertitre-role heading (all section walls), or a foreign doc — rather than silently
     # no-op, so the UI never claims a phantom change on a segment it should not offer.
-    if target is None or target["unit_type"] != "line" or target["unit_role"] in STRUCTURAL_ROLES:
+    if target is None or target["unit_type"] != "line" or target["unit_role"] in structural_roles:
         raise ValueError(
             f"unit_id={unit_id} is not an editable text segment "
             f"(paratext or section heading) for doc_id={doc_id}"

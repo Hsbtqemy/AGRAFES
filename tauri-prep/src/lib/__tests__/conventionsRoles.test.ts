@@ -6,6 +6,8 @@ import {
   isSafeHexColor,
   safeColor,
   validateRoleForm,
+  structuralRoleNames,
+  structuralRoleNamesOr,
 } from "../conventionsRoles.ts";
 import type { ConventionRole } from "../sidecarClient.ts";
 
@@ -113,5 +115,41 @@ describe("validateRoleForm", () => {
   });
   it("couleur vide → ok (optionnelle)", () => {
     expect(validateRoleForm({ name: "titre", label: "Titre", color: "" }).ok).toBe(true);
+  });
+});
+
+describe("structuralRoleNames / structuralRoleNamesOr — R2.2", () => {
+  const role = (name: string, category?: string) =>
+    ({ role_id: 1, name, label: name, color: "#fff", icon: null, sort_order: 0, category }) as never;
+
+  it("ne retient que les rôles de catégorie structure", () => {
+    const set = structuralRoleNames([role("titre", "structure"), role("traduction", "text")]);
+    expect([...set]).toEqual(["titre"]);
+  });
+
+  it("reconnaît un rôle structurel personnalisé", () => {
+    const set = structuralRoleNames([role("Infos_AGRAFES", "structure")]);
+    expect(set.has("Infos_AGRAFES")).toBe(true);
+  });
+
+  it("ne retient pas un rôle sorti de la catégorie structure", () => {
+    const set = structuralRoleNames([role("intertitre", "text")]);
+    expect(set.has("intertitre")).toBe(false);
+  });
+
+  it("traite une catégorie absente comme text (défaut sidecar)", () => {
+    expect(structuralRoleNames([role("intertitre")]).size).toBe(0);
+  });
+
+  it("retombe sur le repli quand le catalogue ne déclare aucun rôle structurel", () => {
+    const fallback = new Set(["intertitre"]);
+    expect(structuralRoleNamesOr([], fallback)).toBe(fallback);
+    expect(structuralRoleNamesOr([role("traduction", "text")], fallback)).toBe(fallback);
+  });
+
+  it("préfère le catalogue au repli dès qu'il déclare un rôle structurel", () => {
+    const fallback = new Set(["intertitre"]);
+    const out = structuralRoleNamesOr([role("chapeau", "structure")], fallback);
+    expect([...out]).toEqual(["chapeau"]);
   });
 });

@@ -42,9 +42,40 @@ export interface SplitRoles {
 }
 
 /**
+ * Names of the roles the catalogue declares structural — the front mirror of the
+ * engine's `coarse_grain.structural_roles_for(conn)`. Pass it to `deriveCoarseBlocks`
+ * (or any section-wall test) so a *custom* structural role counts and a role the user
+ * moved out of the category stops counting.
+ *
+ * Returns an empty set when the catalogue is empty — including when it has simply not
+ * loaded yet, which the caller cannot distinguish. Callers must therefore keep the
+ * module default as a fallback on an empty catalogue: a corpus with no role at all has
+ * no unit carrying one, so falling back is inert there and correct while loading.
+ */
+export function structuralRoleNames(roles: ConventionRole[]): ReadonlySet<string> {
+  return new Set(
+    roles.filter((r) => (r.category ?? "text") === "structure").map((r) => r.name),
+  );
+}
+
+/**
  * Partition the role catalogue into the "structure" and "text" sections.
  * A role with no category is treated as "text" (sidecar default).
  */
+/**
+ * The structural set to actually use: the catalogue when it declares one, the caller's
+ * fallback otherwise. An empty catalogue means either "not loaded yet" or "no role
+ * defined" — indistinguishable here, and the fallback is right in both cases (no role
+ * defined ⇒ no unit carries one ⇒ the fallback never fires).
+ */
+export function structuralRoleNamesOr(
+  roles: ConventionRole[],
+  fallback: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const catalogue = structuralRoleNames(roles);
+  return catalogue.size > 0 ? catalogue : fallback;
+}
+
 export function splitRolesByCategory(roles: ConventionRole[]): SplitRoles {
   const structure: ConventionRole[] = [];
   const text: ConventionRole[] = [];
@@ -60,9 +91,7 @@ export function splitRolesByCategory(roles: ConventionRole[]): SplitRoles {
  * These render as dormant suggestion rows the user can activate.
  */
 export function dormantStructureSuggestions(roles: ConventionRole[]): StructureSuggestion[] {
-  const activeNames = new Set(
-    roles.filter((r) => (r.category ?? "text") === "structure").map((r) => r.name),
-  );
+  const activeNames = structuralRoleNames(roles);
   return STRUCTURE_DEFAULTS.filter((s) => !activeNames.has(s.name));
 }
 

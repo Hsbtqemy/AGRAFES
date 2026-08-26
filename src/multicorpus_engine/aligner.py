@@ -15,7 +15,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .coarse_grain import derive_coarse_blocks
+from .coarse_grain import derive_coarse_blocks, structural_roles_for
 from .gale_church import gale_church_beads
 from .services.align_cell_status_service import purge_contradicted_cell_statuses
 
@@ -393,7 +393,7 @@ def _load_length_blocks(
         for r in rows
     ]
     blocks: list[list[tuple[int, int, int]]] = []
-    for b in derive_coarse_blocks(units):
+    for b in derive_coarse_blocks(units, structural_roles=structural_roles_for(conn)):
         members = [by_n[n] for n in b["member_ns"] if n in by_n]
         if members:
             blocks.append(members)

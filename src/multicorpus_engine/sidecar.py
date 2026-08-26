@@ -4343,13 +4343,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         # (intertitre/titre/chapeau…). The canonical intertitre in this model is a *line*
         # carrying the role — docx_paragraphs stores Word Headings that way (unit_type='line',
         # role='intertitre') — so keying only on unit_type would miss them. Mirror
-        # coarse_grain.py's STRUCTURAL_ROLES / qa_report's category='structure'; read from the
-        # corpus catalogue so custom structural roles count too.
-        structural_roles = [
-            r[0] for r in conn.execute(
-                "SELECT name FROM unit_roles WHERE category = 'structure'"
-            ).fetchall()
-        ]
+        # qa_report's category='structure'; the catalogue read itself lives in
+        # coarse_grain.structural_roles_for, so this route and the coarse-grain
+        # derivation can never drift apart on what counts as structural.
+        from multicorpus_engine.coarse_grain import structural_roles_for
+        structural_roles = sorted(structural_roles_for(conn))
 
         # ── helpers ──────────────────────────────────────────────────────────
 

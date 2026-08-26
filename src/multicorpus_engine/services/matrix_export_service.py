@@ -32,7 +32,7 @@ import sqlite3
 from typing import Any, Optional, Sequence
 
 from ..anchoring import anchor_status_for_doc
-from ..coarse_grain import STRUCTURAL_ROLES
+from ..coarse_grain import structural_roles_for
 from .errors import NotFoundError, ValidationError
 
 #: D10 — the omission token; a deliberately untranslated cell is never empty
@@ -336,6 +336,7 @@ def build_alignment_matrix(
 
     para_counter = 0
     prev_anchor: Any = object()  # sentinel — the first text segment always opens ¶ 1
+    structural_roles = structural_roles_for(conn)
 
     for add in additions_by_anchor.get(-1, []):
         _append_addition(add)
@@ -347,7 +348,7 @@ def build_alignment_matrix(
         # classes it kind='heading'; the toggle treats it as a section wall). It carries no
         # ¶ number and does not advance the counter — so the client shows no ¶ toggle on it
         # (blank ¶ → no button), consistent with the engine rejecting a toggle there.
-        if is_paratext or unit_role in STRUCTURAL_ROLES:
+        if is_paratext or unit_role in structural_roles:
             para_label: Any = ""
         else:
             pn = _parent_n(meta_json)

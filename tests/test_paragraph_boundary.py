@@ -173,7 +173,11 @@ def test_toggle_leaves_untouched_singletons_in_other_sections(db: sqlite3.Connec
     to its own n. Regression for the over-write that snapshotted the whole doc on every click."""
     doc = _doc(db)
     _insert_lines(db, doc, 6)
-    db.execute("INSERT INTO unit_roles (name,label) VALUES ('intertitre','Intertitre')")
+    # category='structure' is what makes it a section wall (R2.2 — read from the catalogue).
+    db.execute(
+        "INSERT INTO unit_roles (name,label,category)"
+        " VALUES ('intertitre','Intertitre','structure')"
+    )
     # n=3 is a section wall → section A = [1,2], section B = [4,5,6] (all ungrouped/null).
     db.execute("UPDATE units SET unit_role='intertitre' WHERE doc_id=? AND n=3", (doc,))
     db.commit()
@@ -209,7 +213,11 @@ def test_rejects_intertitre_target(db: sqlite3.Connection) -> None:
     doc = _doc(db)
     _insert_lines(db, doc, 4)
     # units.unit_role is an FK to unit_roles(name) — seed the convention first.
-    db.execute("INSERT INTO unit_roles (name,label) VALUES ('intertitre','Intertitre')")
+    # category='structure' is what makes it a section wall (R2.2 — read from the catalogue).
+    db.execute(
+        "INSERT INTO unit_roles (name,label,category)"
+        " VALUES ('intertitre','Intertitre','structure')"
+    )
     db.execute("UPDATE units SET unit_role='intertitre' WHERE doc_id=? AND n=2", (doc,))
     db.commit()
     with pytest.raises(ValueError, match="not an editable text segment"):

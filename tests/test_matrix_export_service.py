@@ -100,7 +100,11 @@ def test_intertitre_line_carries_no_paragraph_number(db_conn: sqlite3.Connection
     )
     doc_id = conn.execute("SELECT doc_id FROM documents WHERE title='FR'").fetchone()[0]
     conn.execute(  # units.unit_role is an FK to unit_roles(name) — seed the convention first
-        "INSERT INTO unit_roles (name,label) VALUES ('intertitre','Intertitre')"
+        # category='structure' is what makes the role a section wall — the structural
+        # set is read from this catalogue, not hard-coded (R2.2). Migration 018 back-fills
+        # it for the known names; a role created through the API must ask for it.
+        "INSERT INTO unit_roles (name,label,category)"
+        " VALUES ('intertitre','Intertitre','structure')"
     )
     rows = [
         (1, "Para un.", None),

@@ -29,7 +29,7 @@ import { escHtml as esc } from "../lib/diff.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { modalConfirm } from "../lib/modalConfirm.ts";
 import { resolveRoleBadge } from "../lib/conventionsUnitList.ts";
-import { safeColor } from "../lib/conventionsRoles.ts";
+import { safeColor, structuralRoleNamesOr } from "../lib/conventionsRoles.ts";
 import { hasImportOriginal } from "../lib/importOriginal.ts";
 import {
   buildSegmentParams,
@@ -49,9 +49,11 @@ import {
 import { computeAnomalyView, type AnomalyView } from "../lib/segmentAnomalies.ts";
 import { formatUndoActionLabel, formatUndoTooltip, isUndoDisabled, formatUndoLinkSuffix } from "../lib/prepUndo.ts";
 
-/** Roles that mark a section wall (a heading line, not a paragraph). Mirrors
- *  coarse_grain.STRUCTURAL_ROLES — the engine rejects a paragraph toggle on these. */
-const STRUCTURAL_ROLES = new Set<string>(["intertitre"]);
+/** Roles that mark a section wall (a heading line, not a paragraph) when the role
+ *  catalogue has not loaded yet. Mirrors coarse_grain.STRUCTURAL_ROLES — the engine
+ *  rejects a paragraph toggle on these. Once loaded, the catalogue decides
+ *  (`_structuralRoles()`), so a custom structural role is a wall here too. */
+const DEFAULT_STRUCTURAL_ROLES = new Set<string>(["intertitre"]);
 
 export class SegmentPane {
   private readonly _root: HTMLElement;
@@ -915,20 +917,30 @@ export class SegmentPane {
     });
   }
 
+  /** Section-wall roles: the loaded catalogue (`category='structure'`) when it is there,
+   *  the built-in default while it loads. R2.2 — the engine reads the same catalogue, so a
+   *  custom structural role is a wall on both sides. */
+  private _structuralRoles(): ReadonlySet<string> {
+    if (!this._rolesLoaded) return DEFAULT_STRUCTURAL_ROLES;
+    return structuralRoleNamesOr(this._roles, DEFAULT_STRUCTURAL_ROLES);
+  }
+
   /** Sequential ¶ number + boundary flag + 1-based segment position for each text-scope line
    *  unit (a distinct parent_n anchor opens a new paragraph — same rule as the matrix ¶ column).
    *  Excluded (carry no ¶, hence no toggle): paratext (n < text_start_n), structure units, and
    *  intertitre-role lines — the engine treats the last two as section walls and rejects a
-   *  toggle on them, so they must not offer one. STRUCTURAL_ROLES mirrors coarse_grain.py. */
+   *  toggle on them, so they must not offer one. The wall set comes from the role
+   *  catalogue (`_structuralRoles()`), mirroring coarse_grain.structural_roles_for. */
   private _toursParaByN(): Map<number, { num: number; start: boolean; seg: number }> {
     const out = new Map<number, { num: number; start: boolean; seg: number }>();
     let para = 0;
     let seg = 0;
     let prevAnchor: number | null = null;
+    const walls = this._structuralRoles();
     for (const u of this._units) {
       if (!u.isLine) continue;
       if (this._textStartN != null && u.n < this._textStartN) continue;
-      if (u.role != null && STRUCTURAL_ROLES.has(u.role)) continue; // intertitre = section wall
+      if (u.role != null && walls.has(u.role)) continue; // structural role = section wall
       seg++;
       const anchor = u.parentN ?? u.n;
       const start = anchor !== prevAnchor;

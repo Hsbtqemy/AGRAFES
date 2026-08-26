@@ -25,8 +25,8 @@ import {
   resolveRoleBadge,
   summarizeUnits,
 } from "../lib/conventionsUnitList.ts";
-import { safeColor } from "../lib/conventionsRoles.ts";
-import { deriveCoarseBlocks, blockIndexByUnitId } from "../lib/coarseGrain.ts";
+import { safeColor, structuralRoleNamesOr } from "../lib/conventionsRoles.ts";
+import { deriveCoarseBlocks, blockIndexByUnitId, STRUCTURAL_ROLES } from "../lib/coarseGrain.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 
 export interface CanvasUnitListOptions {
@@ -191,7 +191,14 @@ export class CanvasUnitList {
     // indented and a ¶ separator opens each multi-sentence paragraph. Separators use a
     // distinct class, so the `.prep-conv-unit-row` NodeList (and its shift-range index)
     // stays aligned with `filtered`.
-    const blocks = deriveCoarseBlocks(this._units);
+    // R2.2 — the structural set comes from the corpus catalogue, not a constant, so a
+    // custom structural role opens a heading block here exactly as it does in the engine.
+    // Empty catalogue = not loaded yet (indistinguishable from "no role defined", which is
+    // inert anyway since no unit could carry one) → keep the default.
+    const blocks = deriveCoarseBlocks(
+      this._units,
+      structuralRoleNamesOr(this._roles, STRUCTURAL_ROLES),
+    );
     const blockIdx = blockIndexByUnitId(blocks);
     let prevBi = -1;
     const rowsHtml = filtered
