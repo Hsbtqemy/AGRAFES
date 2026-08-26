@@ -16,7 +16,10 @@ portent plus que le **protocole** : où cliquer, quoi regarder, où le matériel
 Élagué le 2026-08-22.
 
 **Contexte d'exécution.** Shell dev (`npm --prefix tauri-shell run tauri -- dev`) +
-sidecar PyInstaller `onefile`. Contrat live attendu **1.6.75**, engine **0.4.0**.
+sidecar PyInstaller `onefile`. Contrat live attendu **1.6.77**, engine **0.4.0** — la
+passe a été écrite sous 1.6.75 ; 1.6.76 (badge `[§N]` du Contrôle) et 1.6.77 (langues
+affichées) sont passés depuis. Seul 1.6.77 touche ce que cette passe vérifie, et le
+paragraphe « Vocabulaire » ci-dessous dit quoi. Recalé le 2026-08-25.
 Base servie : une WORKCOPY, jamais le corpus réel.
 
 **Préalable** : devtools ouverts (clic droit → Inspecter → Console) toute la passe.
@@ -25,6 +28,15 @@ Base servie : une WORKCOPY, jamais le corpus réel.
 actuelle » depuis le 2026-08-21, et les cinq onglets forment deux groupes (l'état à
 gauche, « Segmenter : » à droite). Le rapport du 16 août dit encore « Brut » ; c'est la
 même vue.
+
+**Vocabulaire (suite) — la matrice a changé le 2026-08-25** (contrat 1.6.77, ALI-25). Une
+traduction qui couvre plusieurs segments source contigus n'est plus peinte en double avec
+un ⚠ « à réparer » : elle est peinte **une fois, à cheval** sur ses lignes, étiquetée
+« 1 trad ↔ N segments », et son bouton de coupe s'appelle désormais **« ✂ Répartir »**
+(porté par la **première** ligne du groupe). Les items qui parlaient d'une « cellule ⚠
+fusionnée » visent cette cellule-là. La grille porte en outre une barre de langues
+affichées — sa vérification a sa propre passe, `qa/langues-affichees.md`, à ne pas rejouer
+ici.
 
 ### Bloc 1 — Annotation (`◈ Actions` → `◎ Annotation` → Asimov-Foundation_FR)
 
@@ -75,12 +87,12 @@ même vue.
 - [ ] 5.7 ↗ en-tête de langue → ouvre la couche Segmentation, onglet « Segmentation actuelle »
 - [ ] 5.8 Orphelines « hors matrice » → « ↗ Segmenter » → deep-link sur l'unité exacte
 - [ ] 5.9 Export CSV. Chemin : ⌘ **Exporter** → carte « Matrice multilingue » (famille + séparateur CSV/TSV). Connu : l'export ne porte aucune référence bibliographique, et le TEI lit `meta_json` là où l'application écrit des colonnes dédiées (S-04)
-- [ ] 5.10 Modiano-Rue_FR (3 766 liens) → scroll fluide, pas de gel
+- [ ] 5.10 Modiano-Rue_FR (**5 770** liens au 2026-08-25 — la famille a été alignée en `es` et `ro` depuis la mesure de 3 766) → scroll fluide, pas de gel
 - [ ] 5.11 **＝ Rattacher** — ouvrir le sélecteur sur une cellule, choisir une cible → lien créé, cellule peuplée. ⚠️ le « % » est une **proximité de marqueur**, pas une ressemblance (QA-08) : lire le texte, ne pas s'y fier pour juger
 - [ ] 5.12 **✕ Retirer** une traduction → la cellule redevient vide, geste réversible. 🔎 base : le compte de liens baisse de 1, puis remonte après re-rattachement
 - [ ] 5.13 **⭙ Fusionner** — « reprendre la phrase du segment voisin dans CE segment » : la cellule absorbe la phrase, le voisin la perd
 - [ ] 5.13b Revenir sur un ⭙ **en un geste** (ALI-22 : impossible au 16/08 — le ＝ seul laissait la cible rattachée à deux segments sans alerte, le bead masquant le doublon. Deux correctifs depuis, `cb799c6` et le bandeau ↺ : à rejouer)
-- [ ] 5.14 **✂ Couper** une traduction fusionnée entre ce segment et le précédent, puis « Annuler la coupe » = le bouton ↻ (flèche **horaire**), révélé au survol entre le ⊙ et le ✕ → la traduction redevient entière. Sur une cellule coupée, ✎ et ＝ **disparaissent** : la rangée change de forme. ⚠ **Matériel** (famille Modiano, mesuré le 19/08) : rien en colonnes `en` ni `ro`. Tout se joue en **`es`** — 1 seule cellule ⚠ (segment 2) pour la partie « couper », 5 déjà coupées (segments 12 à 16) pour la partie « annuler ». Sur fr↔en l'item est **inexécutable**
+- [ ] 5.14 **✂ Répartir** une traduction groupée entre ce segment et le suivant, puis « Annuler la coupe » = le bouton ↻ (flèche **horaire**), révélé au survol entre le ⊙ et le ✕ → la traduction redevient entière. Sur une cellule coupée, ✎ et ＝ **disparaissent** : la rangée change de forme. ⚠ **Matériel re-mesuré le 2026-08-25** — l'ancienne note (« rien en `en` ni `ro`, tout en `es` ») datait du 19/08 et est **périmée** : la famille a été alignée depuis. Modiano porte aujourd'hui **39 groupes en `en`, 66 en `es`, 71 en `ro`** — la partie « répartir » se joue dans n'importe laquelle des trois. Mais Modiano n'a plus **aucune** cellule coupée : la partie « annuler la coupe » y est **inexécutable**, et doit se jouer sur `Houellebecq-Carte_FR` (4), `Houellebecq-Plateforme_FR` (2) ou `Simenon-Vacances_FR` (4) — les 10 seuls liens coupés du corpus
 - [ ] 5.15 **Statuts de cellule** — marquer « non traduit » puis retirer la marque ; marquer « ajout du traducteur » (D8) puis retirer. Une cellule « non traduit » compte comme faite
 - [ ] 5.16 **Ré-ancrage (5ᵉ verbe, RA-D1)** — dans le sélecteur, choisir un candidat **déjà lié à un autre segment** (badge `= §N`) → l'UI doit proposer « **déplacer ici (ré-ancrer)** » ou « ajouter aussi », jamais créer un doublon silencieux. Le résultat en base a été prouvé le 16/08 ; le **libellé** du choix ne l'a pas été — c'est ce qui reste à voir
 - [ ] 5.17 **Renvoi au Contrôle** — « Réviser ce lien dans le Contrôle » ouvre la révision fine sur **ce** lien (statut, collisions, qualité)
