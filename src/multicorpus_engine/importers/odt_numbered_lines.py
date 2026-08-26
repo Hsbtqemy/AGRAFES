@@ -15,10 +15,12 @@ from .docx_numbered_lines import (
     _analyze_external_ids,
 )
 from .import_guard import assert_not_duplicate_import
-from .odt_common import read_odt_paragraph_rich_lines
+from .odt_common import read_odt_paragraph_rich_line_groups
 from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 
-_NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
+# No re.DOTALL — see docx_numbered_lines: the pattern matches a single line,
+# paragraphs having been split on their soft breaks first.
+_NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$")
 
 logger = logging.getLogger(__name__)
 
@@ -44,36 +46,37 @@ def parse_odt_numbered_lines(
 
     units: list[ParsedUnit] = []
     n = 0
-    for rich, _heading_level in read_odt_paragraph_rich_lines(path):
-        plain = normalize(rich).strip()
-        if not plain:
-            continue
-        n += 1
-        # Match on plain text so a styled [n] prefix is still detected.
-        m = _NUMBERED_RE.match(plain)
-        if m:
-            ext_id = int(m.group(1))
-            # ENG-02: m.start(2) is a `plain` offset; slicing `rich` by it misaligns
-            # when normalize/strip changed the prefix length. Re-match the marker
-            # against the lstripped rich text to strip exactly the [n] prefix while
-            # preserving styling; fall back to the plain offset only if it doesn't match.
-            m_rich = _NUMBERED_RE.match(rich.lstrip())
-            if m_rich:
-                text_raw = m_rich.group(2)
+    for rich_lines, _heading_level in read_odt_paragraph_rich_line_groups(path):
+        for rich in rich_lines:
+            plain = normalize(rich).strip()
+            if not plain:
+                continue
+            n += 1
+            # Match on plain text so a styled [n] prefix is still detected.
+            m = _NUMBERED_RE.match(plain)
+            if m:
+                ext_id = int(m.group(1))
+                # ENG-02: m.start(2) is a `plain` offset; slicing `rich` by it misaligns
+                # when normalize/strip changed the prefix length. Re-match the marker
+                # against the lstripped rich text to strip exactly the [n] prefix while
+                # preserving styling; fall back to the plain offset only if it doesn't match.
+                m_rich = _NUMBERED_RE.match(rich.lstrip())
+                if m_rich:
+                    text_raw = m_rich.group(2)
+                else:
+                    prefix_len = m.start(2)
+                    text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
+                text_norm = normalize(text_raw)
+                sep_count = count_sep(text_raw)
+                meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
+                units.append(ParsedUnit(
+                    n=n, unit_type="line", text_raw=text_raw, text_norm=text_norm,
+                    external_id=ext_id, meta_json=meta,
+                ))
             else:
-                prefix_len = m.start(2)
-                text_raw = rich[prefix_len:] if len(rich) >= prefix_len else m.group(2)
-            text_norm = normalize(text_raw)
-            sep_count = count_sep(text_raw)
-            meta = json.dumps({"sep_count": sep_count}) if sep_count > 0 else None
-            units.append(ParsedUnit(
-                n=n, unit_type="line", text_raw=text_raw, text_norm=text_norm,
-                external_id=ext_id, meta_json=meta,
-            ))
-        else:
-            units.append(ParsedUnit(
-                n=n, unit_type="structure", text_raw=rich, text_norm=normalize(rich),
-            ))
+                units.append(ParsedUnit(
+                    n=n, unit_type="structure", text_raw=rich, text_norm=normalize(rich),
+                ))
 
     return ParsedDoc(units=units, doc_meta={}, source_hash=source_hash)
 

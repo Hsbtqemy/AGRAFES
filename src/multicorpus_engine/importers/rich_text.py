@@ -75,6 +75,34 @@ def _render_segments(
     return "".join(parts)
 
 
+def _split_segments_on_newline(
+    segments: list[tuple[frozenset[str], str]]
+) -> list[list[tuple[frozenset[str], str]]]:
+    """Split a (styles, text) stream into one sub-stream per logical line.
+
+    A *soft* line break (DOCX ``<w:br/>``, ODT ``text:line-break``) reaches us
+    as a newline **inside** a paragraph's text — python-docx renders ``<w:br/>``
+    as ``\\n`` in ``Run.text``, and :func:`_walk_odt_elem` does the same for
+    ``text:line-break``.  Splitting at the *segment* level rather than on the
+    rendered markup keeps every ``<hi>`` element balanced by construction: a
+    styled run straddling a break yields one ``<hi>`` per line.
+
+    Always returns at least one sub-stream (possibly empty).
+    """
+    lines: list[list[tuple[frozenset[str], str]]] = [[]]
+    for styles, text in segments:
+        normalised = text.replace("\r\n", "\n").replace("\r", "\n")
+        if "\n" not in normalised:
+            lines[-1].append((styles, normalised))
+            continue
+        for i, piece in enumerate(normalised.split("\n")):
+            if i:
+                lines.append([])
+            if piece:
+                lines[-1].append((styles, piece))
+    return lines
+
+
 # ---------------------------------------------------------------------------
 # python-docx support
 # ---------------------------------------------------------------------------
@@ -178,6 +206,11 @@ def para_to_rich_text(para: object) -> str:
     str
         Markup string — may mix bare text and ``<hi>`` elements.
     """
+    return _render_segments(_docx_para_segments(para))
+
+
+def _docx_para_segments(para: object) -> list[tuple[frozenset[str], str]]:
+    """Collect the (styles, text) pairs of a python-docx ``Paragraph``."""
     runs = getattr(para, "runs", [])
     segments: list[tuple[frozenset[str], str]] = []
     for run in runs:
@@ -186,7 +219,21 @@ def para_to_rich_text(para: object) -> str:
             continue
         styles = _docx_run_styles(run)
         segments.append((styles, text))
-    return _render_segments(segments)
+    return segments
+
+
+def para_to_rich_lines(para: object) -> list[str]:
+    """Convert a python-docx ``Paragraph`` to one rich-text string **per line**.
+
+    Same encoding as :func:`para_to_rich_text`, but soft line breaks
+    (``<w:br/>``, Shift+Enter in Word) end a line instead of being carried
+    inside it.  A paragraph without any break yields exactly
+    ``[para_to_rich_text(para)]``.
+    """
+    return [
+        _render_segments(group)
+        for group in _split_segments_on_newline(_docx_para_segments(para))
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -369,3 +416,25 @@ def odt_para_to_rich_text(
         _walk_odt_elem(elem, style_map, frozenset())
     )
     return _render_segments(segments)
+
+
+def odt_para_to_rich_lines(
+    elem: ET.Element,
+    style_map: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """Convert an ODT ``text:p`` / ``text:h`` to one rich-text string **per line**.
+
+    ODT counterpart of :func:`para_to_rich_lines`: ``text:line-break`` ends a
+    line instead of being carried inside it.  A paragraph without any break
+    yields exactly ``[odt_para_to_rich_text(elem, style_map)]``.
+    """
+    if style_map is None:
+        style_map = {}
+
+    segments: list[tuple[frozenset[str], str]] = list(
+        _walk_odt_elem(elem, style_map, frozenset())
+    )
+    return [
+        _render_segments(group)
+        for group in _split_segments_on_newline(segments)
+    ]

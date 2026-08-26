@@ -1,12 +1,40 @@
 # Note de design — R2.3 (queue) : extraction 2-grain d'un document « blob »
 
-> Statut : **intention de design — décisions à figer avant ticket**. Date : 2026-07-01.
+> Statut : **partiellement résolu**. Le producteur de blobs a été trouvé et corrigé à l'import le **2026-08-26** (voir §0) ; ne reste comme intention de design que le blob **dont le fichier source a disparu**. Date d'origine : 2026-07-01.
 > Queue différée de R2.3 ([`ROADMAP_REFONTE.md`](ROADMAP_REFONTE.md) §R2.3 · [`DESIGN_prep_text_canvas.md`](DESIGN_prep_text_canvas.md) §148/§157).
 > Dépend du modèle 2-grain (R2.1 `parent_n` livré) et réutilise `resegment_document` / `coarse_grain`.
 
-## 0. Prérequis — ⚠️ pas de producteur actuel (vérifié 2026-07-01)
+## 0. Prérequis — ✅ levé : le producteur existait (mesuré 2026-08-26)
 
-**Avant de coder, ce point bloque.** Les 7 modes d'import (`importers/dispatch.py` : `docx_numbered_lines`, `txt_numbered_lines`, `docx_paragraphs`, `odt_paragraphs`, `odt_numbered_lines`, `tei`, `conllu`) **découpent tous** en lignes/paragraphes — **aucun ne produit un blob multi-¶**. Un doc mono-unité ne peut donc venir que d'un source *réellement* mono-paragraphe (→ rien à extraire, c'est un ¶ légitime), d'un état DB legacy, ou d'un **futur mode d'import « brut/whole-file »** (à créer).
+> **Le §0 du 1er juillet est faux, et le producteur est corrigé.** Mesure sur
+> `corpus_agrafes.WORKCOPY.db` : **15 documents sur 58** tiennent en **une seule unité** de
+> 68 000 à 110 000 caractères (bitextes GRAFE : Asimov, Rankin, Pratchett, Lodge, Coe, Swift…).
+> Les DOCX sources contiennent **un unique `<w:p>`** portant 853 à 1304 **`<w:br/>`** (sauts de
+> ligne doux, Shift+Entrée) : python-docx rend `<w:br/>` en `\n` *dans* `Run.text`, si bien que
+> `docx_numbered_lines`, qui prend `<w:p>` pour clef, ne voyait qu'un paragraphe. Deux formes de blob
+> en découlaient, toutes deux observées en base : quand le paragraphe commence par `[n]`, le
+> `re.DOTALL` de `_NUMBERED_RE` laissait `.+` avaler tout le fichier en **une unité `line`**
+> (11 documents) ; sinon, aucun match → **une unité `structure`**, donc **hors FTS**
+> (4 documents). `odt_numbered_lines` portait la même regex et `text:line-break` rend aussi
+> `\n` : même faille.
+>
+> **Correctif livré** (import, pas resegmentation) : le paragraphe est découpé sur ses sauts
+> de ligne doux *avant* le match `[n]` — `rich_text.para_to_rich_lines` /
+> `odt_para_to_rich_lines` scindent au niveau des segments, ce qui garde les `<hi>` équilibrés,
+> et le `DOTALL` est retiré. `tests/test_import_soft_line_breaks.py` (RED prouvé sur l'ancien
+> code). Les modes `*_paragraphs` sont **inchangés** : « un `<w:p>` = une unité » reste leur
+> contrat (ADR-012).
+>
+> **Ce qui reste de cette note.** Le cas « la source a disparu » : re-produire le grain ¶ d'un
+> blob **déjà en base**. Les 15 documents mesurés n'en relèvent pas — leurs fichiers sources
+> sont toujours sur le disque, un réimport suffit. Et **la priorité D2 est à revoir** : ces
+> blobs portent **0 ligne vide** ; le premier indice de la liste ne trouverait rien. Les
+> signaux réels sont le `\n` (compte exact = compte de `<w:br/>`) puis les marqueurs `[N]`.
+> Réserve mesurée : les segments délimités par `\n` y font 85 à 107 caractères en moyenne —
+> c'est déjà le grain fin, pas un grain ¶. Sur ce corpus l'enjeu n'était pas « deux grains »
+> mais « un grain, correct ».
+
+**État au 1er juillet 2026 — conservé pour mémoire, invalidé par la mesure ci-dessus.** Les 7 modes d'import (`importers/dispatch.py` : `docx_numbered_lines`, `txt_numbered_lines`, `docx_paragraphs`, `odt_paragraphs`, `odt_numbered_lines`, `tei`, `conllu`) **découpent tous** en lignes/paragraphes — **aucun ne produit un blob multi-¶**. Un doc mono-unité ne peut donc venir que d'un source *réellement* mono-paragraphe (→ rien à extraire, c'est un ¶ légitime), d'un état DB legacy, ou d'un **futur mode d'import « brut/whole-file »** (à créer).
 
 Conséquence : **coder le split ¶ maintenant serait spéculatif.** Deux préalables au ticket : (i) un **exemple réel** de blob (comment les docs « brut 1 unité-blob » de la base ont-ils été créés ?), **ou** (ii) décider d'ajouter un **mode d'import blob** dont ce split serait le complément naturel.
 

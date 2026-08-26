@@ -1,14 +1,17 @@
 """DOCX numbered-lines importer.
 
-Reads a DOCX file where numbered paragraphs follow the pattern:
+Reads a DOCX file where numbered lines follow the pattern:
     [n] text content here
 
 Rules (see docs/DECISIONS.md ADR-001, ADR-002, ADR-003):
-- Paragraphs matching r'^\\[\\s*(\\d+)\\s*\\]\\s*(.+)$' → unit_type="line"
+- A paragraph is first split on its soft line breaks (``<w:br/>``): the marker
+  opens a *line*, and Word carries several of them in one ``<w:p>`` whenever the
+  document was typed with Shift+Enter.
+- Lines matching r'^\\[\\s*(\\d+)\\s*\\]\\s*(.+)$' → unit_type="line"
   - external_id = int(match.group(1))
   - text_raw = match.group(2) (prefix stripped, ¤ kept)
   - text_norm = normalize(text_raw)
-- Non-matching paragraphs → unit_type="structure", external_id=NULL, NOT indexed
+- Non-matching lines → unit_type="structure", external_id=NULL, NOT indexed
 - Diagnostics: duplicates, holes, non-monotonic sequence
 """
 
@@ -25,9 +28,12 @@ from typing import Optional
 from ..unicode_policy import count_sep, normalize
 from .import_guard import assert_not_duplicate_import
 from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
-from .rich_text import para_to_rich_text
+from .rich_text import para_to_rich_lines
 
-_NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$", re.DOTALL)
+# No re.DOTALL: the pattern is matched against a single line (paragraphs are
+# split on their soft line breaks first). With DOTALL, a `[n]` at the top of a
+# break-separated document made `.+` swallow the whole file into one unit.
+_NUMBERED_RE = re.compile(r"^\[\s*(\d+)\s*\]\s*(.+)$")
 
 # Si >50% des paragraphes d'une colonne demandée ne matchent pas `[N]`,
 # emit a warning. Seuil minimum d'échantillon : 5 paragraphes pour éviter
@@ -70,17 +76,36 @@ class ImportReport:
         }
 
 
-def _paragraph_to_unit(
+def _paragraph_to_units(
     para,
     n: int,
-) -> tuple | None:
-    """Convert one DOCX paragraph to a unit tuple, or None if blank.
+) -> list[tuple]:
+    """Convert one DOCX paragraph to unit tuples — one per *line*, blanks dropped.
 
-    Returns ``(unit_type, n, ext_id_or_None, text_raw, text_norm, meta_or_None)``.
+    A paragraph normally holds a single line, but a soft line break
+    (``<w:br/>``, Shift+Enter in Word) puts several on one paragraph: the whole
+    text then reaches python-docx as one ``Run.text`` carrying ``\\n``. Keying
+    on ``<w:p>`` alone collapses such a file into a single unit — the "blob"
+    case (see ``docs/DESIGN_R2_3_blob_two_grain.md``). The ``[n]`` marker sits
+    at the start of every *line*, so lines are what we split on.
+
     Reused for both top-level paragraphs and cell paragraphs so the
     matching logic stays in one place.
     """
-    rich = para_to_rich_text(para)
+    return [
+        unit for unit in (_rich_line_to_unit(rich, n) for rich in para_to_rich_lines(para))
+        if unit is not None
+    ]
+
+
+def _rich_line_to_unit(
+    rich: str,
+    n: int,
+) -> tuple | None:
+    """Convert one rich-text line to a unit tuple, or None if blank.
+
+    Returns ``(unit_type, n, ext_id_or_None, text_raw, text_norm, meta_or_None)``.
+    """
     plain = normalize(rich).strip()
     if not plain:
         return None
@@ -248,11 +273,9 @@ def parse_docx_numbered_lines(
         # Legacy path — tables are skipped (python-docx Document.paragraphs
         # already ignores them). Unchanged behavior.
         for para in document.paragraphs:
-            unit = _paragraph_to_unit(para, 0)  # n re-attributed by _append_unit
-            if unit is None:
-                continue
-            _append_unit(unit)
-            log.debug("Para n=%d type=%s", n, unit[0])
+            for unit in _paragraph_to_units(para, 0):  # n re-attributed by _append_unit
+                _append_unit(unit)
+                log.debug("Para n=%d type=%s", n, unit[0])
     else:
         # Column extraction — walk body in document order, dive into tables
         # at the requested column. Edge cases produce warnings + counters,
@@ -262,11 +285,9 @@ def parse_docx_numbered_lines(
         target_idx = column_index - 1
         for block in _iter_body_blocks(document):
             if isinstance(block, _DocxParagraph):
-                unit = _paragraph_to_unit(block, 0)
-                if unit is None:
-                    continue
-                _append_unit(unit)
-                log.debug("Top-level para n=%d type=%s", n, unit[0])
+                for unit in _paragraph_to_units(block, 0):
+                    _append_unit(unit)
+                    log.debug("Top-level para n=%d type=%s", n, unit[0])
             elif isinstance(block, _DocxTable):
                 tables_processed += 1
                 # Per-table dedup pour cellules fusionnées verticalement (vMerge) :
@@ -312,18 +333,19 @@ def parse_docx_numbered_lines(
                             tables_processed, row_idx + 1, column_index,
                         )
                     for para in target_cell.paragraphs:
-                        unit = _paragraph_to_unit(para, 0)
-                        if unit is None:
-                            continue
-                        col_paragraphs_total += 1
-                        if unit[0] == "line":
-                            col_paragraphs_line += 1
-                        _append_unit(unit)
-                        log.debug(
-                            "Table %d row %d col %d para n=%d type=%s",
-                            tables_processed, row_idx + 1, column_index,
-                            n, unit[0],
-                        )
+                        # Counted per extracted *line*: on a cell holding soft
+                        # breaks, one paragraph carries many `[n]` lines, and the
+                        # unnumbered-ratio warning below must weigh them all.
+                        for unit in _paragraph_to_units(para, 0):
+                            col_paragraphs_total += 1
+                            if unit[0] == "line":
+                                col_paragraphs_line += 1
+                            _append_unit(unit)
+                            log.debug(
+                                "Table %d row %d col %d para n=%d type=%s",
+                                tables_processed, row_idx + 1, column_index,
+                                n, unit[0],
+                            )
 
     units = [
         ParsedUnit(

@@ -11,7 +11,11 @@ import xml.etree.ElementTree as ET
 import defusedxml.ElementTree as DefET
 from pathlib import Path
 
-from .rich_text import odt_extract_style_map, odt_para_to_rich_text
+from .rich_text import (
+    odt_extract_style_map,
+    odt_para_to_rich_lines,
+    odt_para_to_rich_text,
+)
 
 # ODF 1.2 namespaces
 _TEXT_NS = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
@@ -127,12 +131,52 @@ def read_odt_paragraph_rich_lines(path: str | Path) -> list[tuple[str, int | Non
     tree = body if body is not None else root
 
     out: list[tuple[str, int | None]] = []
+    for elem, heading_level in _iter_odt_paragraphs(tree):
+        out.append((odt_para_to_rich_text(elem, style_map), heading_level))
+    return out
+
+
+def read_odt_paragraph_rich_line_groups(
+    path: str | Path,
+) -> list[tuple[list[str], int | None]]:
+    """Like :func:`read_odt_paragraph_rich_lines`, but each paragraph comes back
+    as the **list of its lines** — ``text:line-break`` ends a line instead of
+    being carried inside it (see :func:`rich_text.odt_para_to_rich_lines`).
+
+    Used by the numbered-lines importer, where a ``[n]`` marker sits at the
+    start of every *line*, not of every ODT paragraph.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"ODT file not found: {path}")
+    if path.suffix.lower() != ".odt":
+        raise ValueError(f"Expected .odt file, got: {path}")
+
+    root = _load_odt_xml(path)
+    style_map = odt_extract_style_map(root)
+
+    body: ET.Element | None = None
+    for el in root.iter(f"{{{_OFFICE_NS}}}body"):
+        body = el
+        break
+    tree = body if body is not None else root
+
+    out: list[tuple[list[str], int | None]] = []
+    for elem, heading_level in _iter_odt_paragraphs(tree):
+        out.append((odt_para_to_rich_lines(elem, style_map), heading_level))
+    return out
+
+
+def _iter_odt_paragraphs(tree: ET.Element):
+    """Yield ``(elem, heading_level)`` for every non-blank ``text:p`` / ``text:h``.
+
+    Blank paragraphs are skipped; ``heading_level`` is the ``text:outline-level``
+    of a ``text:h`` (defaulting to 1) and ``None`` for an ordinary paragraph.
+    """
     for elem in tree.iter():
         if elem.tag not in (_TAG_P, _TAG_H):
             continue
-        rich = odt_para_to_rich_text(elem, style_map)
-        plain = _walk_text_content(elem).strip()
-        if not plain:
+        if not _walk_text_content(elem).strip():
             continue
         heading_level: int | None = None
         if elem.tag == _TAG_H:
@@ -140,5 +184,4 @@ def read_odt_paragraph_rich_lines(path: str | Path) -> list[tuple[str, int | Non
                 heading_level = int(elem.get(_ATTR_OUTLINE_LEVEL) or "1")
             except ValueError:
                 heading_level = 1
-        out.append((rich, heading_level))
-    return out
+        yield elem, heading_level

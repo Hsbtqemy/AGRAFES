@@ -21,6 +21,25 @@ HIMYC-style DOCX sources encode alignable lines as `[n] content` paragraphs.
 - Anchor-based alignment is possible (`external_id` shared across docs).
 - Structure paragraphs remain available for context without polluting search results.
 
+**Précision (2026-08-26) — l'unité de match est la *ligne*, pas le `<w:p>`**
+Le marqueur `[n]` ouvre une **ligne**. Un DOCX peut porter plusieurs lignes dans un seul
+`<w:p>` via des **sauts de ligne doux** (`<w:br/>`, Shift+Entrée), et python-docx les rend en
+`\n` *dans* `Run.text` — un fichier entier tenant en un `<w:p>` est un cas réel (bitextes
+exportés : un `<w:p>`, ~900 à 1300 `<w:br/>`). Le paragraphe est donc **découpé sur ses sauts
+de ligne doux avant le match** (`rich_text.para_to_rich_lines`, découpage au niveau des
+segments pour garder les `<hi>` équilibrés). Corollaire : `_NUMBERED_RE` **ne porte plus
+`re.DOTALL`** — le flag faisait avaler tout le fichier par `.+` dès qu'un `[n]` ouvrait le
+paragraphe, produisant une unique unité `line`. Sans marqueur en tête, le blob ressortait en
+unité `structure`, donc **hors FTS**. Idem ODT (`text:line-break`).
+Cette précision ne change **pas** les modes `*_paragraphs` (ADR-012) : « un `<w:p>` = une
+unité » reste leur contrat, un saut de ligne doux y est intra-paragraphe.
+Contrepartie assumée : une entrée `[n]` qui *déborderait* sur une ligne suivante sans marqueur
+produit maintenant une unité `structure` de continuation au lieu d'être recollée — c'est
+l'application fidèle de la règle « ligne non conforme → structure », et elle évite qu'un
+intertitre pris entre deux `[n]` du même `<w:p>` soit avalé par la ligne précédente. Cas
+mesuré absent du corpus de travail : sur **48 045 unités, 15 seulement portent un `\n`** —
+exactement les 15 blobs.
+
 ---
 
 ## ADR-002 — `¤` separator policy (Option 2)
