@@ -167,7 +167,19 @@ export function buildMatrixGridHtml(view: MatrixView): string {
         const tag = `<span class="prep-matrix-group-tag"`
           + ` title="Une seule traduction pour ${c.groupSize} segments source — la traduction n'a pas coupé au même endroit. Ce n'est pas une erreur.">`
           + `1 trad &#8596; ${c.groupSize} segments</span>`;
-        inner = `${tag} ${_esc(c.text)}${cutBtn}${uncutBtn}${removeBtn}${reviewBtn}`;
+        // Le ✎ appartient à cette cellule autant qu'à une cellule ordinaire : la condition
+        // du stylo est « UN lien entier, non coupé », et un groupe la remplit — c'est la
+        // même unité de traduction, simplement affichée à cheval. La lui retirer était une
+        // régression de ce lot : avant le regroupement, la PREMIÈRE ligne d'une paire
+        // fusionnée avait le statut `ok` et portait donc son ✎ (338 cellules dans le
+        // corpus). `resolveStyloTarget` ne regarde pas le statut, seulement les liens :
+        // le geste marchait déjà, il ne manquait que le bouton.
+        const groupEditBtn = view.hasCellLinks && view.hasTextNorm
+          && c.links.length === 1 && c.links[0].char_start == null
+          ? ` <button type="button" class="prep-matrix-edit-btn" data-edit-row="${rowIdx}" data-edit-col="${colIdx}"`
+            + ` title="Corriger le texte de cette traduction (β)">&#9998;</button>`
+          : "";
+        inner = `${tag} ${_esc(c.text)}${cutBtn}${uncutBtn}${removeBtn}${reviewBtn}${groupEditBtn}`;
       } else if (c.status === "fused") {
         // Tranche 3b — the cut gesture lives on the fused (repeating) cell; its bead
         // pairs this row with the one above, so row 0 (defensive) gets no button.

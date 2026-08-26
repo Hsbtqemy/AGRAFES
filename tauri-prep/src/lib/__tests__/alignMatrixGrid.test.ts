@@ -44,6 +44,29 @@ describe("buildMatrixGridHtml", () => {
     expect(html).toContain("prep-matrix-cell--grouped");
   });
 
+  it("la cellule groupée garde son ✎ — un groupe reste UN lien entier à corriger", () => {
+    // Régression du lot de regroupement : avant lui, la première ligne d'une paire
+    // fusionnée avait le statut `ok` et portait son stylo. Le passage à `grouped` le lui
+    // avait retiré, alors que la condition du stylo (un lien unique, non coupé) tient
+    // toujours et que `resolveStyloTarget` ne regarde pas le statut.
+    const withNorm: AlignMatrix = {
+      ...SAMPLE,
+      hub_unit_ids: [10, 11, 12, 13],
+      hub_text_norms: ["FR1", "FR2", "FR3", "FR4"],
+      cell_links: [
+        [[{ link_id: 1, target_unit_id: 90, char_start: null, char_end: null, target_text_raw: "EN1", target_text_norm: "EN1" }]],
+        [[]],
+        [[{ link_id: 3, target_unit_id: 92, char_start: null, char_end: null, target_text_raw: "SHARED", target_text_norm: "SHARED" }]],
+        [[{ link_id: 4, target_unit_id: 92, char_start: null, char_end: null, target_text_raw: "SHARED", target_text_norm: "SHARED" }]],
+      ],
+    };
+    const view = buildMatrixView(withNorm);
+    expect(view.rows[2].cells[0].status).toBe("grouped");
+    const html = buildMatrixGridHtml(view);
+    // Le ✎ de la cellule groupée vise bien sa propre ligne et sa propre colonne.
+    expect(html).toContain('class="prep-matrix-edit-btn" data-edit-row="2" data-edit-col="0"');
+  });
+
   it("le 2-1 est peint une seule fois, à cheval sur ses lignes", () => {
     const html = buildMatrixGridHtml(buildMatrixView(SAMPLE));
     // Une cellule à cheval, et le texte partagé n'apparaît qu'UNE fois : c'est le doublon
