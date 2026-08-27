@@ -360,3 +360,56 @@ def test_preview_refuses_a_column_index_below_one(preview_sidecar):
     )
     assert code == 400, body
     assert "column_index" in json.dumps(body)
+
+
+# ─── IMPO-01 : ce que le fichier CONTIENT, avant qu'on lui demande une colonne ──
+
+
+def test_preview_reports_the_shape_of_the_tables(preview_sidecar):
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "tableau.docx"
+    f.write_bytes(_table_docx_bytes(["Un.", "Deux."], ["One.", "Two."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview", {"path": str(f), "mode": "docx_paragraphs"}
+    )
+    assert code == 200, body
+    assert body["tables"] == [{"columns": 2, "rows": 1}]
+
+
+def test_preview_reports_the_shape_for_the_numbered_mode_too(preview_sidecar):
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "tableau.docx"
+    f.write_bytes(_table_docx_bytes(["Un."], ["One."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview", {"path": str(f), "mode": "docx_numbered_lines"}
+    )
+    assert code == 200, body
+    assert body["tables"] == [{"columns": 2, "rows": 1}]
+
+
+def test_a_docx_without_a_table_reports_an_empty_shape(preview_sidecar):
+    """Liste vide, pas `null` : « j'ai regardé, il n'y en a pas »."""
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "simple.docx"
+    f.write_bytes(make_docx(["Un paragraphe.", "Un autre."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview", {"path": str(f), "mode": "docx_paragraphs"}
+    )
+    assert code == 200, body
+    assert body["tables"] == []
+
+
+def test_a_non_docx_mode_promises_nothing(preview_sidecar):
+    """`null` : aucun parcours par colonne n'existe hors DOCX, ne rien annoncer."""
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "d.odt"
+    f.write_bytes(make_odt_bytes(["[1] Bonjour.", "[2] Le monde."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview", {"path": str(f), "mode": "odt_numbered_lines"}
+    )
+    assert code == 200, body
+    assert body["tables"] is None

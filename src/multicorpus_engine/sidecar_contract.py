@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.78"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.79"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -245,6 +245,14 @@ API_VERSION = CONTRACT_VERSION
 #         duplicate (pivot,target) link is refused. Logic in
 #         services/align_links_service.set_pivot. Additive enum+field → no new route →
 #         snapshot unchanged; openapi moves (version); .md action list updated.
+# 1.6.79: forme des tables (IMPO-01). POST /import/preview renvoie `tables`
+#         (`[{columns, rows}]` en ordre de lecture, `null` hors modes DOCX) : de quoi
+#         dire ce que le fichier CONTIENT avant de lui demander une colonne. Sans elle,
+#         le champ « colonne » de l'ecran n'avait de sens que pour qui connaissait deja
+#         le document. Ne conclut rien — porter une table ne fait pas d'un document un
+#         bitexte (un fichier local porte 7 tables de 5,2,2,2,2,2,2 colonnes, de la mise
+#         en page). Champ additif sur route existante -> snapshot inchange ; openapi
+#         bouge. Logique dans importers/docx_columns.describe_tables.
 # 1.6.78: bitexte en tableau (IMPO-01). POST /import/preview accepte `column_index`, qui
 #         manquait pour TOUS les modes : l'aperçu d'une extraction par colonne montrait
 #         zéro unité là où l'import en écrivait des centaines. Et `column_index` devient
@@ -971,6 +979,26 @@ def openapi_spec() -> dict[str, Any]:
                                                     "sample_rows": {"type": "array", "items": {"type": "object"}},
                                                     "not_utf8": {"type": "boolean", "description": "IMP-03: file is not UTF-8 (lenient preview decoded it as latin-1); the strict import will reject it."},
                                                 },
+                                            },
+                                            "units": {
+                                                "type": "array",
+                                                "nullable": True,
+                                                "items": {"type": "object"},
+                                                "description": "Text modes: the first `limit` units the import would write.",
+                                            },
+                                            "units_total": {"type": "integer", "nullable": True},
+                                            "truncated": {"type": "boolean", "nullable": True},
+                                            "tables": {
+                                                "type": "array",
+                                                "nullable": True,
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "columns": {"type": "integer"},
+                                                        "rows": {"type": "integer"},
+                                                    },
+                                                },
+                                                "description": "IMPO-01: shape of the document's top-level tables, in reading order — what the file CONTAINS, before asking it for a column. DOCX modes only; null elsewhere. Carrying a table does not make a document a bitext: the screen shows the shape, the user decides.",
                                             },
                                         },
                                     }

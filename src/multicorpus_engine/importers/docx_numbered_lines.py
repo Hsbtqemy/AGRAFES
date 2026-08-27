@@ -26,7 +26,12 @@ from pathlib import Path
 from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
-from .docx_columns import ColumnWalkStats, column_walk_warnings, iter_column_paragraphs
+from .docx_columns import (
+    ColumnWalkStats,
+    column_walk_warnings,
+    describe_tables,
+    iter_column_paragraphs,
+)
 from .import_guard import assert_not_duplicate_import, column_scoped_source_hash
 from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 from .rich_text import para_to_rich_lines
@@ -286,6 +291,7 @@ def parse_docx_numbered_lines(
             "nested_tables_skipped": nested_tables_skipped,
             "col_paragraphs_total": col_paragraphs_total,
             "col_paragraphs_line": col_paragraphs_line,
+            "tables": describe_tables(document),
         },
     )
 

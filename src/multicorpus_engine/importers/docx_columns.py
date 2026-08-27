@@ -28,6 +28,34 @@ class ColumnWalkStats:
     nested_tables_skipped: int = 0
 
 
+def describe_tables(document) -> list[dict]:
+    """Forme des tables de premier niveau, en ordre de lecture : ``{columns, rows}``.
+
+    Sert à répondre à la seule question que l'écran d'import ne savait pas poser —
+    *que contient ce fichier ?* — avant de demander une colonne. Sans elle,
+    l'utilisateur devait deviner combien de colonnes existent, et le champ « colonne »
+    n'avait de sens que pour qui connaissait déjà le document.
+
+    Ne conclut rien : porter une table ne fait pas d'un document un bitexte. Mesuré le
+    27 août 2026 sur le disque local, ``Conventions-Textes journalistiques`` porte
+    **sept** tables de 5, 2, 2, 2, 2, 2 et 2 colonnes — de la mise en page, pas deux
+    langues en regard. C'est à l'écran de montrer la forme, et à l'utilisateur de
+    trancher sur pièces.
+
+    Les tables **imbriquées** ne sont pas listées : le parcours d'extraction les saute
+    aussi (en le signalant), les deux vues restent donc cohérentes.
+    """
+    from docx.table import Table as _DocxTable
+
+    shapes: list[dict] = []
+    for block in iter_body_blocks(document):
+        if isinstance(block, _DocxTable):
+            rows = len(block.rows)
+            columns = len(block.rows[0].cells) if rows else 0
+            shapes.append({"columns": columns, "rows": rows})
+    return shapes
+
+
 def column_walk_warnings(stats: ColumnWalkStats, column_index: int) -> list[str]:
     """Les pertes de données du parcours, rendues en avertissements d'``ImportReport``.
 

@@ -18,7 +18,12 @@ from pathlib import Path
 from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
-from .docx_columns import ColumnWalkStats, column_walk_warnings, iter_column_paragraphs
+from .docx_columns import (
+    ColumnWalkStats,
+    column_walk_warnings,
+    describe_tables,
+    iter_column_paragraphs,
+)
 from .docx_numbered_lines import ImportReport
 from .import_guard import assert_not_duplicate_import, column_scoped_source_hash
 from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
@@ -120,6 +125,10 @@ def parse_docx_paragraphs(
             "tables_processed": walk_stats.tables_processed,
             "rows_skipped_short": walk_stats.rows_skipped_short,
             "nested_tables_skipped": walk_stats.nested_tables_skipped,
+            # Forme des tables, publiee MEME sans column_index : c'est ce qui permet
+            # a l'ecran de dire ce que le fichier contient avant qu'on demande une
+            # colonne (IMPO-01). Le document est deja ouvert, le cout est nul.
+            "tables": describe_tables(document),
         },
     )
 

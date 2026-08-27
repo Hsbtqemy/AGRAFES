@@ -2534,6 +2534,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         For other modes: returns a preview of the first `limit` text units.
 
         Body: { path: str, mode: str, limit?: int, column_index?: int }
+        Les modes DOCX renvoient en plus `tables: [{columns, rows}]` — la forme des
+        tables du document, de quoi dire ce que le fichier CONTIENT avant qu'on lui
+        demande une colonne (IMPO-01). `null` pour les autres modes.
         Response: {
             ok, mode,
             conllu_stats?: {
@@ -2605,7 +2608,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
         else:
             try:
-                units, total = self._preview_text_units(
+                units, total, tables = self._preview_text_units(
                     fpath, mode, limit, column_index=column_index
                 )
                 self._send_json(success_payload({
@@ -2614,6 +2617,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "units": units,
                     "units_total": total,
                     "truncated": total > limit,
+                    "tables": tables,
                 }))
             except Exception as exc:
                 logger.exception("Preview text error: %s", exc)
@@ -2932,7 +2936,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _preview_text_units(
         self, fpath: "Path", mode: str, limit: int, column_index: "int | None" = None
-    ) -> "tuple[list[dict], int]":
+    ) -> "tuple[list[dict], int, list[dict] | None]":
         """Parse a file without writing to DB. Returns (units[:limit], total_count).
 
         Each unit dict: { n, external_id, unit_type, text_raw }
@@ -2974,7 +2978,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         else:
             raise ValueError(f"Preview not supported for mode '{mode}'")
 
-        return to_preview(parsed.units, limit)
+        units, total = to_preview(parsed.units, limit)
+        # IMPO-01 — la forme des tables (`{columns, rows}` en ordre de lecture) ne
+        # remonte que pour les modes qui savent en extraire une colonne, donc les deux
+        # modes DOCX. `None` ailleurs : ne rien promettre qu'on ne sait pas honorer,
+        # l'ODT portant des tables mais aucun parcours par colonne.
+        tables = parsed.stats.get("tables") if isinstance(parsed.stats, dict) else None
+        return units, total, tables
 
     def _handle_curate_exceptions_list(self, body: dict) -> None:
         # Thin adapter over the curate service (audit P0-1 / A-01).

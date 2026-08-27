@@ -4499,8 +4499,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.78",
-    "x-contract-version": "1.6.78"
+    "version": "1.6.79",
+    "x-contract-version": "1.6.79"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -7294,6 +7294,38 @@
                     },
                     "ok": {
                       "type": "boolean"
+                    },
+                    "tables": {
+                      "description": "IMPO-01: shape of the document's top-level tables, in reading order — what the file CONTAINS, before asking it for a column. DOCX modes only; null elsewhere. Carrying a table does not make a document a bitext: the screen shows the shape, the user decides.",
+                      "items": {
+                        "properties": {
+                          "columns": {
+                            "type": "integer"
+                          },
+                          "rows": {
+                            "type": "integer"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "nullable": true,
+                      "type": "array"
+                    },
+                    "truncated": {
+                      "nullable": true,
+                      "type": "boolean"
+                    },
+                    "units": {
+                      "description": "Text modes: the first `limit` units the import would write.",
+                      "items": {
+                        "type": "object"
+                      },
+                      "nullable": true,
+                      "type": "array"
+                    },
+                    "units_total": {
+                      "nullable": true,
+                      "type": "integer"
                     }
                   },
                   "type": "object"
