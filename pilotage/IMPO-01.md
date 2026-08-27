@@ -27,7 +27,7 @@ l'écran affiche une coche verte.
 - [ ] Construire l'**aperçu comparatif** décidé le 26 août (voir Contexte) : une ligne par mode applicable, colonnes « unités / trouvables à la recherche / non indexées » + la première ligne extraite, mode pré-sélectionné sur le plus d'unités trouvables
 - [ ] Trouver le libellé juste pour la colonne du milieu : « indexables » est du jargon, « trouvables à la recherche » dit ce que l'utilisateur perd s'il se trompe
 - [ ] Chiffrer le coût : un appel `/import/preview` **par mode applicable** (2 pour un `.docx`/`.odt`, 1 ailleurs) au lieu d'un seul, donc autant de parses complets — mesurer sur les plus gros fichiers avant de décider si l'aperçu comparatif est calculé à l'ajout ou à la sélection de la ligne
-- [x] **Variantes de colonne — tranché le 27 août** : une ligne par colonne, parce que c'est le fichier qui dit combien il y en a. La question ne se posait que faute de savoir la forme du document ; depuis que l'aperçu la rend, elle tombe
+- [x] **Variantes de colonne — tranché le 27 août** : un document par colonne, parce que c'est le fichier qui dit combien il y en a. La question ne se posait que faute de savoir la forme du document ; depuis que l'aperçu la rend, elle tombe
 - [x] Sévérité moteur sur `line_unit_count == 0` — **faite le 27 août**. Le filet vaut pour le
       CLI, `import-remote` et l'import par lot, que l'écran ne protégera jamais. Posée **en
       dernier** dans l'échelle : c'est le verdict le plus grave, aucun des précédents ne doit
@@ -108,9 +108,9 @@ l'écran affiche une coche verte.
       27 août, sur votre recadrage : la vraie question n'était pas « comment ajouter deux fois
       un fichier » mais « qu'y a-t-il dedans ». `POST /import/preview` renvoie `tables`
       (`[{columns, rows}]`, `null` hors DOCX, `[]` quand il n'y en a pas), l'écran l'affiche
-      — « Tableau : 2 colonnes × 1 ligne. » — et propose **« Une ligne par colonne »**, qui
+      — « Tableau : 2 colonnes × 1 ligne. » — et propose **« Un document par colonne »**, qui
       éclate le fichier prévisualisé en autant de lignes d'import, titres suffixés. Ça tranche
-      du même coup l'item qui hésitait entre « une ligne par colonne » et « une entrée qui
+      du même coup l'item qui hésitait entre « un document par colonne » et « une entrée qui
       ouvre un second choix » : c'est le fichier qui décide. **Décrit, ne conclut pas** —
       porter un tableau ne fait pas d'un document un bitexte : `Conventions-Textes
       journalistiques` en porte **sept**, de 5, 2, 2, 2, 2, 2 et 2 colonnes, qui sont de la

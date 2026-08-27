@@ -195,7 +195,7 @@ export function importScreenTemplate(): string {
             <div id="imp-text-tables" class="imp-tables-note" hidden>
               <span id="imp-text-tables-msg" class="hint"></span>
               <button type="button" id="imp-text-tables-split" class="btn btn-secondary btn-sm"
-                      title="Met une ligne par colonne dans la liste d'import, avec un titre suffixé">Une ligne par colonne</button>
+                      title="Ajoute le fichier une fois par colonne dans la liste d'import, titres suffixés — chaque colonne deviendra un document distinct">Un document par colonne</button>
             </div>
             <div class="imp-conllu-table-wrap">
               <table class="imp-conllu-table" aria-label="Aperçu unités texte">

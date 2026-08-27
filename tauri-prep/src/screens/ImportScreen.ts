@@ -686,7 +686,7 @@ export class ImportScreen {
   }
 
   /**
-   * Met une ligne par colonne dans la liste d'import, à partir du fichier prévisualisé.
+   * Ajoute le fichier prévisualisé une fois par colonne dans la liste d'import.
    *
    * C'est le geste qui manquait : un bitexte en tableau est **un** fichier qui doit
    * produire **deux** documents, et la liste refusait le même chemin deux fois. Les
@@ -716,7 +716,7 @@ export class ImportScreen {
       });
     }
     this._files.splice(at + 1, 0, ...clones);
-    this._log(`↳ "${base}" : ${columns} colonnes mises en file`);
+    this._log(`↳ "${base}" : un document par colonne (${columns} colonnes)`);
     this._renderList();
     void this._refreshTextPreview(true);
   }

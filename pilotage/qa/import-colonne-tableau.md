@@ -1,5 +1,5 @@
 ---
-passe: Import — bitexte en tableau, une ligne par colonne
+passe: Import — bitexte en tableau, un document par colonne
 chantier: IMPO-01
 duree: 30 min
 derniere: 2026-08-27
@@ -9,7 +9,7 @@ derniere: 2026-08-27
 
 Passe écrite après le lot du 27 août. Un bitexte en tableau — deux langues en regard dans
 les cellules d'un même `.docx` — n'avait **aucun mode d'import qui le lise**. Elle valide la
-chaîne entière : l'écran dit ce que le fichier contient, met une ligne par colonne, importe
+chaîne entière : l'écran dit ce que le fichier contient, met le fichier une fois par colonne, importe
 les deux, et les deux documents s'alignent par ancre sans qu'aucun marqueur figure dans la
 source.
 
@@ -54,23 +54,23 @@ mode lignes numérotées (hors index, invisible au concordancier). Compter les u
 donc jamais à savoir si l'import est bon.
 
 **Le geste attendu.** Ajouter le fichier, ouvrir la carte « Aperçu texte », lire la note de
-tableau, cliquer « Une ligne par colonne », régler mode et langue sur chaque ligne, importer.
+tableau, cliquer « Un document par colonne », régler mode et langue sur chaque ligne, importer.
 
 ### Ce que le fichier contient
 
 - [ ] `2021_Texte1_…Tableau.docx` ajouté à la liste, la carte « Aperçu texte » affiche **« Tableau : 2 colonnes × 1 ligne. »**
-- [ ] Un bouton **« Une ligne par colonne »** est proposé à côté de cette phrase
+- [ ] Un bouton **« Un document par colonne »** est proposé à côté de cette phrase
 - [ ] `3-M-GW-OrFrTrEn-2010-Aligné Tableau.docx` affiche **« Tableau : 2 colonnes × 22 lignes. »** — la forme diffère, le nombre de colonnes non
 - [ ] Un `.docx` ordinaire sans tableau (par exemple `Asimov-Foundation_FR.docx`) n'affiche **aucune** note de tableau, et aucun bouton
 - [ ] Sur un fichier sans tableau, tout le reste de l'aperçu se comporte comme avant
 
-### Une ligne par colonne
+### Un document par colonne
 
-- [ ] Sur `2021_Texte1_…Tableau.docx`, cliquer « Une ligne par colonne » porte la liste à **deux lignes** pour ce fichier
+- [ ] Sur `2021_Texte1_…Tableau.docx`, cliquer « Un document par colonne » porte la liste à **deux lignes** pour ce fichier — le même fichier y figure deux fois, réglé sur deux colonnes différentes
 - [ ] Les deux lignes portent le même nom de fichier, mais des titres distincts finissant par **« — col. 1 »** et **« — col. 2 »**
 - [ ] Chaque ligne porte un champ **colonne** renseigné, `1` et `2`
-- [ ] Le journal de l'écran affiche **« ↳ … : 2 colonnes mises en file »**
-- [ ] Le bouton « Une ligne par colonne » disparaît une fois le fichier éclaté — il n'y a plus rien à éclater
+- [ ] Le journal de l'écran affiche **« ↳ … : un document par colonne (2 colonnes) »**
+- [ ] Le bouton « Un document par colonne » disparaît une fois le fichier éclaté — il n'y a plus rien à éclater
 - [ ] Passer une des deux lignes du mode **Paragraphes** au mode **Lignes numérotées** **conserve** la colonne saisie
 
 ### L'aperçu suit la colonne
