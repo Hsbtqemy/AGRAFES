@@ -559,7 +559,14 @@ export class ImportScreen {
       return opt;
     }));
     this._detailModeSel.value = file.mode;
-    this._detailColWrap.hidden = !modeAcceptsColumn(file.mode);
+    // Le champ « Colonne » reste VISIBLE mais désactivé sur un format qui ne la connaît
+    // pas. Le masquer faisait glisser les champs voisins d'un fichier à l'autre ; et un
+    // champ grisé dit que la capacité existe, là où un champ absent ne dit rien.
+    const colonneOk = modeAcceptsColumn(file.mode);
+    this._detailColWrap.classList.toggle("imp-detail-field-off", !colonneOk);
+    this._detailColWrap.title = colonneOk
+      ? "Colonne du tableau à extraire (1 = première). Laisser vide pour ignorer les tables."
+      : "Ce format ne connaît pas les colonnes de tableau — seuls les modes DOCX les lisent.";
     this._detailColInp.value = file.column_index != null ? String(file.column_index) : "";
     this._detailLangInp.value = file.language;
     this._detailLangInp.placeholder = file.mode === "tei" ? "xml:lang" : "lang";
@@ -573,9 +580,10 @@ export class ImportScreen {
         : "Code de langue (ex. fr, en).";
     this._detailTitleInp.value = file.title;
     const fige = file.status !== "pending";
-    for (const el of [this._detailModeSel, this._detailColInp, this._detailLangInp, this._detailTitleInp]) {
+    for (const el of [this._detailModeSel, this._detailLangInp, this._detailTitleInp]) {
       el.disabled = fige;
     }
+    this._detailColInp.disabled = fige || !colonneOk;
   }
 
   /** Branche les commandes du panneau sur le fichier sélectionné. */

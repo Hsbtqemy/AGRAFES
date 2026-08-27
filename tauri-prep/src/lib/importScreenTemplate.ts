@@ -123,10 +123,10 @@ export function importScreenTemplate(): string {
                 </label>
                 <label class="imp-detail-field imp-detail-field-col" id="imp-detail-col-wrap">
                   <span>Colonne</span>
-                  <input id="imp-detail-col" type="number" min="1" step="1" placeholder="—"
+                  <input id="imp-detail-col" type="number" min="1" step="1" placeholder="aucune"
                          title="Colonne du tableau à extraire (1 = première). Laisser vide pour ignorer les tables." />
                 </label>
-                <label class="imp-detail-field">
+                <label class="imp-detail-field imp-detail-field-lang">
                   <span>Langue</span>
                   <input id="imp-detail-lang" type="text" maxlength="10" placeholder="lang" />
                 </label>

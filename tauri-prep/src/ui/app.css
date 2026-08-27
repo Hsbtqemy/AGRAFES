@@ -5864,11 +5864,25 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
 .prep-import-screen .imp-detail-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--prep-sp-2, 8px);
+  /* Une GRILLE, pas une ligne flexible. Chaque champ est épinglé à sa colonne : masquer
+     « Colonne » sur un format qui ne la connaît pas laisse alors une case vide au lieu
+     de faire glisser les suivants — c'est ce glissement qui donnait deux mises en page
+     à deux fichiers voisins. Et « Titre » est borné : en flex il prenait tout l'espace
+     restant, soit près de 700 px pour un nom de fichier. */
+  display: grid;
+  grid-template-columns: 14rem 6rem 7rem minmax(12rem, 26rem);
+  justify-content: start;
+  align-items: end;
+  gap: var(--prep-sp-2, 8px) var(--prep-sp-3, 12px);
   margin-bottom: var(--prep-sp-3, 12px);
 }
+.prep-import-screen .imp-detail-field-mode  { grid-column: 1; }
+.prep-import-screen .imp-detail-field-col   { grid-column: 2; }
+.prep-import-screen .imp-detail-field-lang  { grid-column: 3; }
+.prep-import-screen .imp-detail-field-title { grid-column: 4; }
+/* Sans objet pour ce format : grisé, pas retiré — les voisins ne bougent pas, et un
+   champ désactivé dit que la capacité existe là où un champ absent ne dit rien. */
+.prep-import-screen .imp-detail-field-off { opacity: 0.45; }
 .prep-import-screen .imp-detail-field {
   display: flex;
   flex-direction: column;
@@ -5876,10 +5890,6 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   font-size: var(--prep-fs-xs, 11px);
   color: var(--prep-muted, #4f5d6d);
 }
-.prep-import-screen .imp-detail-field-col input { width: 4.5rem; }
-.prep-import-screen .imp-detail-field-title { flex: 1; min-width: 10rem; }
-.prep-import-screen .imp-detail-field-title input { width: 100%; }
-.prep-import-screen .imp-detail-field[hidden] { display: none; }
 
 /* ── IMPO-01 : largeurs stables, quel que soit le contenu ─────────────────── */
 
@@ -5902,10 +5912,15 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
    doivent pas donner deux mises en page. */
 .prep-import-screen .imp-detail-field select,
 .prep-import-screen .imp-detail-field input { width: 100%; }
-.prep-import-screen .imp-detail-field { width: 9rem; }
-.prep-import-screen .imp-detail-field-mode { width: 14rem; }
-.prep-import-screen .imp-detail-field-col { width: 5rem; }
-.prep-import-screen .imp-detail-field-title { flex: 1 1 12rem; width: auto; min-width: 0; }
+.prep-import-screen .imp-detail-field { min-width: 0; }
+/* Même gabarit pour les quatre : sans ça, un `select` et un `input` ne font pas la
+   même hauteur et la ligne se lit de travers. */
+.prep-import-screen .imp-detail-field select,
+.prep-import-screen .imp-detail-field input {
+  height: 1.9rem;
+  font-size: var(--prep-fs-body, 13px);
+  box-sizing: border-box;
+}
 
 /* La carte du panneau ne se laisse pas élargir par ce qu'elle contient. */
 .prep-import-screen .imp-detail-card { min-width: 0; overflow: hidden; }
