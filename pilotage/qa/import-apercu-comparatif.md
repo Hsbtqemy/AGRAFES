@@ -34,6 +34,15 @@ mode recommandé porte une pastille verte **recommandé**. Chaque nom de mode es
 modes rendent **le même total d'unités** et ne se séparent que sur combien sont trouvables.
 Un tableau lu en diagonale sur la colonne *Unités* ne dirait rien.
 
+**Ce que la pastille « recommandé » suit — mis à jour le 27 août.** Elle marque désormais le
+mode que la **déduction** a posé sur la ligne du fichier (signal des marqueurs), et non celui
+qui compte le plus d'unités trouvables. Sans quoi l'écran se contredirait : la carte du fichier
+poserait un mode et le tableau juste en dessous en recommanderait un autre. Le comptage garde
+la seule question où il ne peut pas se tromper — **quelque chose lit-il ce document ?** — d'où
+le bandeau « Aucun mode ne lit ce document », qui n'a pas changé. Sur les cas de cette passe les
+deux règles désignent le même mode ; elles divergent sur `Houellebecq-Plateforme_FR.docx`, qui
+est joué par `qa/import-deduction-mode.md`.
+
 **Les cinq cas, mesurés au parseur le 27 août 2026.**
 
 | fichier | mode | unités | trouvables | non indexées |
@@ -63,8 +72,8 @@ le `.odt` est dans `GRAFE-Lit-EnFr-REAligné-DOCX`, le `.txt` dans `CI-2021\CI-O
 ### Le mode recommandé
 
 - [ ] Sur `2021_Texte1` colonne 1, la pastille **recommandé** est sur **Paragraphes**
-- [ ] Sur `Coe-House-AL_FR.docx`, elle est sur **Lignes numérotées [n]** — 833 trouvables contre 1 : la recommandation suit le document, pas une préférence de mode
-- [ ] Sur `Asimov-Foundation_FR_réaligné.odt`, elle est sur **Paragraphes** — 1141 contre 0, alors que les deux modes annoncent 1141 unités
+- [ ] Sur `Coe-House-AL_FR.docx`, elle est sur **Lignes numérotées [n]** : la recommandation suit le document, pas une préférence de mode
+- [ ] Sur `Asimov-Foundation_FR_réaligné.odt`, elle est sur **Paragraphes**, alors que les deux modes annoncent 1141 unités — le total ne les sépare pas, la colonne du milieu si
 - [ ] La ligne du mode **actuellement retenu** pour le fichier porte un ✓ et se distingue visuellement, qu'elle soit recommandée ou non
 
 ### Quand aucun mode ne lit le document
