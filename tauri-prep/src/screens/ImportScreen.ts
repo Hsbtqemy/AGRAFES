@@ -973,7 +973,14 @@ export class ImportScreen {
             const docId = result?.doc_id;
             f.status = "done";
             f.message = String(docId ?? "?");
-            this._log(`✓ "${fileTitle}" → doc_id ${docId ?? "?"}`);
+            // `fts_units` est une table FTS5 SANS trigger, peuplée explicitement par
+            // l'indexeur (migration 002 : « contrôle explicite de ce qui est indexé »).
+            // Un document fraîchement importé n'est donc JAMAIS trouvable à la
+            // recherche avant une réindexation — et rien ne le disait, alors que le
+            // même avertissement existe déjà après une curation (`CurationPane`).
+            this._log(
+              `✓ "${fileTitle}" → doc_id ${docId ?? "?"} · réindexez pour la recherche.`,
+            );
             // Surface table extraction stats when column_index was used.
             if ((result?.tables_processed ?? 0) > 0) {
               const t = result!.tables_processed;

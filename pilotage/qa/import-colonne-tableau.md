@@ -58,50 +58,52 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 
 ### Ce que le fichier contient
 
-- [ ] `2021_Texte1_…Tableau.docx` ajouté à la liste, la carte « Aperçu texte » affiche **« Tableau : 2 colonnes × 1 ligne. »**
-- [ ] Un bouton **« Un document par colonne »** est proposé à côté de cette phrase
-- [ ] `3-M-GW-OrFrTrEn-2010-Aligné Tableau.docx` affiche **« Tableau : 2 colonnes × 22 lignes. »** — la forme diffère, le nombre de colonnes non
-- [ ] Un `.docx` ordinaire sans tableau (par exemple `Asimov-Foundation_FR.docx`) n'affiche **aucune** note de tableau, et aucun bouton
-- [ ] Sur un fichier sans tableau, tout le reste de l'aperçu se comporte comme avant
-- [ ] Prévisualiser un fichier à tableau **puis** un fichier illisible fait disparaître la note : elle ne doit jamais rester sur la forme du fichier précédent
+- [x] `2021_Texte1_…Tableau.docx` ajouté à la liste, la carte « Aperçu texte » affiche **« Tableau : 2 colonnes × 1 ligne. »**
+- [x] Un bouton **« Un document par colonne »** est proposé à côté de cette phrase
+- [x] `3-M-GW-OrFrTrEn-2010-Aligné Tableau.docx` affiche **« Tableau : 2 colonnes × 22 lignes. »** — la forme diffère, le nombre de colonnes non
+- [x] Un `.docx` ordinaire sans tableau (par exemple `Asimov-Foundation_FR.docx`) n'affiche **aucune** note de tableau, et aucun bouton
+- [x] Sur un fichier sans tableau, tout le reste de l'aperçu se comporte comme avant
+- [x] Prévisualiser un fichier à tableau **puis** un fichier illisible fait disparaître la note : elle ne doit jamais rester sur la forme du fichier précédent
 
 ### Un document par colonne
 
-- [ ] Sur `2021_Texte1_…Tableau.docx`, cliquer « Un document par colonne » porte la liste à **deux lignes** pour ce fichier — le même fichier y figure deux fois, réglé sur deux colonnes différentes
-- [ ] Les deux lignes portent le même nom de fichier, mais des titres distincts finissant par **« — col. 1 »** et **« — col. 2 »**
-- [ ] Chaque ligne porte un champ **colonne** renseigné, `1` et `2`
-- [ ] Les deux lignes portent la **même langue**, celle du profil de lot, signalée comme devinée — c'est attendu : aucun de ces noms de fichier ne porte de code de langue, la détection n'a rien à se mettre sous la dent. Régler `en` sur la colonne 1 et `fr` sur la colonne 2 **avant** d'importer
-- [ ] Le journal de l'écran affiche **« ↳ … : un document par colonne (2 colonnes) »**
-- [ ] Le bouton « Un document par colonne » disparaît une fois le fichier éclaté — il n'y a plus rien à éclater
-- [ ] Après l'import, le bouton ne découpe plus la ligne : le journal dit « n'est plus en attente… » au lieu de réécrire le titre d'un document déjà importé
-- [ ] Passer une des deux lignes du mode **Paragraphes** au mode **Lignes numérotées** **conserve** la colonne saisie
+- [x] Sur `2021_Texte1_…Tableau.docx`, cliquer « Un document par colonne » porte la liste à **deux lignes** pour ce fichier — le même fichier y figure deux fois, réglé sur deux colonnes différentes
+- [x] Les deux lignes portent le même nom de fichier, mais des titres distincts finissant par **« — col. 1 »** et **« — col. 2 »**
+- [x] Chaque ligne porte un champ **colonne** renseigné, `1` et `2`
+- [x] Les deux lignes portent la **même langue**, celle du profil de lot, signalée comme devinée — c'est attendu : aucun de ces noms de fichier ne porte de code de langue, la détection n'a rien à se mettre sous la dent. Régler `en` sur la colonne 1 et `fr` sur la colonne 2 **avant** d'importer
+- [x] Le journal de l'écran affiche **« ↳ … : un document par colonne (2 colonnes) »**
+- [x] Le bouton « Un document par colonne » disparaît une fois le fichier éclaté — il n'y a plus rien à éclater
+- [x] Après l'import, le bouton ne découpe plus la ligne : le journal dit « n'est plus en attente… » au lieu de réécrire le titre d'un document déjà importé
+- [x] Passer une des deux lignes du mode **Paragraphes** au mode **Lignes numérotées** **conserve** la colonne saisie
 
 ### L'aperçu suit la colonne
 
-- [ ] La ligne « — col. 1 » en mode **Paragraphes** annonce **48 unités**, colonne Type entièrement **`line`**, ID numérotés **1 → 48**
-- [ ] Sa première ligne de texte est **« Texte 1 »**, la deuxième commence par **« The Observer view on the vaccine dispute »**
-- [ ] Ce « Texte 1 » s'affiche **sans balise** — il est en gras dans la source, et l'aperçu montrait jusqu'ici `<hi rend="bold">Texte 1</hi>` en toutes lettres
-- [ ] La ligne « — col. 2 » annonce **48 unités**, également toutes `line`, et sa deuxième ligne commence par **« Vaccins »** — c'est bien l'autre langue
-- [ ] La même ligne passée en mode **Lignes numérotées** annonce toujours **48 unités**, mais colonne Type entièrement **`structure`** et ID entièrement en tirets : c'est le piège que le mode paragraphes évite
-- [ ] Changer la valeur du champ colonne (2 → 1) **rafraîchit** l'aperçu au lieu de laisser la précédente à l'écran
-- [ ] Sur `3-M-GW-OrFrTrEn-2010-Aligné Tableau.docx`, chaque colonne annonce **22 unités**, toutes `line`
+- [x] La ligne « — col. 1 » en mode **Paragraphes** annonce **48 unités**, colonne Type entièrement **`line`**, ID numérotés **1 → 48**
+- [x] Sa première ligne de texte est **« Texte 1 »**, la deuxième commence par **« The Observer view on the vaccine dispute »**
+- [x] Ce « Texte 1 » s'affiche **sans balise** — il est en gras dans la source, et l'aperçu montrait jusqu'ici `<hi rend="bold">Texte 1</hi>` en toutes lettres
+- [x] La ligne « — col. 2 » annonce **48 unités**, également toutes `line`, et sa deuxième ligne commence par **« Vaccins »** — c'est bien l'autre langue
+- [x] La même ligne passée en mode **Lignes numérotées** annonce toujours **48 unités**, mais colonne Type entièrement **`structure`** et ID entièrement en tirets : c'est le piège que le mode paragraphes évite
+- [x] Changer la valeur du champ colonne (2 → 1) **rafraîchit** l'aperçu au lieu de laisser la précédente à l'écran
+- [x] Sur `3-M-GW-OrFrTrEn-2010-Aligné Tableau.docx`, chaque colonne annonce **22 unités**, toutes `line`
 
 ### L'import des deux colonnes
 
-- [ ] Les deux lignes de `2021_Texte1_…Tableau.docx` s'importent **toutes les deux**, sans qu'aucune passe en erreur « Déjà dans le corpus »
-- [ ] Le journal affiche pour chacune **« ↳ 1 table(s) traitée(s), 48 unité(s) extraite(s) »**
-- [ ] Aucun avertissement (⚠) n'accompagne ces deux imports
-- [ ] Les deux documents apparaissent dans la liste du corpus avec leurs titres distincts
-- [ ] Vider la liste, réajouter le même fichier, l'éclater à nouveau et relancer l'import : les **deux** lignes passent en erreur « Déjà dans le corpus » — le moteur distingue les colonnes sans les confondre, et refuse bien deux fois la même
-- [ ] Le canvas de chaque document affiche des lignes de la taille d'un paragraphe, pas un pavé unique
+- [x] Les deux lignes de `2021_Texte1_…Tableau.docx` s'importent **toutes les deux**, sans qu'aucune passe en erreur « Déjà dans le corpus »
+- [x] Le journal affiche pour chacune **« ↳ 1 table(s) traitée(s), 48 unité(s) extraite(s) »**
+- [x] Aucun avertissement (⚠) n'accompagne ces deux imports
+- [x] Les deux documents apparaissent dans la liste du corpus avec leurs titres distincts
+- [ ] Le journal termine chaque import par **« · réindexez pour la recherche. »** — sans ce geste le document existe mais reste introuvable, et rien ne le disait jusqu'ici
+- [x] Vider la liste, réajouter le même fichier, l'éclater à nouveau et relancer l'import : les **deux** lignes passent en erreur « Déjà dans le corpus » — le moteur distingue les colonnes sans les confondre, et refuse bien deux fois la même
+- [x] Le canvas de chaque document affiche des lignes de la taille d'un paragraphe, pas un pavé unique
 
 ### Alignement et recherche
 
-- [ ] **Aucune famille n'est proposée à l'import** — c'est attendu et non un défaut : la détection travaille sur le nom de fichier, qui ne porte ici aucun code de langue, et les deux colonnes partagent de toute façon le même nom. Créer la relation source↔traduction à la main dans **Métadonnées**
-- [ ] L'alignement par ancre `external_id` journalise **48 liens créés**, sans orpheline (mesuré au moteur le 27 août : 48 liens exactement)
-- [ ] La matrice affiche deux colonnes peuplées et en regard : la ligne 2 montre « The Observer view… » face à « Vaccins… »
-- [ ] Les deux documents apparaissent dans le sélecteur du concordancier
-- [ ] En filtrant sur la colonne anglaise, chercher **Observer** rend au moins une ligne — donc le document est bien indexé, ce que le mode numéroté n'aurait pas permis
+- [x] **Aucune famille n'est proposée à l'import** — c'est attendu et non un défaut : la détection travaille sur le nom de fichier, qui ne porte ici aucun code de langue, et les deux colonnes partagent de toute façon le même nom. Créer la relation source↔traduction à la main dans **Métadonnées**
+- [x] L'alignement par ancre `external_id` journalise **48 liens créés**, sans orpheline (mesuré au moteur le 27 août : 48 liens exactement)
+- [x] La matrice affiche deux colonnes peuplées et en regard : la ligne 2 montre « The Observer view… » face à « Vaccins… »
+- [ ] **Reconstruire l'index avant de chercher** — un document importé n'est jamais trouvable tant que l'index n'a pas été refait : `fts_units` est une table FTS5 **sans trigger**, peuplée par l'indexeur seul (migration 002). Ce n'est pas un défaut du lot, c'est le modèle
+- [x] Les deux documents apparaissent dans le sélecteur du concordancier
+- [x] En filtrant sur la colonne anglaise, chercher **Observer** rend au moins une ligne — donc le document est bien indexé, ce que le mode numéroté n'aurait pas permis
 
 ### Ce que l'application doit montrer sans le taire
 

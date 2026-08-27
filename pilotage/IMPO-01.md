@@ -40,6 +40,19 @@ l'écran affiche une coche verte.
       blobs ont été réimportés le 26 — donc elle ne coûte rien et sert de filet pour la suite.
       Le message de la barrière `import_warning` disait « (holes/duplicates) » : élargi, sinon il
       devenait faux. 2 tests, dont une garde d'ordre qui doit rester verte des deux côtés
+- [ ] **Le moteur sait qu'un document n'est pas indexé, et personne ne le lit.**
+      `documents_service` calcule un `fts_stale` **par document** (depuis
+      `indexer.stale_doc_ids`) et l'expose dans `GET /documents` : **aucun front ne le
+      consomme**, ni la liste des documents de Prep, ni le sélecteur du concordancier. Or
+      `fts_units` est une table FTS5 **sans trigger** — la migration 002 l'assume
+      (« contrôle explicite de ce qui est indexé, les unités `line` seulement ») — donc un
+      document fraîchement importé n'est **jamais** trouvable avant une réindexation
+      manuelle. Signalé le 27 août par l'utilisateur, qui réindexe « aussi, à chaque fois,
+      manuellement ». L'asymétrie est frappante : après une **curation**, `CurationPane`
+      affiche déjà « · réindexez pour la recherche » ; après un **import**, rien. Le journal
+      d'import le dit désormais, mais ce n'est qu'un pansement — la vraie réponse est de
+      peindre l'état `fts_stale` **là où on choisit un document**, ce qui est le constat de
+      la fiche entière : l'écran écrit sans se relire
 - [ ] **La barrière ne barre rien** — constaté le 27 août en vérifiant ce que les deux sévérités
       changeraient pour un export réel : ni le CLI (`cli.py:793`) ni le sidecar
       (`sidecar.py:10341`) ne **refusent** sur `gate_status: "blocking"`, ils le rapportent, et
