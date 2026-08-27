@@ -1247,8 +1247,8 @@ export class ImportScreen {
             const compte = nLine === undefined
               ? ""
               : nLine === 0
-                ? " · ⚠ AUCUNE unité trouvable à la recherche"
-                : ` · ${nLine} unité(s) trouvable(s)`
+                ? " · ⚠ AUCUNE unité indexable"
+                : ` · ${nLine} unité(s) indexable(s)`
                   + ((nStruct ?? 0) > 0 ? `, ${nStruct} hors index` : "");
             // `fts_units` est une table FTS5 SANS trigger, peuplée explicitement par
             // l'indexeur (migration 002 : « contrôle explicite de ce qui est indexé »).

@@ -268,7 +268,7 @@ export function planImport(ev: PlanEvidence): ImportPlan {
       };
     }
     if (ev.searchableInProbe === 0 && ev.numbering === null) {
-      return { mode: paragraphs, verdict: "no_mode", reason: "aucun mode ne rend d'unité trouvable" };
+      return { mode: paragraphs, verdict: "no_mode", reason: "aucun mode ne rend d'unité indexable" };
     }
     if (ev.numbering === "bracket") {
       return { mode: numbered, verdict: "ok", reason: "marqueurs [n] détectés" };
@@ -300,8 +300,8 @@ export function planImport(ev: PlanEvidence): ImportPlan {
       mode: "txt_numbered_lines",
       verdict: "no_mode",
       reason: ev.numbering === "dot"
-        ? "numéroté « 1. », forme qu'aucun mode TXT ne lit — rien ne serait trouvable"
-        : "texte sans marqueurs [n], et c'est le seul mode TXT — rien ne serait trouvable",
+        ? "numéroté « 1. », forme qu'aucun mode TXT ne lit — rien ne serait indexable"
+        : "texte sans marqueurs [n], et c'est le seul mode TXT — rien ne serait indexable",
     };
   }
 

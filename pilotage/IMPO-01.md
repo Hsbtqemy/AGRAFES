@@ -50,8 +50,10 @@ l'écran affiche une coche verte.
       l'écran le **dit** — « Aucun mode ne lit ce document » — au lieu de pré-sélectionner le
       moins mauvais : c'est ainsi qu'un défaut de capacité devient visible plutôt que caché
       derrière un mauvais choix
-- [x] Libellé de la colonne du milieu — **« Trouvables à la recherche »**, retenu tel quel :
-      « indexables » est du jargon, celui-ci dit ce que l'utilisateur perd s'il se trompe
+- [x] Libellé de la colonne du milieu — **« Trouvables »**. « Indexables » est du jargon ;
+      celui-ci dit ce que l'utilisateur perd s'il se trompe. D'abord posé en « Trouvables à
+      la recherche », raccourci le 27 août sur sa demande : le qualificatif tient dans
+      l'infobulle, et son absence laisse la largeur à l'extrait de la première unité
 - [x] **Coût chiffré, et il tranche la question** — mesuré le 27 août : les deux modes
       ensemble coûtent **32 à 251 ms** sur un DOCX du corpus et **59 ms** sur l'ODT médian.
       Un seul `.odt` sur douze dépasse 200 Ko (1,9 s) et ce n'est pas un document de corpus.
@@ -76,19 +78,32 @@ l'écran affiche une coche verte.
       blobs ont été réimportés le 26 — donc elle ne coûte rien et sert de filet pour la suite.
       Le message de la barrière `import_warning` disait « (holes/duplicates) » : élargi, sinon il
       devenait faux. 2 tests, dont une garde d'ordre qui doit rester verte des deux côtés
-- [ ] **Le moteur sait qu'un document n'est pas indexé, et personne ne le lit.**
-      `documents_service` calcule un `fts_stale` **par document** (depuis
-      `indexer.stale_doc_ids`) et l'expose dans `GET /documents` : **aucun front ne le
-      consomme**, ni la liste des documents de Prep, ni le sélecteur du concordancier. Or
-      `fts_units` est une table FTS5 **sans trigger** — la migration 002 l'assume
-      (« contrôle explicite de ce qui est indexé, les unités `line` seulement ») — donc un
-      document fraîchement importé n'est **jamais** trouvable avant une réindexation
-      manuelle. Signalé le 27 août par l'utilisateur, qui réindexe « aussi, à chaque fois,
-      manuellement ». L'asymétrie est frappante : après une **curation**, `CurationPane`
-      affiche déjà « · réindexez pour la recherche » ; après un **import**, rien. Le journal
-      d'import le dit désormais, mais ce n'est qu'un pansement — la vraie réponse est de
-      peindre l'état `fts_stale` **là où on choisit un document**, ce qui est le constat de
-      la fiche entière : l'écran écrit sans se relire
+- [ ] **L'index n'a rien à faire sur l'écran d'import — c'est un quatrième point d'entrée.**
+      Rectifié le 27 août : l'item précédent affirmait qu'« aucun front ne consomme `fts_stale` »,
+      ce qui est **faux**. `MetadataScreen` le lit en trois endroits — le libellé de son bouton
+      unique (`indexButtonState`, « ✓ Index à jour » quand rien n'est périmé) et une pastille
+      cliquable « ⚠ Index » sur **chaque document périmé** de ses deux listes — et
+      `TextCanvasView`, `CurationPane`, `SegmentPane` et `prepUndo` le lisent aussi. C'est
+      seulement le sélecteur du **concordancier** qui l'ignore (le champ n'est qu'une déclaration
+      de type dans son `sidecarClient`). L'écran d'état + bouton de recours que je proposais de
+      bâtir **existe déjà**, mieux fait, avec en prime une case « Auto après curation ».
+      L'écran d'import en est donc le **quatrième** point d'entrée — après la barre du
+      concordancier, le bouton de MetadataScreen et ses pastilles par document — et le seul qui
+      ne sache rien de l'état de l'index. Sa carte « Index FTS » est à retirer.
+      **La prémisse de départ était un artefact de test** : l'utilisateur ne réindexe pas après
+      un import, mais après un travail de segmentation ou de curation, et le plus souvent depuis
+      le concordancier ; les réindexations manuelles observées venaient de bases montées pour
+      tester. Ce qui invalide aussi l'idée d'indexer automatiquement à l'import : le document
+      sera de toute façon repéri après la suite du travail
+- [ ] **Les deux applications ne sont pas d'accord sur l'indexation après import.**
+      `tauri-app/src/features/importFlow.ts:54` appelle `rebuildIndex` juste après l'import et
+      affiche « Import + indexation réussis » ; l'import de Prep, lui, n'indexe rien. Le
+      comportement que je croyais devoir arbitrer existe donc déjà d'un côté. À trancher dans un
+      sens ou dans l'autre, mais pas à laisser divergent
+- [ ] **Le journal d'import dit « · réindexez pour la recherche » à un moment où ça ne sert pas.**
+      Ajouté le 27 août sur une prémisse depuis corrigée. La phrase est vraie — le document
+      n'est pas trouvable — mais elle pousse un geste que l'utilisateur ne fera qu'après la
+      segmentation et la curation. À reformuler en constat plutôt qu'en consigne
 - [ ] **La barrière ne barre rien** — constaté le 27 août en vérifiant ce que les deux sévérités
       changeraient pour un export réel : ni le CLI (`cli.py:793`) ni le sidecar
       (`sidecar.py:10341`) ne **refusent** sur `gate_status: "blocking"`, ils le rapportent, et

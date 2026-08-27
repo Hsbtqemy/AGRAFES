@@ -13,8 +13,10 @@
  *
  * **La colonne qui compte est celle du milieu.** Sur les cas mesurés, les deux modes
  * rendent souvent le *même nombre d'unités* — 48 contre 48 sur un bitexte en tableau — et
- * ne se séparent que sur combien sont indexées. « Trouvables à la recherche » plutôt
- * qu'« indexables » : c'est ce que l'utilisateur perd s'il se trompe, dit dans ses mots.
+ * ne se séparent que sur combien sont indexées. « Trouvables » plutôt qu'« indexables » :
+ * c'est ce que l'utilisateur perd s'il se trompe, dit dans ses mots. Le qualificatif
+ * « à la recherche » a été retiré le 27 août — il tient dans l'infobulle, et son
+ * absence rend la colonne assez étroite pour laisser la largeur à l'extrait.
  */
 
 import { escHtml } from "./diff.ts";
@@ -52,7 +54,7 @@ function sampleCell(row: ModeComparisonRow): string {
 /**
  * Rend le tableau comparatif. Chaque ligne est un bouton : cliquer applique le mode.
  *
- * Quand aucun mode ne rend d'unité trouvable, un bandeau le **dit** au lieu de laisser
+ * Quand aucun mode ne rend d'unité indexable, un bandeau le **dit** au lieu de laisser
  * pré-sélectionner le moins mauvais — c'est ainsi qu'un défaut de capacité devient visible
  * plutôt que de se cacher derrière un mauvais choix (le bitexte en tableau sans colonne,
  * ou le `.txt` numéroté « 1. » qui n'a aucun mode pour le lire).
@@ -70,7 +72,7 @@ export function buildModeComparisonHtml(input: ModeComparisonInput): string {
       r.searchable === 0 ? "imp-cmp-row-empty" : "",
     ].filter(Boolean).join(" ");
     const marque = isBest
-      ? ' <span class="imp-cmp-best" title="Le mode qui rend le plus d\'unités trouvables">recommandé</span>'
+      ? ' <span class="imp-cmp-best" title="Le mode qui rend le plus d\'unités indexables">recommandé</span>'
       : "";
     const coche = isCurrent ? '<span class="imp-cmp-check" aria-hidden="true">✓</span> ' : "";
     return `<tr class="${cls}">
@@ -86,14 +88,14 @@ export function buildModeComparisonHtml(input: ModeComparisonInput): string {
 
   const alerte = bestMode === null
     ? '<p class="imp-cmp-nomode">Aucun mode ne lit ce document — aucune unité ne serait '
-      + "trouvable à la recherche. S'il s'agit d'un tableau, indiquez une colonne ; sinon, "
+      + "indexable. S'il s'agit d'un tableau, indiquez une colonne ; sinon, "
       + "le format n'a pas encore de mode d'import qui lui convienne.</p>"
     : "";
 
   return `${alerte}<table class="imp-cmp-table" aria-label="Ce que chaque mode ferait de ce fichier">
     <thead><tr>
       <th>Mode</th><th class="imp-cmp-num">Unités</th>
-      <th class="imp-cmp-num" title="Unités indexées, donc atteignables depuis le concordancier">Trouvables à la recherche</th>
+      <th class="imp-cmp-num" title="Unités que l&rsquo;index de recherche prendra. Elles deviennent trouvables à la réindexation, pas à l&rsquo;import.">Indexables</th>
       <th class="imp-cmp-num">Non indexées</th><th>Première unité</th>
     </tr></thead>
     <tbody>${body}</tbody>

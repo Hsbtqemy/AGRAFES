@@ -655,11 +655,11 @@ summary:focus-visible,
   table-layout: fixed;
 }
 /* Les quatre premières colonnes sont posées ; la cinquième prend ce qui reste et
-   abrège. Le libellé « Trouvables à la recherche » passe sur deux lignes : c'est
-   voulu, une largeur stable vaut mieux qu'un en-tête d'un seul tenant. */
+   abrège. Les en-têtes tiennent tous sur une ligne depuis que « Trouvables à la
+   recherche » a été raccourci en « Trouvables ». */
 .prep-import-screen .imp-cmp-table th:nth-child(1) { width: 17rem; }
 .prep-import-screen .imp-cmp-table th:nth-child(2) { width: 5rem; }
-.prep-import-screen .imp-cmp-table th:nth-child(3) { width: 10rem; }
+.prep-import-screen .imp-cmp-table th:nth-child(3) { width: 7rem; }
 .prep-import-screen .imp-cmp-table th:nth-child(4) { width: 7rem; }
 .prep-import-screen .imp-cmp-table th,
 .prep-import-screen .imp-cmp-table td {

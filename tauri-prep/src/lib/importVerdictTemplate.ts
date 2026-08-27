@@ -98,8 +98,8 @@ export function buildVerdictHtml(v: FileVerdict | null): string {
   const compte = v.searchable === null
     ? ""
     : v.searchable === 0
-      ? ' · <strong class="imp-verdict-zero">rien de trouvable</strong>'
-      : ` · ${v.searchable} trouvable${v.searchable > 1 ? "s" : ""}`;
+      ? ' · <strong class="imp-verdict-zero">rien d&rsquo;indexable</strong>'
+      : ` · ${v.searchable} indexable${v.searchable > 1 ? "s" : ""}`;
   const motif = v.plan.reason
     ? ` · <span class="imp-verdict-why">${escHtml(v.plan.reason)}</span>`
     : "";
@@ -131,7 +131,7 @@ export function buildQueueWarningHtml(verdicts: Array<FileVerdict | null>): stri
   const bouts: string[] = [];
   if (sansRien > 0) {
     bouts.push(`<strong>${sansRien} fichier${sansRien > 1 ? "s" : ""}</strong> `
-      + `n'aurai${sansRien > 1 ? "ent" : "t"} aucune unité trouvable à la recherche`);
+      + `n'aurai${sansRien > 1 ? "ent" : "t"} aucune unité indexable`);
   }
   if (colonne > 0) {
     bouts.push(`<strong>${colonne}</strong> attend${colonne > 1 ? "ent" : ""} une colonne de tableau`);

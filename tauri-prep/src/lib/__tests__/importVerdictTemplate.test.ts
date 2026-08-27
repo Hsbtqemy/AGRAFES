@@ -20,18 +20,18 @@ describe("buildVerdictHtml", () => {
   it("dit le mode, le compte et le motif", () => {
     const html = buildVerdictHtml(OK);
     expect(html).toContain("Paragraphes");
-    expect(html).toContain("17 trouvables");
+    expect(html).toContain("17 indexables");
     expect(html).toContain("aucun marqueur");
   });
 
-  it("dit « rien de trouvable » plutôt que « 0 »", () => {
+  it("dit « rien d'indexable » plutôt que « 0 »", () => {
     // C'est le cas mesuré de bout en bout : l'import annonce `ok`, écrit 17 unités,
     // et rien n'est jamais trouvable. Un zéro dans une colonne se lit de travers ;
     // une phrase, non.
     const html = buildVerdictHtml({
       ...OK, searchable: 0, plan: plan({ verdict: "no_mode", reason: "aucun mode" }),
     });
-    expect(html).toContain("rien de trouvable");
+    expect(html).toContain("rien d&rsquo;indexable");
     expect(html).toContain("imp-verdict-bad");
   });
 
@@ -44,7 +44,7 @@ describe("buildVerdictHtml", () => {
       modeLabel: "Lignes numérotées [n]", searchable: null,
     });
     expect(html).toContain("marqueurs [n]");
-    expect(html).not.toContain("trouvable");
+    expect(html).not.toContain("indexable");
   });
 
   it("distingue l'attente de l'absence de verdict", () => {
@@ -112,7 +112,7 @@ describe("buildQueueWarningHtml", () => {
       { ...OK, plan: plan({ verdict: "column_needed" }) },
       { ...OK, plan: plan({ verdict: "numbering_lost" }) },
     ])!;
-    expect(html).toContain("trouvable");
+    expect(html).toContain("indexable");
     expect(html).toContain("colonne");
     expect(html).toContain("ancre");
     expect(html.split(" ; ")).toHaveLength(3);
