@@ -207,3 +207,40 @@ def test_resegment_markers_no_roles(db: sqlite3.Connection) -> None:
 
     report = resegment_document_markers(db, doc_id)
     assert report.roles_reapplied == 0
+
+
+# ─── R2.2 : la catégorie absente se déduit du nom (migration 018) ────────────
+
+
+def _create(conn, body: dict) -> dict:
+    from multicorpus_engine.services.conventions_service import create_convention
+    return create_convention(conn, body)
+
+
+def test_absent_category_on_a_known_structural_name_is_structure(db_conn) -> None:
+    """Sans `category`, un nom rétro-rempli par la migration 018 est structurel.
+
+    Depuis que le jeu structurel est lu dans le catalogue, ranger un rôle *nommé*
+    `intertitre` en 'text' le ferait cesser d'être un mur de section — ce que le jeu
+    codé en dur masquait auparavant.
+    """
+    assert _create(db_conn, {"name": "intertitre", "label": "Intertitre"})["category"] == "structure"
+
+
+def test_absent_category_on_an_ordinary_name_stays_text(db_conn) -> None:
+    assert _create(db_conn, {"name": "traduction", "label": "Traduction"})["category"] == "text"
+
+
+def test_explicit_category_always_wins(db_conn) -> None:
+    """Un choix explicite n'est jamais écrasé par la déduction, dans les deux sens."""
+    assert _create(db_conn, {"name": "intertitre", "label": "I", "category": "text"})["category"] == "text"
+    assert _create(db_conn, {"name": "chapeau", "label": "C", "category": "structure"})["category"] == "structure"
+
+
+def test_blank_category_is_treated_as_absent(db_conn) -> None:
+    assert _create(db_conn, {"name": "titre", "label": "T", "category": "   "})["category"] == "structure"
+
+
+def test_invalid_explicit_category_still_falls_back_to_text(db_conn) -> None:
+    """Comportement inchangé : une valeur explicite hors enum est ramenée à 'text'."""
+    assert _create(db_conn, {"name": "note", "label": "N", "category": "banane"})["category"] == "text"

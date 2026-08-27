@@ -108,9 +108,18 @@ def create_convention(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     color = _validate_color(body.get("color") or "#6366f1")
     icon = body.get("icon")
     sort_order = body.get("sort_order", 0)
-    category = (body.get("category") or "text").strip()
-    if category not in ("structure", "text"):
-        category = "text"
+    raw_category = body.get("category")
+    if raw_category is None or not str(raw_category).strip():
+        # Absent from the body: mirror migration 018, which back-filled exactly these
+        # names to 'structure'. Since the structural set is read from this catalogue
+        # (coarse_grain.structural_roles_for), defaulting a role *named* `intertitre`
+        # to 'text' would make it silently stop being a section wall — a foot-gun the
+        # hard-coded set used to mask. An explicit category is always honoured.
+        category = "structure" if name in STRUCTURE_ROLE_NAMES else "text"
+    else:
+        category = str(raw_category).strip()
+        if category not in ("structure", "text"):
+            category = "text"
 
     # Format rule (alnum + hyphen + underscore) stays inline — out of the
     # structural validator's scope (it has no pattern/regex facet).
