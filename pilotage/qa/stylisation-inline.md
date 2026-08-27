@@ -66,6 +66,12 @@ Trois choses valent d'être sues avant de commencer, parce qu'elles décident du
   deux premiers points décrivent l'état *avant* le geste, que le geste détruit en réécrivant le
   verbatim. Sur la base de travail, l'unité n° 3 y est déjà passée. Pour rejouer, prendre une
   autre ligne corrigée mais pas encore stylée, ou repartir d'une copie.
+- *Annotation, n° 11 de `Lodge-Small_ES.docx`* — les trois points qui la concernent s'enchaînent
+  **dans une même session, sans recharger l'application**. Un rechargement remet la surcouche en
+  place et la ligne redevient refusée : le signal « à réannoter » ne survit pas au chargement du
+  document. Il fait pire — l'écran réaffiche alors le texte **d'avant** la correction, reconstruit
+  depuis des tokens périmés. Défaut mesuré le 27 août, suivi dans `ANN-01` : ne pas le reconsigner
+  ici.
 - *Correction en cours* — avant ce lot, tout rafraîchissement de la liste ressemait la zone de
   saisie depuis la base, et la frappe en cours disparaissait sans un mot. Ces points vérifient
   qu'elle tient.
@@ -88,7 +94,7 @@ Trois choses valent d'être sues avant de commencer, parce qu'elles décident du
 - [x] **Concordancier** — cocher **Respecter la casse** puis chercher `Observer` : l'unité n° 3 du document 423, dont le mot est entièrement en italique, figure toujours dans les résultats
 - [x] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 11 — sélectionner du texte dans une unité dont **la surcouche est peinte** (les mots sont colorés, et aucune pastille ⟳ ne la coiffe) ne fait apparaître **aucune** barre. La couche déclare qu'elle a repeint la ligne, et le geste refuse — il ne compare plus des longueurs. C'est l'état de départ de la n° 11 ; les deux points suivants l'en font sortir
 - [x] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 11 — pour comparer une fois : corriger cette même unité au stylo ✎ fait apparaître la pastille « ⟳ texte modifié — à réannoter » et le compteur « ⚠ 1 à réannoter » dans le résumé du haut. **Ce geste change l'état de la ligne pour toute la suite de la passe** : sa surcouche est retirée, elle affiche désormais du texte nu
-- [ ] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 11, **juste après** la correction ci-dessus — y sélectionner du texte fait de nouveau apparaître la barre, et la stylisation s'applique. **C'est voulu** : sans surcouche, ce qui est à l'écran *est* le texte de la base, et les positions visées sont les bonnes. La pastille ⟳ reste affichée après le geste, elle aussi à raison — la stylisation ne touche pas `text_norm`, donc l'annotation n'est ni plus ni moins périmée qu'avant
+- [x] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 11, **juste après** la correction ci-dessus — y sélectionner du texte fait de nouveau apparaître la barre, et la stylisation s'applique. **C'est voulu** : sans surcouche, ce qui est à l'écran *est* le texte de la base, et les positions visées sont les bonnes. La pastille ⟳ reste affichée après le geste, elle aussi à raison — la stylisation ne touche pas `text_norm`, donc l'annotation n'est ni plus ni moins périmée qu'avant
 
 ### Ligne corrigée — l'adoption du verbatim
 
@@ -110,7 +116,7 @@ Trois choses valent d'être sues avant de commencer, parce qu'elles décident du
 ### Refus et gardes
 
 - [x] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 20 — même refus que sur la n° 11, et pour la même raison : la ligne est repeinte. L'écart se voit toujours à l'œil — ici elle finit par « días: », alors qu'en couche **Rôles** elle finit par « días : », avec une espace — mais ce n'est plus ce qui décide du refus
-- [ ] **Annotation**, vue **Étendue** · `Lodge-Small_ES.docx` **n° 20** — basculer en Étendue et sélectionner du texte : **aucune** barre, comme en Prose. Les deux vues se comportent désormais à l'identique ; c'est le changement le plus visible du lot, l'écart entre elles ayant disparu. Prendre la n° 20 et **pas** la n° 11 : celle-ci a été corrigée plus haut, sa surcouche est tombée, et elle accepte donc la barre à juste titre (le point précédent le vérifie)
+- [x] **Annotation**, vue **Étendue** · `Lodge-Small_ES.docx` **n° 20** — basculer en Étendue et sélectionner du texte : **aucune** barre, comme en Prose. Les deux vues se comportent désormais à l'identique ; c'est le changement le plus visible du lot, l'écart entre elles ayant disparu. Prendre la n° 20 et **pas** la n° 11 : celle-ci a été corrigée plus haut, sa surcouche est tombée, et elle accepte donc la barre à juste titre (le point précédent le vérifie)
 - [ ] **Annotation**, vue **Étendue** · `Lodge-Small_ES.docx` n° 11 corrigée — y poser un italique : il apparaît **immédiatement**, sans que la liste entière se refasse. Avant ce lot, une balise posée sur un mot faisait redessiner les 1754 lignes du document et leurs 20 636 tokens ; l'attente se voyait à l'œil, en Étendue surtout, où chaque ligne est une grille
 - [x] **Rôles** · doc de réf. n° 8 — ouvrir le stylo ✎ sur la ligne : dans **cette** ligne, sélectionner du texte ne fait apparaître aucune barre (la textarea ne porte que du texte nu)
 - [x] **Rôles** · doc de réf., stylo ✎ ouvert sur n° 8 — taper une correction sans l'enregistrer, puis mettre du texte en italique dans **une autre** ligne (n° 9) : l'italique s'applique **et** la correction en cours est toujours à l'écran, intacte
