@@ -101,7 +101,7 @@ export function buildVerdictHtml(v: FileVerdict | null): string {
       ? ' · <strong class="imp-verdict-zero">rien de trouvable</strong>'
       : ` · ${v.searchable} trouvable${v.searchable > 1 ? "s" : ""}`;
   const motif = v.plan.reason
-    ? ` <span class="imp-verdict-why">${escHtml(v.plan.reason)}</span>`
+    ? ` · <span class="imp-verdict-why">${escHtml(v.plan.reason)}</span>`
     : "";
   return `<span class="imp-verdict ${cls}">`
     + `<strong>${escHtml(v.modeLabel)}</strong>${compte}${motif}`

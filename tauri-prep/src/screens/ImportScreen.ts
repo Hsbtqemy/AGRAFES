@@ -103,29 +103,33 @@ export class ImportScreen {
   private _summaryEl!: HTMLElement;
   private _stateEl!: HTMLElement;
   private _importBtn!: HTMLButtonElement;
-  private _indexBtn!: HTMLButtonElement;
-  private _conlluBadgeEl!: HTMLElement;
-  private _conlluFileEl!: HTMLElement;
-  private _conlluSummaryEl!: HTMLElement;
   private _conlluRowsEl!: HTMLElement;
-  private _conlluRefreshBtn!: HTMLButtonElement;
-  private _conlluNextBtn!: HTMLButtonElement;
   private _jobCenter: JobCenter | null = null;
   private _showToast: ((msg: string, isError?: boolean) => void) | null = null;
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
-  private _conlluPreviewCursor = 0;
   private _conlluPreviewPath: string | null = null;
   private _conlluPreviewReq = 0;
 
-  // UX-14 — text (DOCX/ODT/TXT/TEI) preview
-  private _textPreviewBadgeEl!: HTMLElement;
-  private _textPreviewFileEl!: HTMLElement;
-  private _textPreviewSummaryEl!: HTMLElement;
+  // Panneau de détail du fichier SÉLECTIONNÉ (IMPO-01, maître-détail).
+  private _detailTitleEl!: HTMLElement;
+  private _detailEmptyEl!: HTMLElement;
+  private _detailBodyEl!: HTMLElement;
+  private _detailSummaryEl!: HTMLElement;
+  private _detailModeSel!: HTMLSelectElement;
+  private _detailColWrap!: HTMLElement;
+  private _detailColInp!: HTMLInputElement;
+  private _detailLangInp!: HTMLInputElement;
+  private _detailTitleInp!: HTMLInputElement;
+  private _textWrapEl!: HTMLElement;
+  private _conlluWrapEl!: HTMLElement;
   private _textPreviewRowsEl!: HTMLElement;
-  private _textPreviewRefreshBtn!: HTMLButtonElement;
-  private _textPreviewNextBtn!: HTMLButtonElement;
-  private _textPreviewCursor = 0;
+  /**
+   * Chemin du fichier sélectionné — **remplace les deux curseurs** `1/1` + « Suivant ».
+   * Ils n'existaient que parce que l'aperçu était global et n'avait aucun moyen de
+   * savoir de quel fichier on parlait ; la sélection le lui dit.
+   */
+  private _selectedPath: string | null = null;
   private _textPreviewPath: string | null = null;
   private _textPreviewReq = 0;
   private _textPreviewTables: TableShape[] | null = null;
@@ -154,59 +158,38 @@ export class ImportScreen {
     this._summaryEl = root.querySelector("#imp-summary")!;
     this._stateEl = root.querySelector("#imp-state-banner")!;
     this._importBtn = root.querySelector("#imp-import-btn")!;
-    this._indexBtn = root.querySelector("#imp-index-btn")!;
-    this._conlluBadgeEl = root.querySelector("#imp-conllu-badge")!;
-    this._conlluFileEl = root.querySelector("#imp-conllu-file")!;
-    this._conlluSummaryEl = root.querySelector("#imp-conllu-summary")!;
     this._conlluRowsEl = root.querySelector("#imp-conllu-rows")!;
-    this._conlluRefreshBtn = root.querySelector("#imp-conllu-refresh")!;
-    this._conlluNextBtn = root.querySelector("#imp-conllu-next")!;
-    this._textPreviewBadgeEl = root.querySelector("#imp-text-badge")!;
-    this._textPreviewFileEl = root.querySelector("#imp-text-file")!;
-    this._textPreviewSummaryEl = root.querySelector("#imp-text-summary")!;
     this._textPreviewRowsEl = root.querySelector("#imp-text-rows")!;
-    this._textPreviewRefreshBtn = root.querySelector("#imp-text-refresh")!;
     this._textTablesEl = root.querySelector("#imp-text-tables")!;
     this._textTablesMsgEl = root.querySelector("#imp-text-tables-msg")!;
     this._textTablesSplitBtn = root.querySelector("#imp-text-tables-split")!;
     this._textCmpEl = root.querySelector("#imp-text-cmp")!;
-    this._textPreviewNextBtn = root.querySelector("#imp-text-next")!;
+    this._detailTitleEl = root.querySelector("#imp-detail-title")!;
+    this._detailEmptyEl = root.querySelector("#imp-detail-empty")!;
+    this._detailBodyEl = root.querySelector("#imp-detail-body")!;
+    this._detailSummaryEl = root.querySelector("#imp-detail-summary")!;
+    this._detailModeSel = root.querySelector("#imp-detail-mode")!;
+    this._detailColWrap = root.querySelector("#imp-detail-col-wrap")!;
+    this._detailColInp = root.querySelector("#imp-detail-col")!;
+    this._detailLangInp = root.querySelector("#imp-detail-lang")!;
+    this._detailTitleInp = root.querySelector("#imp-detail-title-inp")!;
+    this._textWrapEl = root.querySelector("#imp-text-wrap")!;
+    this._conlluWrapEl = root.querySelector("#imp-conllu-wrap")!;
 
     root.querySelector("#imp-add-btn")!.addEventListener("click", () => this._addFiles());
     root.querySelector("#imp-refresh-btn")?.addEventListener("click", () => void this._refreshCorpus());
     root.querySelector("#imp-clear-btn")!.addEventListener("click", () => this._clearList());
     this._importBtn.addEventListener("click", () => this._runImport());
-    this._indexBtn.addEventListener("click", () => this._runIndex());
     root.querySelector("#imp-apply-defaults-btn")!.addEventListener("click", () => this._applyDefaultsToPending());
-    this._conlluRefreshBtn.addEventListener("click", () => {
-      void this._refreshConlluPreview(true);
-    });
-    this._conlluNextBtn.addEventListener("click", () => {
-      const candidates = this._conlluCandidates();
-      if (candidates.length <= 1) return;
-      this._conlluPreviewCursor = (this._conlluPreviewCursor + 1) % candidates.length;
-      this._conlluPreviewPath = null;
-      void this._refreshConlluPreview(true);
-    });
     this._textTablesSplitBtn.addEventListener("click", () => {
       this._splitPreviewedFileByColumn();
     });
-    this._textPreviewRefreshBtn.addEventListener("click", () => {
-      void this._refreshTextPreview(true);
-    });
-    this._textPreviewNextBtn.addEventListener("click", () => {
-      const candidates = this._textPreviewCandidates();
-      if (candidates.length <= 1) return;
-      this._textPreviewCursor = (this._textPreviewCursor + 1) % candidates.length;
+    root.querySelector("#imp-detail-refresh")!.addEventListener("click", () => {
       this._textPreviewPath = null;
-      void this._refreshTextPreview(true);
+      this._conlluPreviewPath = null;
+      void this._refreshDetail(true);
     });
-
-    // Sync the two check_filename checkboxes (footer ↔ settings)
-    const ckFooter = root.querySelector<HTMLInputElement>("#imp-check-filename-footer")!;
-    const ckSettings = root.querySelector<HTMLInputElement>("#imp-check-filename")!;
-    ckFooter.addEventListener("change", () => { ckSettings.checked = ckFooter.checked; });
-    ckSettings.addEventListener("change", () => { ckFooter.checked = ckSettings.checked; });
+    this._bindDetailControls();
 
     const dz = root.querySelector<HTMLElement>("#imp-dropzone");
     if (dz) {
@@ -254,8 +237,7 @@ export class ImportScreen {
 
     initCardAccordions(root);
     this._refreshRuntimeState();
-    void this._refreshConlluPreview();
-    void this._refreshTextPreview();
+    void this._refreshDetail();
 
     return root;
   }
@@ -266,7 +248,7 @@ export class ImportScreen {
     this._updateButtons();
     this._refreshRuntimeState();
     if (conn) {
-      void this._refreshTextPreview();
+      void this._refreshDetail(true);
       // Des fichiers ajoutés avant que le sidecar réponde restaient sur « analyse… »
       // indéfiniment : leur analyse n'avait jamais eu de connexion pour tourner.
       void this._analyzePending();
@@ -323,7 +305,6 @@ export class ImportScreen {
   private _updateButtons(): void {
     const pendingCount = this._files.filter((f) => f.status === "pending").length;
     this._importBtn.disabled = !this._conn || pendingCount === 0;
-    this._indexBtn.disabled = !this._conn;
     this._summaryEl.textContent = `${this._files.length} fichier${this._files.length > 1 ? "s" : ""}`;
     this._refreshRuntimeState();
   }
@@ -446,130 +427,71 @@ export class ImportScreen {
     this._updateButtons();
     if (this._files.length === 0) {
       this._listEl.innerHTML = '<p class="empty-hint">Aucun fichier sélectionné.</p>';
+      this._selectedPath = null;
       this._updatePrecheck();
-      void this._refreshConlluPreview();
-      void this._refreshTextPreview();
+      void this._refreshDetail();
       return;
+    }
+    // Résolue AVANT de peindre : une sélection posée après coup laisserait la ligne
+    // avec `aria-pressed="false"` et une classe ajoutée à la main, donc deux vérités.
+    if (this._selectedPath === null
+        || !this._files.some((f) => f.path === this._selectedPath)) {
+      this._selectedPath = this._files[0].path;
     }
     this._listEl.innerHTML = "";
     this._files.forEach((f, i) => {
       const ext = extFromFileName(f.title);
       const normMode = normalizeModeForExt(f.mode, ext);
       if (normMode !== f.mode) f.mode = normMode;
-      const modeOpts = modeOptionsForExt(ext);
       const row = document.createElement("div");
-      row.className = `imp-file-item imp-file-item-${f.status}`;
+      const selected = f.path === this._selectedPath;
+      row.className = `imp-file-item imp-file-item-${f.status}${selected ? " imp-file-item-sel" : ""}`;
       row.dataset.index = String(i);
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-pressed", selected ? "true" : "false");
       const chipCls = this._chipClass(f.status);
-      // Column-index input : visible pour les DEUX modes DOCX (IMPO-01). Si le
-      // DOCX porte les textes dans une table multi-colonnes (bitexte 2-col typique),
-      // indiquer la colonne à extraire. Vide = comportement legacy (tables ignorées).
-      // Le mode PARAGRAPHES est le seul qui lise un tel tableau non numéroté : le
-      // réserver au mode numéroté rendait la capacité inatteignable là où elle sert.
-      const colCtrl = modeAcceptsColumn(f.mode)
-        ? `<input class="imp-col-inp" type="number" min="1" step="1" data-i="${i}"
-                  value="${f.column_index ?? ""}" placeholder="col"
-                  title="Colonne du tableau à extraire (1 = première). Laisser vide pour ignorer les tables." />`
-        : "";
-      // Le verdict voyage avec le fichier (IMPO-01) : c'est le seul endroit où il est
-      // vu sans qu'on l'ait cherché. L'aperçu comparatif, lui, reste replié par défaut
-      // et n'en montre qu'un à la fois — il ne protège que qui sait déjà quoi regarder.
+      // La ligne ne porte QUE ce qui doit être vu sans avoir été cherché : le nom, le
+      // statut, et le verdict de la déduction. Les commandes — mode, colonne, langue,
+      // titre — vivent dans le panneau du fichier sélectionné, où elles tiennent
+      // à l'aise et voisinent l'évidence qui les justifie.
       const verdict = f.status === "pending" ? buildVerdictHtml(this._verdictOf(f)) : "";
       setHtml(row, raw(`
         <div class="imp-file-main">
           <span class="imp-file-name" title="${_escHtml(f.path)}">${_escHtml(f.title)}</span>
           <span class="chip${chipCls ? " " + chipCls : ""}">${_escHtml(importStatusLabel(f))}</span>
-        </div>
-        ${verdict ? `<div class="imp-file-verdict">${verdict}</div>` : ""}
-        <div class="imp-file-controls">
-          <select class="imp-mode-sel" data-i="${i}" title="Mode d'import — ajustable si l'extension ne reflète pas le format (ex. un CoNLL-U ou TEI nommé .txt)">
-            ${modeOpts
-              .map((opt) => `<option value="${opt.value}"${f.mode === opt.value ? " selected" : ""}>${opt.label}</option>`)
-              .join("")}
-          </select>
-          ${colCtrl}
-          <input class="imp-lang-inp${f.langGuessed ? " imp-lang-guessed" : ""}" type="text" value="${_escHtml(f.language)}" maxlength="10"
-                 placeholder="${f.mode === "tei" ? "xml:lang" : "lang"}"
-                 title="${f.mode === "tei"
-                   ? "TEI : laisser vide pour conserver le xml:lang du document ; renseigner pour forcer une langue."
-                   : f.langGuessed
-                     ? "⚠ Langue par défaut (aucun code détecté dans le nom de fichier) — vérifiez."
-                     : "Code de langue (ex. fr, en)."}"
-                 data-i="${i}" />
-          <input class="imp-title-inp" type="text" value="${_escHtml(f.title)}" placeholder="titre" data-i="${i}" />
           <button class="btn btn-sm imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
         </div>
+        ${verdict ? `<div class="imp-file-verdict">${verdict}</div>` : ""}
       `));
       this._listEl.appendChild(row);
     });
 
-    this._listEl.querySelectorAll(".imp-mode-sel").forEach(el => {
-      (el as HTMLSelectElement).addEventListener("change", (e) => {
-        const i = parseInt((e.target as HTMLElement).dataset.i!);
-        this._files[i].mode = (e.target as HTMLSelectElement).value;
-        // L'utilisateur a tranché : la déduction ne réécrira plus son choix. Elle
-        // propose, elle n'impose pas — et c'est ce qui la rend contestable.
-        this._files[i].modeLocked = true;
-        // Clear column_index quand on quitte les modes qui l'honorent — il n'a
-        // pas de sens ailleurs et le backend l'ignore, mais autant ne pas garder
-        // de valeur fantôme. Passer d'un mode DOCX à l'autre la CONSERVE : c'est
-        // le geste même de comparer ce que chaque mode fait de la même colonne.
-        if (!modeAcceptsColumn(this._files[i].mode)) {
-          this._files[i].column_index = undefined;
-        }
-        this._renderList();
-        void this._refreshConlluPreview(true);
-        void this._refreshTextPreview(true);
-      });
-    });
-    this._listEl.querySelectorAll(".imp-col-inp").forEach(el => {
-      (el as HTMLInputElement).addEventListener("input", (e) => {
-        const i = parseInt((e.target as HTMLElement).dataset.i!);
-        const raw = (e.target as HTMLInputElement).value.trim();
-        if (raw === "") {
-          this._files[i].column_index = undefined;
-        } else {
-          const n = parseInt(raw, 10);
-          this._files[i].column_index = Number.isFinite(n) && n >= 1 ? n : undefined;
-        }
-        // La colonne change ce que le fichier contient : le verdict est à refaire.
-        // Sans ça, « indiquez la colonne à extraire » survivrait à sa propre réponse.
-        this._files[i].plan = undefined;
-        this._files[i].searchable = undefined;
-        // L'aperçu doit suivre la colonne. Il est gardé par le CHEMIN du fichier,
-        // qui ne bouge pas d'une colonne à l'autre : sans le forçage, changer de
-        // colonne laissait l'aperçu sur la précédente.
-        void this._refreshTextPreview(true);
-        void this._analyzePending();
-      });
-    });
-    this._listEl.querySelectorAll(".imp-lang-inp").forEach(el => {
-      (el as HTMLInputElement).addEventListener("input", (e) => {
-        const i = parseInt((e.target as HTMLElement).dataset.i!);
-        this._files[i].language = (e.target as HTMLInputElement).value;
-        // IMP-11 : l'utilisateur a revu la langue → ne plus la signaler comme devinée.
-        if (this._files[i].langGuessed) {
-          this._files[i].langGuessed = false;
-          (e.target as HTMLElement).classList.remove("imp-lang-guessed");
-        }
-      });
-    });
-    this._listEl.querySelectorAll(".imp-title-inp").forEach(el => {
-      (el as HTMLInputElement).addEventListener("input", (e) => {
-        const i = parseInt((e.target as HTMLElement).dataset.i!);
-        this._files[i].title = (e.target as HTMLInputElement).value;
+    this._listEl.querySelectorAll<HTMLElement>(".imp-file-item").forEach((el) => {
+      const pick = (e: Event) => {
+        // Le ✕ vit dans la ligne : sans ça, retirer un fichier le sélectionnerait
+        // d'abord, et le panneau afficherait un fichier qui n'existe plus.
+        if ((e.target as HTMLElement).closest(".imp-remove-btn")) return;
+        const i = parseInt(el.dataset.index!, 10);
+        this._selectFile(this._files[i]);
+      };
+      el.addEventListener("click", pick);
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(e); }
       });
     });
     this._listEl.querySelectorAll(".imp-remove-btn").forEach(el => {
       el.addEventListener("click", (e) => {
+        e.stopPropagation();
         const i = parseInt((e.target as HTMLElement).dataset.i!);
-        this._files.splice(i, 1);
+        const [ote] = this._files.splice(i, 1);
+        if (ote && ote.path === this._selectedPath) this._selectedPath = null;
         this._renderList();
         this._updateButtons();
       });
     });
 
-    // Ce que la file annonce avant qu'on appuie sur Importer — pour que le geste
+    // Ce que la file annonce AVANT qu'on appuie sur Importer — pour que le geste
     // d'import ne soit pas le premier endroit où on apprend qu'un fichier est perdu.
     const warn = buildQueueWarningHtml(
       this._files.filter((f) => f.status === "pending").map((f) => this._verdictOf(f)),
@@ -581,9 +503,149 @@ export class ImportScreen {
     }
 
     this._updatePrecheck();
-    void this._refreshConlluPreview();
-    void this._refreshTextPreview();
+    void this._refreshDetail();
     void this._analyzePending();
+  }
+
+  /**
+   * Le panneau du fichier sélectionné — commandes, comparaison des modes, extrait.
+   *
+   * Un seul panneau pour deux rendus : des unités pour un fichier texte, des tokens
+   * pour un CoNLL-U. C'est ce qui permet de retirer la carte « Aperçu CoNLL-U », qui
+   * restait dépliée en permanence pour annoncer qu'aucun `.conllu` n'était sélectionné
+   * — alors qu'il n'en existe aucun sur le disque de l'utilisateur ni dans son corpus.
+   * La capacité reste entière : le mode est toujours dans le sélecteur.
+   */
+  private async _refreshDetail(force = false): Promise<void> {
+    if (!this._detailBodyEl) return;
+    const file = this._selectedFile();
+    if (!file) {
+      this._detailTitleEl.textContent = "Aucun fichier sélectionné";
+      this._detailEmptyEl.hidden = false;
+      this._detailBodyEl.hidden = true;
+      this._textPreviewPath = null;
+      this._conlluPreviewPath = null;
+      return;
+    }
+    this._detailTitleEl.textContent = file.title;
+    this._detailEmptyEl.hidden = true;
+    this._detailBodyEl.hidden = false;
+    this._syncDetailControls(file);
+
+    const isConllu = file.mode === "conllu";
+    this._textWrapEl.hidden = isConllu;
+    this._conlluWrapEl.hidden = !isConllu;
+    // La comparaison et la note de tableau ne concernent que les formats texte : un
+    // CoNLL-U répond une charge d'une autre forme (`conllu_stats`, pas des unités).
+    if (isConllu) {
+      this._textCmpEl.hidden = true;
+      this._textTablesEl.hidden = true;
+      await this._refreshConlluPreview(file, force);
+    } else {
+      await this._refreshTextPreview(file, force);
+    }
+  }
+
+  /** Recopie l'état du fichier sélectionné dans les commandes du panneau. */
+  private _syncDetailControls(file: FileItem): void {
+    const ext = extFromFileName(file.title);
+    const opts = modeOptionsForExt(ext);
+    // Construit par le DOM, pas par du HTML : les libellés sont internes, mais un
+    // sink `innerHTML` de plus est un sink de plus à surveiller.
+    this._detailModeSel.replaceChildren(...opts.map((o) => {
+      const opt = document.createElement("option");
+      opt.value = o.value;
+      opt.textContent = o.label;
+      return opt;
+    }));
+    this._detailModeSel.value = file.mode;
+    this._detailColWrap.hidden = !modeAcceptsColumn(file.mode);
+    this._detailColInp.value = file.column_index != null ? String(file.column_index) : "";
+    this._detailLangInp.value = file.language;
+    this._detailLangInp.placeholder = file.mode === "tei" ? "xml:lang" : "lang";
+    // IMP-11 : une langue prise par DÉFAUT (aucun code dans le nom) reste signalée —
+    // 42 % des fichiers d'un corpus réel sont dans ce cas.
+    this._detailLangInp.classList.toggle("imp-lang-guessed", !!file.langGuessed);
+    this._detailLangInp.title = file.mode === "tei"
+      ? "TEI : laisser vide pour conserver le xml:lang du document ; renseigner pour forcer une langue."
+      : file.langGuessed
+        ? "⚠ Langue par défaut (aucun code détecté dans le nom de fichier) — vérifiez."
+        : "Code de langue (ex. fr, en).";
+    this._detailTitleInp.value = file.title;
+    const fige = file.status !== "pending";
+    for (const el of [this._detailModeSel, this._detailColInp, this._detailLangInp, this._detailTitleInp]) {
+      el.disabled = fige;
+    }
+  }
+
+  /** Branche les commandes du panneau sur le fichier sélectionné. */
+  private _bindDetailControls(): void {
+    this._detailModeSel.addEventListener("change", () => {
+      const f = this._selectedFile();
+      if (!f) return;
+      f.mode = this._detailModeSel.value;
+      // L'utilisateur a tranché : la déduction ne réécrira plus son choix. Elle
+      // propose, elle n'impose pas — et c'est ce qui la rend contestable.
+      f.modeLocked = true;
+      // Le column_index n'a pas de sens hors des modes qui l'honorent. Passer d'un
+      // mode DOCX à l'autre le CONSERVE : c'est le geste même de comparer ce que
+      // chaque mode fait de la même colonne.
+      if (!modeAcceptsColumn(f.mode)) f.column_index = undefined;
+      this._textPreviewPath = null;
+      this._conlluPreviewPath = null;
+      this._renderList();
+    });
+    this._detailColInp.addEventListener("input", () => {
+      const f = this._selectedFile();
+      if (!f) return;
+      const brut = this._detailColInp.value.trim();
+      if (brut === "") {
+        f.column_index = undefined;
+      } else {
+        const n = parseInt(brut, 10);
+        f.column_index = Number.isFinite(n) && n >= 1 ? n : undefined;
+      }
+      // La colonne change ce que le fichier contient : le verdict est à refaire.
+      // Sans ça, « indiquez la colonne à extraire » survivrait à sa propre réponse.
+      f.plan = undefined;
+      f.searchable = undefined;
+      // L'aperçu est gardé par le CHEMIN, qui ne bouge pas d'une colonne à l'autre :
+      // sans ce forçage, changer de colonne laissait l'aperçu sur la précédente.
+      this._textPreviewPath = null;
+      void this._refreshDetail(true);
+      void this._analyzePending();
+    });
+    this._detailLangInp.addEventListener("input", () => {
+      const f = this._selectedFile();
+      if (!f) return;
+      f.language = this._detailLangInp.value;
+      // IMP-11 : l'utilisateur a revu la langue → ne plus la signaler comme devinée.
+      if (f.langGuessed) {
+        f.langGuessed = false;
+        this._detailLangInp.classList.remove("imp-lang-guessed");
+      }
+    });
+    this._detailTitleInp.addEventListener("input", () => {
+      const f = this._selectedFile();
+      if (!f) return;
+      f.title = this._detailTitleInp.value;
+      this._detailTitleEl.textContent = f.title;
+      // La liste porte le titre : la garder muette la laisserait mentir.
+      const sel = this._listEl.querySelector(".imp-file-item-sel .imp-file-name");
+      if (sel) sel.textContent = f.title;
+    });
+  }
+
+  /** Le fichier sélectionné, ou `null` s'il a quitté la liste. */
+  private _selectedFile(): FileItem | null {
+    return this._files.find((f) => f.path === this._selectedPath) ?? null;
+  }
+
+  /** Sélectionne un fichier : la liste marque, le panneau suit. */
+  private _selectFile(file: FileItem | undefined): void {
+    if (!file || file.path === this._selectedPath) return;
+    this._selectedPath = file.path;
+    this._renderList();
   }
 
   private _updatePrecheck(): void {
@@ -607,41 +669,10 @@ export class ImportScreen {
     else                  { badge.textContent = "—";                                        badge.className = "chip"; }
   }
 
-  private _conlluCandidates(): FileItem[] {
-    return this._files.filter((f) => f.mode === "conllu");
-  }
 
-  private _setConlluPreviewEmpty(message: string, details?: string): void {
-    this._conlluBadgeEl.textContent = "Aucun";
-    this._conlluBadgeEl.className = "chip";
-    this._conlluFileEl.textContent = message;
-    this._conlluSummaryEl.textContent =
-      details ?? "Ajoutez un fichier CoNLL-U pour prévisualiser les tokens avant l’import.";
-    this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Aperçu indisponible.</td></tr>';
-    this._conlluPreviewPath = null;
-    this._conlluNextBtn.disabled = true;
-    this._conlluRefreshBtn.disabled = true;
-  }
-
-  private async _refreshConlluPreview(force = false): Promise<void> {
+  /** Aperçu CoNLL-U du fichier **sélectionné**, rendu dans le panneau de détail. */
+  private async _refreshConlluPreview(file: FileItem, force = false): Promise<void> {
     if (!this._conlluRowsEl) return;
-
-    const candidates = this._conlluCandidates();
-    if (candidates.length === 0) {
-      this._setConlluPreviewEmpty("Aucun fichier .conllu sélectionné.");
-      return;
-    }
-
-    if (this._conlluPreviewCursor >= candidates.length) {
-      this._conlluPreviewCursor = 0;
-    }
-    const file = candidates[this._conlluPreviewCursor];
-    this._conlluNextBtn.disabled = candidates.length <= 1;
-    this._conlluRefreshBtn.disabled = false;
-    this._conlluBadgeEl.textContent = `${this._conlluPreviewCursor + 1}/${candidates.length}`;
-    this._conlluBadgeEl.className = "chip warn";
-    this._conlluFileEl.textContent = file.title;
-
     if (!force && this._conlluPreviewPath === file.path) {
       return;
     }
@@ -689,7 +720,7 @@ export class ImportScreen {
       if (malformedLines > 0) metaParts.push(`${malformedLines} ligne(s) mal formée(s)`);
       // IMP-03 : l'aperçu tolère le non-UTF-8 mais l'import le rejette → prévenir ici.
       if (notUtf8) metaParts.push("⚠ non-UTF-8 — l'import rejettera ce fichier (ré-enregistrez en UTF-8)");
-      this._conlluSummaryEl.textContent = metaParts.join(" • ");
+      this._detailSummaryEl.textContent = metaParts.join(" • ");
 
       this._conlluRowsEl.innerHTML = "";
       if (rows.length === 0) {
@@ -714,7 +745,7 @@ export class ImportScreen {
     } catch (err) {
       if (reqId !== this._conlluPreviewReq) return;
       this._conlluPreviewPath = null;
-      this._conlluSummaryEl.textContent = "Lecture impossible du fichier CoNLL-U.";
+      this._detailSummaryEl.textContent = "Lecture impossible du fichier CoNLL-U.";
       this._conlluRowsEl.innerHTML = '<tr><td colspan="5" class="empty-hint">Erreur de lecture du fichier.</td></tr>';
       this._log(
         `Aperçu CoNLL-U indisponible (${file.title}): ${err instanceof Error ? err.message : String(err)}`,
@@ -723,9 +754,6 @@ export class ImportScreen {
     }
   }
 
-  private _textPreviewCandidates(): FileItem[] {
-    return this._files.filter(f => f.mode !== "conllu");
-  }
 
   /**
    * IMPO-01 — dire ce que le fichier CONTIENT avant de lui demander une colonne.
@@ -765,8 +793,7 @@ export class ImportScreen {
    * colonnes par l'identité `(fichier, colonne)` et refuse toujours deux fois la même.
    */
   private _splitPreviewedFileByColumn(): void {
-    const candidates = this._textPreviewCandidates();
-    const file = candidates[this._textPreviewCursor];
+    const file = this._selectedFile();
     if (!file) return;
     // Le bouton peut rester affiché après un import : l'aperçu ne se rafraîchit pas de
     // lui-même. Refuser en silence laisserait croire à un clic manqué.
@@ -804,8 +831,9 @@ export class ImportScreen {
     }
     this._files.splice(at + 1, 0, ...clones);
     this._log(`↳ "${base}" : un document par colonne (${columns} colonnes)`);
+    this._textPreviewPath = null;
     this._renderList();
-    void this._refreshTextPreview(true);
+    void this._refreshDetail(true);
   }
 
   /**
@@ -984,54 +1012,22 @@ export class ImportScreen {
         // l'analyse.
         file.modeLocked = true;
         if (!modeAcceptsColumn(mode)) file.column_index = undefined;
+        this._textPreviewPath = null;
         this._renderList();
-        void this._refreshTextPreview(true);
+        void this._refreshDetail(true);
       });
     });
   }
 
-  private _setTextPreviewEmpty(message: string, details?: string): void {
-    this._textPreviewTables = null;
-    if (this._textTablesEl) this._textTablesEl.hidden = true;
-    if (this._textCmpEl) this._textCmpEl.hidden = true;
-    this._textPreviewBadgeEl.textContent = "Aucun";
-    this._textPreviewBadgeEl.className = "chip";
-    this._textPreviewFileEl.textContent = message;
-    this._textPreviewSummaryEl.textContent =
-      details ?? "Ajoutez un fichier DOCX, ODT, TXT ou TEI pour prévisualiser les unités.";
-    this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Aperçu indisponible.</td></tr>';
-    this._textPreviewPath = null;
-    this._textPreviewNextBtn.disabled = true;
-    this._textPreviewRefreshBtn.disabled = true;
-  }
-
-  private async _refreshTextPreview(force = false): Promise<void> {
+  /** Aperçu des unités du fichier **sélectionné**, rendu dans le panneau de détail. */
+  private async _refreshTextPreview(file: FileItem, force = false): Promise<void> {
     if (!this._textPreviewRowsEl) return;
-
-    const candidates = this._textPreviewCandidates();
-    if (candidates.length === 0) {
-      this._setTextPreviewEmpty("Aucun fichier texte sélectionné.");
-      return;
-    }
     if (!this._conn) {
-      this._setTextPreviewEmpty(
-        candidates[0].title,
-        "Sidecar non connecté — aperçu indisponible pour les fichiers binaires.",
-      );
-      this._textPreviewBadgeEl.textContent = `0/${candidates.length}`;
+      this._detailSummaryEl.textContent =
+        "Sidecar non connecté — aperçu indisponible.";
+      this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Aperçu indisponible.</td></tr>';
       return;
     }
-
-    if (this._textPreviewCursor >= candidates.length) {
-      this._textPreviewCursor = 0;
-    }
-    const file = candidates[this._textPreviewCursor];
-    this._textPreviewNextBtn.disabled = candidates.length <= 1;
-    this._textPreviewRefreshBtn.disabled = false;
-    this._textPreviewBadgeEl.textContent = `${this._textPreviewCursor + 1}/${candidates.length}`;
-    this._textPreviewBadgeEl.className = "chip warn";
-    this._textPreviewFileEl.textContent = file.title;
-
     if (!force && this._textPreviewPath === file.path) return;
 
     const reqId = ++this._textPreviewReq;
@@ -1057,14 +1053,14 @@ export class ImportScreen {
       const truncated = res.truncated ?? false;
 
       if (!units || units.length === 0) {
-        this._textPreviewSummaryEl.textContent = "Aucune unité détectée.";
+        this._detailSummaryEl.textContent = "Aucune unité détectée.";
         this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Aucune unité exploitable trouvée.</td></tr>';
         return;
       }
 
       const pl = unitsTotal > 1 ? "s" : "";
       const truncNote = truncated ? ` — ${units.length}/${unitsTotal} affichées` : "";
-      this._textPreviewSummaryEl.textContent = `${unitsTotal} unité${pl}${truncNote}`;
+      this._detailSummaryEl.textContent = `${unitsTotal} unité${pl}${truncNote}`;
 
       this._textPreviewRowsEl.innerHTML = "";
       for (const unit of units) {
@@ -1094,7 +1090,7 @@ export class ImportScreen {
       this._textPreviewTables = null;
       this._textTablesEl.hidden = true;
       this._textCmpEl.hidden = true;
-      this._textPreviewSummaryEl.textContent = "Lecture impossible du fichier.";
+      this._detailSummaryEl.textContent = "Lecture impossible du fichier.";
       this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Erreur de lecture du fichier.</td></tr>';
       this._log(
         `Aperçu texte indisponible (${file.title}): ${err instanceof Error ? err.message : String(err)}`,
@@ -1572,41 +1568,6 @@ export class ImportScreen {
       .map(f => f.path);
     const groups = detectFamilyGroups(paths);
     this._renderFamilyDetectionBanner(groups);
-  }
-
-  private async _runIndex(): Promise<void> {
-    if (!this._conn) return;
-    this._indexBtn.disabled = true;
-    this._isBusy = true;
-    this._refreshRuntimeState();
-    this._log("Reconstruction de l'index FTS (job asynchrone)…");
-    try {
-      const job = await enqueueJob(this._conn, "index", {});
-      this._log(`Job index soumis (${job.job_id.slice(0, 8)}…)`);
-      this._jobCenter?.trackJob(job.job_id, "Rebuild index FTS", (done) => {
-        if (done.status === "done") {
-          const n = (done.result as { units_indexed?: number } | undefined)?.units_indexed ?? "?";
-          this._log(`✓ Index reconstruit — ${n} unités indexées.`);
-          this._showToast?.(`✓ Index reconstruit (${n} unités)`);
-        } else {
-          const errMsg = done.error ?? done.status;
-          this._log(`✗ Erreur index : ${errMsg}`, true);
-          const short = typeof errMsg === "string" && errMsg.length > 60 ? errMsg.slice(0, 57) + "…" : errMsg;
-          this._showToast?.(`✗ Erreur index FTS${short ? `: ${short}` : ""}`, true);
-        }
-        this._isBusy = false;
-        this._indexBtn.disabled = !this._conn;
-        this._refreshRuntimeState();
-      });
-    } catch (err) {
-      this._log(
-        `✗ Erreur index : ${err instanceof SidecarError ? err.message : String(err)}`,
-        true
-      );
-      this._isBusy = false;
-      this._indexBtn.disabled = !this._conn;
-      this._refreshRuntimeState();
-    }
   }
 
   private _setRuntimeState(kind: "ok" | "info" | "warn" | "error", text: string): void {
