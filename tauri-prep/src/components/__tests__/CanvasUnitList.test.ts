@@ -447,6 +447,38 @@ describe("stylisation inline (§5, DESIGN_inline_restyling)", () => {
     ]);
   });
 
+  it("ne repeint que la ligne stylisée, sans refaire la liste", async () => {
+    const decorated: number[] = [];
+    const list = new CanvasUnitList(host, {
+      onStyleText: async () => {},
+      decorateRow: (u) => { decorated.push(u.unit_id); },
+    });
+    list.setData({
+      docId: 1,
+      units: [
+        unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" }),
+        unit(2, { text_norm: "une autre ligne", text_raw: "une autre ligne" }),
+      ],
+    });
+    list.render();
+    const rows = () => host.querySelectorAll<HTMLElement>(".prep-conv-unit-row");
+    const otherBefore = rows()[1];
+    decorated.length = 0; // on ne compte que ce qui suit le geste
+
+    selectInRow(3, 6);
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+
+    const styled = rows()[0].querySelector(".prep-conv-unit-text")!;
+    expect(styled.querySelector("em")).not.toBeNull();
+    expect(styled.textContent).toBe("un mot ici");
+    // Rien d'autre n'est reconstruit : la couche n'a pas à repeindre ses surcouches,
+    // et les lignes voisines sont les mêmes nœuds qu'avant le geste.
+    expect(decorated).toEqual([]);
+    expect(rows()[1]).toBe(otherBefore);
+  });
+
   it("le même bouton retire ce qu'il vient de poser, sans passer par Annuler", async () => {
     const saved: string[] = [];
     const list = new CanvasUnitList(host, { onStyleText: async (_id, r) => { saved.push(r); } });

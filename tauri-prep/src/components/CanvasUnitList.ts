@@ -282,11 +282,15 @@ export class CanvasUnitList {
       });
     });
 
+    // Index par identifiant : les deux boucles ci-dessous parcouraient `_units` pour
+    // chaque ligne rendue, soit le carré du nombre d'unités — 3,1 millions de
+    // comparaisons par rendu sur un document de 1754 unités, et deux fois.
+    const byId = new Map(this._units.map((u) => [u.unit_id, u]));
+
     // Let the active mode layer its per-unit decor (curation markers, …) on the rows.
     if (this._opts.decorateRow) {
       rows.forEach((el) => {
-        const uid = parseInt(el.dataset.uid!, 10);
-        const u = this._units.find((x) => x.unit_id === uid);
+        const u = byId.get(parseInt(el.dataset.uid!, 10));
         if (u) this._opts.decorateRow!(u, el);
       });
     }
@@ -295,7 +299,7 @@ export class CanvasUnitList {
     if (this._opts.onEditText) {
       rows.forEach((el) => {
         const uid = parseInt(el.dataset.uid!, 10);
-        const u = this._units.find((x) => x.unit_id === uid);
+        const u = byId.get(uid);
         if (!u) return;
         if (this._editingUid === uid) this._mountEditor(el, u);
         else this._mountPen(el, u);
@@ -486,9 +490,25 @@ export class CanvasUnitList {
     } catch {
       return; // l'hôte a signalé l'erreur ; on garde la sélection pour réessayer
     }
-    u.text_raw = next; // le geste ne touche pas text_norm
-    this.render();     // le rendu retire la barre et refait la ligne…
-    this._restoreStyleSelection(target, domStart, domEnd); // … on la remet en place
+    u.text_raw = next;          // le geste ne touche pas text_norm
+    this._repaintUnitText(u);   // … donc une seule ligne a bougé
+    this._restoreStyleSelection(target, domStart, domEnd);
+  }
+
+  /** Repeindre le texte d'une seule ligne, sans rendu global.
+   *
+   *  Poser une balise ne change que `text_raw` : ni la recherche, ni les compteurs, ni
+   *  les blocs ¶ n'en dépendent — ils lisent tous `text_norm`. Un rendu complet
+   *  reconstruisait pourtant toutes les lignes, et avec elles les surcouches que les
+   *  couches y repeignent : en Annotation, sur `Lodge-Small_ES.docx`, 1754 lignes et
+   *  20 636 tokens redessinés pour une balise posée sur un mot. Le contenu écrit ici est
+   *  celui-là même que le rendu produit pour cette ligne (cf. `rowsHtml`). */
+  private _repaintUnitText(u: UnitRecord): void {
+    const span = this._host.querySelector<HTMLElement>(
+      `.prep-conv-unit-row[data-uid="${u.unit_id}"] .prep-conv-unit-text`,
+    );
+    if (!span) return this.render(); // ligne sortie de l'affichage : rendu complet
+    setHtml(span, raw(richTextToHtml(u.text_raw, u.text_norm ?? "")));
   }
 
   /** Reposer la sélection et la barre sur la ligne réaffichée, après un style appliqué.
@@ -504,8 +524,9 @@ export class CanvasUnitList {
     const u = this._units.find((x) => x.unit_id === target.unitId);
     const row = this._host.querySelector<HTMLElement>(`.prep-conv-unit-row[data-uid="${target.unitId}"]`);
     const span = row?.querySelector<HTMLElement>(".prep-conv-unit-text");
-    // La ligne peut avoir quitté l'affichage (filtre, changement de document) : on n'insiste pas.
-    if (!u || !span || !selectRangeIn(span, domStart, domEnd)) return;
+    // La ligne peut avoir quitté l'affichage (filtre, changement de document) : on n'insiste
+    // pas — mais la barre doit partir avec elle, sans quoi elle survit au texte qu'elle vise.
+    if (!u || !span || !selectRangeIn(span, domStart, domEnd)) return this._hideStyleBar();
     this._styleTarget = target;
     this._showStyleBar(span, this._styleBase(u), target.start, target.end);
   }
