@@ -211,10 +211,18 @@ export interface ImportPlan {
 /** Ce qu'on sait du fichier au moment de déduire (un seul aperçu suffit). */
 export interface PlanEvidence {
   ext: string;
-  /** Numérotation lue sur l'aperçu en mode paragraphes. */
+  /** Numérotation lue sur l'aperçu de sonde. */
   numbering: NumberingForm | null;
-  /** Unités trouvables que le mode **paragraphes** rendrait. */
-  searchableAsParagraphs: number;
+  /**
+   * Unités trouvables que le **mode de sonde** rendrait — paragraphes pour DOCX/ODT,
+   * `txt_numbered_lines` pour un `.txt` (le seul qui existe).
+   *
+   * Le nom compte : sur un `.txt`, la sonde **consomme** le marqueur `[n]`, qui devient
+   * l'`external_id` et disparaît du texte. `detectNumbering` n'y voit donc aucune
+   * numérotation là où il y en a une, et ce compte est la seule preuve qui reste
+   * qu'elle existait.
+   */
+  searchableInProbe: number;
   /** Colonnes du document quand ses tables s'accordent (cf. {@link uniformTableColumns}). */
   uniformColumns?: number;
   /** Une colonne est déjà demandée pour ce fichier. */
@@ -244,6 +252,24 @@ export function planImport(ev: PlanEvidence): ImportPlan {
     const numbered = e === "docx" ? "docx_numbered_lines" : "odt_numbered_lines";
     const paragraphs = e === "docx" ? "docx_paragraphs" : "odt_paragraphs";
 
+    // **Le verdict le plus grave d'abord.** Même échelle que la sévérité du moteur,
+    // posée pour la même raison : « rien n'est trouvable » ne doit être écrasé par
+    // aucun diagnostic plus doux. Inerte sur les fichiers mesurés — une numérotation
+    // détectée implique qu'il y avait du texte à lire — mais vrai par construction
+    // plutôt que par chance.
+    //
+    // Rien à lire hors tableau, alors que le document en porte un : c'est le bitexte
+    // en tableau, et la colonne est la seule chose qui manque.
+    if (ev.searchableInProbe === 0 && !ev.hasColumn && (ev.uniformColumns ?? 0) >= 2) {
+      return {
+        mode: paragraphs,
+        verdict: "column_needed",
+        reason: `le texte est dans un tableau de ${ev.uniformColumns} colonnes — indiquez la colonne à extraire`,
+      };
+    }
+    if (ev.searchableInProbe === 0 && ev.numbering === null) {
+      return { mode: paragraphs, verdict: "no_mode", reason: "aucun mode ne rend d'unité trouvable" };
+    }
     if (ev.numbering === "bracket") {
       return { mode: numbered, verdict: "ok", reason: "marqueurs [n] détectés" };
     }
@@ -255,18 +281,6 @@ export function planImport(ev: PlanEvidence): ImportPlan {
           + "le numéro restera dans le texte et ne servira pas d'ancre",
       };
     }
-    // Rien à lire hors tableau, alors que le document en porte un : c'est le
-    // bitexte en tableau, et la colonne est la seule chose qui manque.
-    if (ev.searchableAsParagraphs === 0 && !ev.hasColumn && (ev.uniformColumns ?? 0) >= 2) {
-      return {
-        mode: paragraphs,
-        verdict: "column_needed",
-        reason: `le texte est dans un tableau de ${ev.uniformColumns} colonnes — indiquez la colonne à extraire`,
-      };
-    }
-    if (ev.searchableAsParagraphs === 0) {
-      return { mode: paragraphs, verdict: "no_mode", reason: "aucun mode ne rend d'unité trouvable" };
-    }
     return { mode: paragraphs, verdict: "ok", reason: "aucun marqueur — un paragraphe par unité" };
   }
 
@@ -274,7 +288,12 @@ export function planImport(ev: PlanEvidence): ImportPlan {
     // `txt_numbered_lines` est le SEUL mode TXT (`dispatch.py`) : un `.txt` qui ne
     // porte pas de `[n]` n'a aucune porte d'entrée, et l'écran doit le dire plutôt que
     // de l'importer en 100 % `structure`. 45 fichiers du corpus sont dans ce cas.
-    if (ev.numbering === "bracket") {
+    // `searchableInProbe > 0` prime sur la détection : le mode TXT numéroté a mangé
+    // les marqueurs pour en faire des `external_id`, donc `detectNumbering` n'en voit
+    // aucun sur un fichier qui en porte. Le compte est la preuve qui reste — sans lui
+    // on déclarait « rien ne serait trouvable » sur `Asimov-Foundation_EN.txt`, qui
+    // rend 1683 unités toutes indexables, et sur 195 autres `.txt` du disque.
+    if (ev.numbering === "bracket" || ev.searchableInProbe > 0) {
       return { mode: "txt_numbered_lines", verdict: "ok", reason: "marqueurs [n] détectés" };
     }
     return {

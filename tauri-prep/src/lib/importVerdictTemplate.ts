@@ -53,6 +53,10 @@ export function verdictForChoice(
   if (chosenMode === plan.mode) {
     return { plan, modeLabel: chosenLabel, searchable };
   }
+  // Le motif d'origine survit quand il portait autre chose qu'un simple accord : un
+  // fichier qui attend une colonne cesserait sinon de le dire dès qu'on change son
+  // mode, et le verdict resterait orange sans qu'on sache pourquoi.
+  const garde = plan.verdict === "ok" ? "" : ` ; ${plan.reason}`;
   return {
     plan: {
       ...plan,
@@ -61,7 +65,7 @@ export function verdictForChoice(
       // mérite d'être vu : c'est le cas où l'utilisateur sait quelque chose que le
       // fichier ne dit pas — ou se trompe.
       verdict: plan.verdict === "ok" ? "numbering_lost" : plan.verdict,
-      reason: `choisi à la main — la lecture du fichier proposait « ${deducedLabel} »`,
+      reason: `choisi à la main — la lecture du fichier proposait « ${deducedLabel} »${garde}`,
     },
     modeLabel: chosenLabel,
     searchable: null,

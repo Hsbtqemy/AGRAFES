@@ -514,19 +514,19 @@ describe("detectNumbering", () => {
 
 describe("planImport", () => {
   it("pose le mode numéroté quand les marqueurs [n] sont là", () => {
-    expect(planImport({ ext: "docx", numbering: "bracket", searchableAsParagraphs: 40 }))
+    expect(planImport({ ext: "docx", numbering: "bracket", searchableInProbe: 40 }))
       .toMatchObject({ mode: "docx_numbered_lines", verdict: "ok" });
   });
 
   it("pose paragraphes en l'absence de marqueur — le cas des 149 fichiers", () => {
-    expect(planImport({ ext: "docx", numbering: null, searchableAsParagraphs: 17 }))
+    expect(planImport({ ext: "docx", numbering: null, searchableInProbe: 17 }))
       .toMatchObject({ mode: "docx_paragraphs", verdict: "ok" });
   });
 
   it("importe un « 1. » en paragraphes MAIS annonce l'ancre perdue", () => {
     // 48 fichiers du corpus. Le document s'importe et reste trouvable ; ce qui se
     // perd est le numéro comme ancre d'alignement, et ça doit se dire.
-    const plan = planImport({ ext: "docx", numbering: "dot", searchableAsParagraphs: 46 });
+    const plan = planImport({ ext: "docx", numbering: "dot", searchableInProbe: 46 });
     expect(plan.mode).toBe("docx_paragraphs");
     expect(plan.verdict).toBe("numbering_lost");
     expect(plan.reason).toContain("ancre");
@@ -534,7 +534,7 @@ describe("planImport", () => {
 
   it("réclame une colonne quand le texte est dans un tableau", () => {
     const plan = planImport({
-      ext: "docx", numbering: null, searchableAsParagraphs: 0, uniformColumns: 2,
+      ext: "docx", numbering: null, searchableInProbe: 0, uniformColumns: 2,
     });
     expect(plan.verdict).toBe("column_needed");
     expect(plan.reason).toContain("2 colonnes");
@@ -542,7 +542,7 @@ describe("planImport", () => {
 
   it("ne réclame plus la colonne une fois qu'elle est donnée", () => {
     expect(planImport({
-      ext: "docx", numbering: null, searchableAsParagraphs: 0,
+      ext: "docx", numbering: null, searchableInProbe: 0,
       uniformColumns: 2, hasColumn: true,
     }).verdict).toBe("no_mode");
   });
@@ -550,27 +550,27 @@ describe("planImport", () => {
   it("dit qu'un .txt sans [n] n'a aucun mode — il n'y en a qu'un", () => {
     // `txt_numbered_lines` est le SEUL mode TXT : 45 fichiers du corpus entrent en
     // base à 100 % `structure`, donc introuvables, et rien ne le disait.
-    const plain = planImport({ ext: "txt", numbering: null, searchableAsParagraphs: 0 });
+    const plain = planImport({ ext: "txt", numbering: null, searchableInProbe: 0 });
     expect(plain.verdict).toBe("no_mode");
-    const dot = planImport({ ext: "txt", numbering: "dot", searchableAsParagraphs: 0 });
+    const dot = planImport({ ext: "txt", numbering: "dot", searchableInProbe: 0 });
     expect(dot.verdict).toBe("no_mode");
     expect(dot.reason).toContain("1.");
   });
 
   it("laisse passer un .txt correctement numéroté", () => {
-    expect(planImport({ ext: "txt", numbering: "bracket", searchableAsParagraphs: 48 }))
+    expect(planImport({ ext: "txt", numbering: "bracket", searchableInProbe: 48 }))
       .toMatchObject({ mode: "txt_numbered_lines", verdict: "ok" });
   });
 
   it("route TEI et CoNLL-U sans rien déduire", () => {
-    expect(planImport({ ext: "xml", numbering: null, searchableAsParagraphs: 0 }).mode).toBe("tei");
-    expect(planImport({ ext: "conllu", numbering: null, searchableAsParagraphs: 0 }).mode).toBe("conllu");
+    expect(planImport({ ext: "xml", numbering: null, searchableInProbe: 0 }).mode).toBe("tei");
+    expect(planImport({ ext: "conllu", numbering: null, searchableInProbe: 0 }).mode).toBe("conllu");
   });
 
   it("l'ODT suit la même règle que le DOCX", () => {
     // Le cas mesuré : 1141 unités des deux côtés, 1141 trouvables en paragraphes
     // et 0 en numéroté, parce que la numérotation est calculée au rendu.
-    expect(planImport({ ext: "odt", numbering: null, searchableAsParagraphs: 1141 }).mode)
+    expect(planImport({ ext: "odt", numbering: null, searchableInProbe: 1141 }).mode)
       .toBe("odt_paragraphs");
   });
 });
@@ -598,5 +598,51 @@ describe("recommendedMode", () => {
   it("retombe sur les comptes quand la déduction n'a rien à dire", () => {
     expect(recommendedMode(OUTCOMES, null)).toBe("docx_paragraphs");
     expect(recommendedMode(OUTCOMES, "mode_inconnu")).toBe("docx_paragraphs");
+  });
+});
+
+describe("planImport — le .txt dont la sonde consomme le signal", () => {
+  it("ne déclare PAS introuvable un .txt que le mode numéroté lit très bien", () => {
+    // RED avant correctif. La sonde d'un `.txt` est `txt_numbered_lines`, et ce mode
+    // CONSOMME le marqueur : `text_raw` sort sans son `[4]`, qui est devenu
+    // l'`external_id`. `detectNumbering` n'y voit donc aucune numérotation, et le
+    // verdict tombait sur « rien ne serait trouvable » — sur `Asimov-Foundation_EN.txt`,
+    // qui rend 1683 unités toutes indexables. 196 `.txt` du disque sont dans ce cas.
+    // La consommation du marqueur EST la preuve qu'il existait : le compte le dit.
+    expect(planImport({ ext: "txt", numbering: null, searchableInProbe: 1683 }))
+      .toMatchObject({ mode: "txt_numbered_lines", verdict: "ok" });
+  });
+
+  it("garde le verdict « rien de trouvable » quand le compte le confirme", () => {
+    // Le `.txt` numéroté « 1. » : 48 unités, toutes `structure`, donc 0 trouvable.
+    expect(planImport({ ext: "txt", numbering: "dot", searchableInProbe: 0 }).verdict)
+      .toBe("no_mode");
+    expect(planImport({ ext: "txt", numbering: null, searchableInProbe: 0 }).verdict)
+      .toBe("no_mode");
+  });
+});
+
+describe("planImport — l'échelle des verdicts", () => {
+  it("la colonne manquante passe AVANT la numérotation détectée", () => {
+    // Même règle que la sévérité du moteur : le verdict le plus grave n'est écrasé
+    // par aucun diagnostic plus doux. Un document dont rien n'est lisible hors
+    // tableau doit réclamer sa colonne, pas commenter sa numérotation.
+    expect(planImport({
+      ext: "docx", numbering: "dot", searchableInProbe: 0, uniformColumns: 2,
+    }).verdict).toBe("column_needed");
+  });
+
+  it("« rien de trouvable » n'est pas masqué par un motif plus doux", () => {
+    expect(planImport({ ext: "docx", numbering: null, searchableInProbe: 0 }).verdict)
+      .toBe("no_mode");
+  });
+
+  it("mais des marqueurs consommés restent une bonne nouvelle", () => {
+    // Garde-fou du sens inverse : `searchableInProbe: 0` avec une numérotation
+    // DÉTECTÉE ne veut pas dire « rien ne marche » — sur un DOCX la sonde est
+    // paragraphes, qui n'enlève rien, donc ce cas n'existe pas ; le mode numéroté
+    // reste le bon si les marqueurs sont là.
+    expect(planImport({ ext: "docx", numbering: "bracket", searchableInProbe: 0 }))
+      .toMatchObject({ mode: "docx_numbered_lines", verdict: "ok" });
   });
 });

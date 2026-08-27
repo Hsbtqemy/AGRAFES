@@ -148,3 +148,24 @@ describe("verdictForChoice", () => {
     expect(verdictForChoice(bloque, "docx_numbered_lines", "N", "P", null).plan.verdict).toBe("no_mode");
   });
 });
+
+describe("verdictForChoice — ce qu'un choix ne doit pas effacer", () => {
+  it("garde le motif d'origine quand il portait une information manquante", () => {
+    // RED avant correctif : le motif était remplacé en entier, si bien qu'un fichier
+    // attendant une colonne cessait de le dire dès qu'on changeait son mode. Le
+    // verdict restait orange sans qu'on sache pourquoi.
+    const attendColonne = plan({
+      mode: "docx_paragraphs", verdict: "column_needed",
+      reason: "le texte est dans un tableau de 2 colonnes — indiquez la colonne à extraire",
+    });
+    const v = verdictForChoice(attendColonne, "docx_numbered_lines", "Lignes numérotées [n]", "Paragraphes", null);
+    expect(v.plan.reason).toContain("colonne");
+    expect(v.plan.reason).toContain("choisi à la main");
+  });
+
+  it("n'ajoute rien d'autre quand la déduction disait simplement « ok »", () => {
+    const ok = plan({ mode: "docx_paragraphs", verdict: "ok", reason: "aucun marqueur" });
+    const v = verdictForChoice(ok, "docx_numbered_lines", "Lignes numérotées [n]", "Paragraphes", null);
+    expect(v.plan.reason).not.toContain("aucun marqueur");
+  });
+});

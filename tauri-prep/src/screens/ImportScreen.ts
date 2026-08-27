@@ -867,7 +867,7 @@ export class ImportScreen {
       : null;
     if (probe === null) {
       // TEI / CoNLL-U : rien à déduire, le format se décrit lui-même.
-      file.plan = planImport({ ext, numbering: null, searchableAsParagraphs: 0 });
+      file.plan = planImport({ ext, numbering: null, searchableInProbe: 0 });
       file.searchable = null;
       this._renderList();
       return;
@@ -883,7 +883,7 @@ export class ImportScreen {
       const plan = planImport({
         ext,
         numbering: numbering.form,
-        searchableAsParagraphs: res.units_line ?? 0,
+        searchableInProbe: res.units_line ?? 0,
         uniformColumns: uniformTableColumns(res.tables),
         hasColumn: file.column_index !== undefined,
       });

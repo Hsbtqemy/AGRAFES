@@ -20,7 +20,7 @@ sous son nom, dès qu'il est analysé — rien à déplier. La carte de droite n
 
 **Rien n'est à importer**, sauf à la dernière zone, qui le demande explicitement.
 
-**Les sept cas, mesurés le 27 août sur les charges utiles réelles du binaire empaqueté.**
+**Les huit cas, mesurés le 27 août sur les charges utiles réelles du binaire empaqueté.**
 Chaque ligne dit ce que la ligne du fichier doit afficher.
 
 | fichier | mode posé | motif attendu | compte |
@@ -32,12 +32,22 @@ Chaque ligne dit ce que la ligne du fichier doit afficher.
 | `Houellebecq-Plateforme_FR.docx` | Lignes numérotées [n] | marqueurs [n] détectés | *aucun* |
 | `Asimov-Foundation_FR_réaligné.odt` | Paragraphes | aucun marqueur | **1141 trouvables** |
 | `9_CI-TrFr-2021_Aligné_UTF8.txt` | TXT lignes [n] | seul mode TXT | **rien de trouvable** |
+| `Asimov-Foundation_EN.txt` (`…EnEs-Aligné-TXT-utf8`) | TXT lignes [n] | marqueurs [n] détectés | **1683 trouvables** |
 
 **Pourquoi certaines lignes n'affichent aucun compte.** L'analyse ne lit le fichier **qu'une
 fois**, en mode paragraphes. Quand elle en déduit le mode *numéroté*, elle sait que le document
 sera trouvable — les marqueurs sont là — sans connaître le compte de ce mode-là. Afficher un
 nombre pris à l'autre mode serait un chiffre faux : on n'en donne aucun. C'est voulu, ce n'est
 pas un trou.
+
+**Les deux `.txt` sont un couple, et c'est délibéré.** La sonde d'un `.txt` est
+`txt_numbered_lines`, le seul mode TXT — et ce mode **consomme** le marqueur, qui devient
+l'`external_id` et disparaît du texte. Un `.txt` correctement numéroté n'affiche donc **aucun
+marqueur** à la lecture, exactement comme un `.txt` qui n'en a jamais eu. Seul le compte les
+sépare. C'est le défaut qu'une seconde passe adverse a trouvé : `Asimov-Foundation_EN.txt`
+était déclaré « rien ne serait trouvable » alors qu'il rend 1683 unités toutes indexables, et
+195 autres `.txt` du disque étaient dans le même cas. Les deux lignes doivent donc être jouées
+ensemble, sinon le trou se rouvre sans qu'on le voie.
 
 **Les deux cas qui portent la passe.** `Houellebecq-Plateforme_FR.docx` est le piège : les deux
 modes y rendent **1133 unités chacun**, et 1133 sur 1133 sont **différentes** — le mode numéroté
@@ -50,7 +60,9 @@ est le cas de l'ancien défaut : importé en « Lignes numérotées [n] », il p
 tableau et le `.txt` sont sous `Downloads\OneDrive_2026-06-29\00-Hugo-Corpus Multilingues\CI-2021`
 (dossiers `…-Tableau` et `…-Aligné`). `Coe-House` et `Houellebecq` sont sous
 `Downloads\GRAFE-Lit-Aligne\…\Bitextes anglais-francais` et `…\Bitextes français-roumain` ;
-l'`.odt` sous `…\GRAFE-Lit-EnFr-REAligné-DOCX`.
+l'`.odt` sous `…\GRAFE-Lit-EnFr-REAligné-DOCX`, et `Asimov-Foundation_EN.txt` sous
+`…\Bitextes anglais-espagnol\GRAFE-Lit-EnEs-Aligné-TXT-utf8` — **pas** la variante `-ansi`
+du dossier voisin, qui porte le même nom.
 
 ### Le verdict sur la ligne
 
@@ -69,6 +81,8 @@ l'`.odt` sous `…\GRAFE-Lit-EnFr-REAligné-DOCX`.
 - [ ] Saisir **1** dans le champ « col » de cette ligne : le verdict redevient vert, **48 trouvables**, et la mention de colonne disparaît
 - [ ] Effacer la colonne : le verdict redemande la colonne — il ne reste pas sur l'ancien état
 - [ ] Ajouter `9_CI-TrFr-2021_Aligné_UTF8.txt` : verdict **rouge**, **« rien de trouvable »**, motif disant que c'est le **seul mode TXT**
+- [ ] Ajouter `Asimov-Foundation_EN.txt` : verdict **vert**, **1683 trouvables**, motif **marqueurs [n] détectés** — alors que son aperçu n'en montre aucun, le mode les ayant consommés
+- [ ] Les deux `.txt` sont côte à côte dans la liste et portent des verdicts **opposés** : c'est ce contraste qui protège du défaut trouvé le 27 août
 - [ ] Aucun de ces fichiers n'est passé en statut « erreur » : ils restent **en attente**, importables si on insiste
 
 ### Ce que la file annonce avant d'importer
@@ -83,6 +97,7 @@ l'`.odt` sous `…\GRAFE-Lit-EnFr-REAligné-DOCX`.
 - [ ] Sur `Coe-House-AL_FR.docx`, changer le mode à la main pour **Paragraphes** dans le sélecteur de la ligne
 - [ ] Le verdict ne dit **plus** « marqueurs [n] détectés » — ce motif justifiait le mode qu'on vient d'écarter — mais **« choisi à la main — la lecture du fichier proposait « Lignes numérotées [n] » »**
 - [ ] Il n'affiche plus de compte non plus : celui qu'on avait était mesuré sur l'autre mode
+- [ ] Sur le bitexte en tableau **sans colonne**, changer le mode à la main : le motif dit « choisi à la main » **et** continue de réclamer la colonne — l'information ne disparaît pas parce qu'on a touché au mode
 - [ ] Déplier **« Aperçu texte »** sur ce fichier : le tableau comparatif marque **recommandé** sur **Lignes numérotées [n]**, et le ✓ sur Paragraphes — l'écran montre le désaccord au lieu de le masquer
 - [ ] Cliquer **Lignes numérotées [n]** dans le tableau : la ligne suit, et le verdict retrouve son motif d'origine
 
