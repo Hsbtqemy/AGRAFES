@@ -97,7 +97,7 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 ### Alignement et recherche
 
 - [ ] **Aucune famille n'est proposée à l'import** — c'est attendu et non un défaut : la détection travaille sur le nom de fichier, qui ne porte ici aucun code de langue, et les deux colonnes partagent de toute façon le même nom. Créer la relation source↔traduction à la main dans **Métadonnées**
-- [ ] L'alignement par ancre `external_id` journalise **48 liens créés**, sans orpheline
+- [ ] L'alignement par ancre `external_id` journalise **48 liens créés**, sans orpheline (mesuré au moteur le 27 août : 48 liens exactement)
 - [ ] La matrice affiche deux colonnes peuplées et en regard : la ligne 2 montre « The Observer view… » face à « Vaccins… »
 - [ ] Les deux documents apparaissent dans le sélecteur du concordancier
 - [ ] En filtrant sur la colonne anglaise, chercher **Observer** rend au moins une ligne — donc le document est bien indexé, ce que le mode numéroté n'aurait pas permis
@@ -106,7 +106,7 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 
 - [ ] `2021_Texte6_…Tableau - Copie.docx` éclaté en deux lignes : la colonne 1 annonce **95 unités**, la colonne 2 **96**
 - [ ] L'écart se voit donc **avant** l'import, dans l'aperçu, sans avoir à ouvrir le fichier dans Word
-- [ ] Après import des deux colonnes, l'alignement par ancre laisse une unité sans correspondance côté colonne 2 — c'est la source qui est irrégulière, pas l'import
+- [ ] Après import des deux colonnes, l'alignement par ancre crée **95 liens** et signale **« 1 external_id(s) in target missing from pivot »** — mesuré au moteur le 27 août. L'unité 96 de la colonne 2 reste sans correspondance : c'est la source qui est irrégulière, pas l'import, et l'application le dit au lieu de le taire
 - [ ] Un fichier portant des tableaux de **tailles différentes** — par exemple `HDR V7 06 juillet.docx` ou `Conventions-Textes journalistiques…docx` — affiche l'énumération (« N tableaux (…) — vérifiez l'aperçu avant de choisir. ») et **aucun bouton** : « un document par colonne » n'a pas de réponse quand les tableaux se contredisent, et le champ colonne reste saisissable à la main
 - [ ] Un fichier portant **plusieurs** tableaux **de même largeur** propose bien le bouton
 - [ ] L'audit de corpus (écran **Métadonnées**, panneau d'audit) liste les deux documents sous **« Doublons de nom de fichier »** — c'est exact, et c'est le prix assumé d'un fichier qui produit deux documents ; leurs `source_hash` ne collisionnent pas, eux
