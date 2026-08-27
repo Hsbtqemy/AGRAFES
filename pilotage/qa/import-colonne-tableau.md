@@ -7,6 +7,9 @@ derniere: 2026-08-27
 
 # QA — un tableau à deux colonnes devient deux documents alignés
 
+**Close 45/45 le 27 août 2026**, sur le sidecar reconstruit du jour. Rejouable telle quelle
+après toute modification de l'écran d'import, de l'extraction par colonne ou du garde de doublon.
+
 Passe écrite après le lot du 27 août. Un bitexte en tableau — deux langues en regard dans
 les cellules d'un même `.docx` — n'avait **aucun mode d'import qui le lise**. Elle valide la
 chaîne entière : l'écran dit ce que le fichier contient, met le fichier une fois par colonne, importe
@@ -118,15 +121,15 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 
 - [x] `2021_Texte6_…Tableau - Copie.docx` éclaté en deux lignes : la colonne 1 annonce **95 unités**, la colonne 2 **96**
 - [x] L'écart se voit donc **avant** l'import, dans l'aperçu, sans avoir à ouvrir le fichier dans Word
-- [ ] Après import des deux colonnes, l'alignement par ancre crée **95 liens** (mesuré au moteur le 27 août)
-- [ ] La matrice affiche **« · 1 hors matrice »** dans sa ligne de résumé : l'unité 96 de la colonne 2 n'est couverte par aucun lien. C'est la source qui est irrégulière, pas l'import
-- [ ] Ce « 1 hors matrice » est aussi un **bouton** sur l'en-tête de la colonne concernée, et le cliquer ouvre la liste de l'unité non couverte — le seul endroit d'où elle est visible et actionnable
-- [ ] Un fichier portant des tableaux de **tailles différentes** — par exemple `HDR V7 06 juillet.docx` ou `Conventions-Textes journalistiques…docx` — affiche l'énumération (« N tableaux (…) — vérifiez l'aperçu avant de choisir. ») et **aucun bouton** : « un document par colonne » n'a pas de réponse quand les tableaux se contredisent, et le champ colonne reste saisissable à la main
-- [ ] L'audit de corpus (écran **Métadonnées**, panneau d'audit) liste les deux documents sous **« Doublons de nom de fichier »** — c'est exact, et c'est le prix assumé d'un fichier qui produit deux documents ; leurs `source_hash` ne collisionnent pas, eux
+- [x] Après import des deux colonnes, l'alignement par ancre crée **95 liens** (mesuré au moteur le 27 août)
+- [x] La matrice affiche **« · 1 hors matrice »** dans sa ligne de résumé : l'unité 96 de la colonne 2 n'est couverte par aucun lien. C'est la source qui est irrégulière, pas l'import
+- [x] Ce « 1 hors matrice » est aussi un **bouton** sur l'en-tête de la colonne concernée, et le cliquer ouvre la liste de l'unité non couverte — le seul endroit d'où elle est visible et actionnable
+- [x] Un fichier portant des tableaux de **tailles différentes** — par exemple `HDR V7 06 juillet.docx` ou `Conventions-Textes journalistiques…docx` — affiche l'énumération (« N tableaux (…) — vérifiez l'aperçu avant de choisir. ») et **aucun bouton** : « un document par colonne » n'a pas de réponse quand les tableaux se contredisent, et le champ colonne reste saisissable à la main
+- [x] L'audit de corpus (écran **Métadonnées**, panneau d'audit) liste les deux documents sous **« Doublons de nom de fichier »** — c'est exact, et c'est le prix assumé d'un fichier qui produit deux documents ; leurs `source_hash` ne collisionnent pas, eux
 
 ### Non-régression
 
-- [ ] Un `.docx` ordinaire s'importe comme avant, sans champ colonne renseigné et sans note de tableau
-- [ ] Un `.odt` n'affiche **aucune** note de tableau, même s'il en contient — aucun parcours par colonne n'existe hors DOCX, et l'écran ne doit rien promettre qu'il ne sait tenir
-- [ ] Le pré-contrôle refuse toujours un fichier **sans colonne** déjà présent dans le corpus, avec le message « Déjà dans le corpus (doc_id N) »
-- [ ] `8-CI-TrEn-2022_A Aligner.docx` annonce toujours **28 unités** en mode paragraphes — le lot ne touche pas aux fichiers sans tableau
+- [x] Un `.docx` ordinaire s'importe comme avant, sans champ colonne renseigné et sans note de tableau
+- [x] Un `.odt` n'affiche **aucune** note de tableau, même s'il en contient — aucun parcours par colonne n'existe hors DOCX, et l'écran ne doit rien promettre qu'il ne sait tenir
+- [x] Le pré-contrôle refuse toujours un fichier **sans colonne** déjà présent dans le corpus, avec le message « Déjà dans le corpus (doc_id N) »
+- [x] `8-CI-TrEn-2022_A Aligner.docx` annonce toujours **28 unités** en mode paragraphes — le lot ne touche pas aux fichiers sans tableau

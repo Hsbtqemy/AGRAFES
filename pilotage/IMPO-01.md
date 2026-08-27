@@ -5,13 +5,18 @@ statut: interrompu
 
 # IMPO-01 — la page d'import : elle écrit sans jamais se relire
 
-**Arrêté sur** — le bitexte en tableau marche de bout en bout, la passe `qa/import-colonne-tableau.md`
-attend d'être jouée ; l'aperçu comparatif, lui, n'est toujours pas commencé.
+**Arrêté sur** — le bitexte en tableau est **livré et validé** : passe
+`qa/import-colonne-tableau.md` close **45/45** le 27 août 2026, sur le binaire reconstruit.
+L'aperçu comparatif, qui reste la raison d'être de la fiche, n'est toujours pas commencé.
 
-**Trois fois j'ai écrit « livré » une couche trop tôt** le 27 août : moteur fait, puis le champ
-d'écran réservé au mauvais mode, puis deux gardes d'écran de plus. Chaque fois, ce qui l'a
-révélé est la préparation de la QA — écrire les gestes qu'un utilisateur ferait vraiment, dans
-l'ordre. À faire plus tôt la prochaine fois.
+**La passe n'a rien trouvé, et c'est trompeur.** Tout ce qu'elle aurait dû trouver l'a été
+**avant** qu'elle soit jouée — trois fois j'ai écrit « livré » une couche trop tôt (moteur fait,
+puis le champ d'écran réservé au mauvais mode, puis deux gardes d'écran de plus), et chaque
+fois c'est *l'écriture* de la passe qui l'a révélé : décrire les gestes qu'un utilisateur ferait
+vraiment, dans l'ordre, est un test en soi. Trois défauts de plus sont venus des **questions
+posées pendant** la QA : un libellé de bouton que son auteur devait expliquer, un journal muet
+sur la réindexation, un item citant une chaîne du moteur au lieu de l'écran. La leçon tient en
+une phrase : écrire la passe **avant** de déclarer le lot fini.
 
 **État précédent** — le moteur est fait, le front reste entier. Les deux sévérités manquantes et la
 capacité « bitexte en tableau » sont livrées le 27 août 2026 ; l'aperçu comparatif, qui est la
@@ -192,7 +197,7 @@ l'écran affiche une coche verte.
 
 ## QA
 
-- qa/import-colonne-tableau.md
+- qa/import-colonne-tableau.md — close 45/45 le 27 août 2026
 
 ## Contexte
 
