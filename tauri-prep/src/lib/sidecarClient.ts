@@ -1546,6 +1546,13 @@ export interface ImportPreviewResponse {
   units?: ImportPreviewUnit[];
   units_total?: number;
   truncated?: boolean;
+  /**
+   * IMPO-01 — forme des tables du document, en ordre de lecture. Modes DOCX seulement
+   * (`null` ailleurs, aucun parcours par colonne n'existant hors DOCX) ; `[]` quand le
+   * document n'en porte aucune. Décrit, ne conclut pas : porter une table ne fait pas
+   * d'un document un bitexte.
+   */
+  tables?: { columns: number; rows: number }[] | null;
 }
 
 export async function previewImport(

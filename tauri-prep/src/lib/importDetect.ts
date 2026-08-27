@@ -49,6 +49,43 @@ export function modeAcceptsColumn(mode: string): boolean {
   return COLUMN_CAPABLE_MODES.has(mode);
 }
 
+/** Forme d'une table telle que `/import/preview` la renvoie (IMPO-01). */
+export interface TableShape {
+  columns: number;
+  rows: number;
+}
+
+/**
+ * Nombre de colonnes exploitables : le **maximum** sur les tables du document.
+ *
+ * Le parcours d'extraction traverse *toutes* les tables à l'index demandé et compte
+ * les lignes trop courtes plutôt que d'échouer — proposer le maximum est donc cohérent
+ * avec ce que le moteur sait faire, et l'aperçu dira ce que chaque colonne rend.
+ */
+export function maxTableColumns(tables: TableShape[] | null | undefined): number {
+  if (!tables || tables.length === 0) return 0;
+  return tables.reduce((m, t) => Math.max(m, t.columns || 0), 0);
+}
+
+/**
+ * Phrase décrivant ce que le fichier contient, ou `null` s'il n'a aucune table.
+ *
+ * Décrit, ne conclut pas : porter une table ne fait pas d'un document un bitexte
+ * (un fichier du corpus local porte sept tables de 5, 2, 2, 2, 2, 2 et 2 colonnes —
+ * de la mise en page). L'énoncé reste factuel pour que l'utilisateur tranche.
+ */
+export function describeTablesLabel(tables: TableShape[] | null | undefined): string | null {
+  if (!tables || tables.length === 0) return null;
+  if (tables.length === 1) {
+    const t = tables[0];
+    const cols = `${t.columns} colonne${t.columns > 1 ? "s" : ""}`;
+    const rows = `${t.rows} ligne${t.rows > 1 ? "s" : ""}`;
+    return `Tableau : ${cols} × ${rows}.`;
+  }
+  const cols = tables.map((t) => t.columns).join(", ");
+  return `${tables.length} tableaux (${cols} colonnes) — vérifiez l'aperçu avant de choisir.`;
+}
+
 /** Extension (minuscule, sans point) du dernier segment d'un chemin / nom de fichier. */
 export function extFromFileName(fileName: string): string {
   const base = fileName.split(/[/\\]/u).pop() ?? fileName;

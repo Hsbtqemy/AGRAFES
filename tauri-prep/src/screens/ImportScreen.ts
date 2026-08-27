@@ -30,6 +30,9 @@ import {
   detectLanguageToken,
   isKnownImportExt,
   modeAcceptsColumn,
+  maxTableColumns,
+  describeTablesLabel,
+  type TableShape,
 } from "../lib/importDetect.ts";
 import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
 import { buildFamilyDetectionBannerHtml } from "../lib/importFamilyDetectionTemplate.ts";
@@ -96,6 +99,10 @@ export class ImportScreen {
   private _textPreviewCursor = 0;
   private _textPreviewPath: string | null = null;
   private _textPreviewReq = 0;
+  private _textPreviewTables: TableShape[] | null = null;
+  private _textTablesEl!: HTMLElement;
+  private _textTablesMsgEl!: HTMLElement;
+  private _textTablesSplitBtn!: HTMLButtonElement;
 
   // Sprint 8 — family dialog
   private _skipFamilyDialog = false;
@@ -126,6 +133,9 @@ export class ImportScreen {
     this._textPreviewSummaryEl = root.querySelector("#imp-text-summary")!;
     this._textPreviewRowsEl = root.querySelector("#imp-text-rows")!;
     this._textPreviewRefreshBtn = root.querySelector("#imp-text-refresh")!;
+    this._textTablesEl = root.querySelector("#imp-text-tables")!;
+    this._textTablesMsgEl = root.querySelector("#imp-text-tables-msg")!;
+    this._textTablesSplitBtn = root.querySelector("#imp-text-tables-split")!;
     this._textPreviewNextBtn = root.querySelector("#imp-text-next")!;
 
     root.querySelector("#imp-add-btn")!.addEventListener("click", () => this._addFiles());
@@ -143,6 +153,9 @@ export class ImportScreen {
       this._conlluPreviewCursor = (this._conlluPreviewCursor + 1) % candidates.length;
       this._conlluPreviewPath = null;
       void this._refreshConlluPreview(true);
+    });
+    this._textTablesSplitBtn.addEventListener("click", () => {
+      this._splitPreviewedFileByColumn();
     });
     this._textPreviewRefreshBtn.addEventListener("click", () => {
       void this._refreshTextPreview(true);
@@ -647,7 +660,70 @@ export class ImportScreen {
     return this._files.filter(f => f.mode !== "conllu");
   }
 
+  /**
+   * IMPO-01 — dire ce que le fichier CONTIENT avant de lui demander une colonne.
+   *
+   * Le champ « colonne » n'avait de sens que pour qui connaissait déjà le document :
+   * rien à l'écran n'annonçait combien de colonnes existent, ni même qu'il y avait un
+   * tableau. La note décrit, elle ne conclut pas — porter un tableau ne fait pas d'un
+   * document un bitexte (un fichier du corpus local en porte sept, de mise en page).
+   */
+  private _renderTablesNote(file: FileItem): void {
+    const label = describeTablesLabel(this._textPreviewTables);
+    if (!label) {
+      this._textTablesEl.hidden = true;
+      return;
+    }
+    this._textTablesEl.hidden = false;
+    this._textTablesMsgEl.textContent = label;
+    const columns = maxTableColumns(this._textPreviewTables);
+    // Rien à proposer sur une table d'une seule colonne, ni sur un fichier déjà
+    // éclaté : la liste porte alors plusieurs lignes pour ce même chemin.
+    const queued = this._files.filter(
+      (f) => normalizeImportPath(f.path) === normalizeImportPath(file.path),
+    ).length;
+    this._textTablesSplitBtn.hidden = columns < 2 || queued > 1;
+  }
+
+  /**
+   * Met une ligne par colonne dans la liste d'import, à partir du fichier prévisualisé.
+   *
+   * C'est le geste qui manquait : un bitexte en tableau est **un** fichier qui doit
+   * produire **deux** documents, et la liste refusait le même chemin deux fois. Les
+   * titres sont suffixés pour qu'ils ne collident pas ; le moteur, lui, distingue les
+   * colonnes par l'identité `(fichier, colonne)` et refuse toujours deux fois la même.
+   */
+  private _splitPreviewedFileByColumn(): void {
+    const candidates = this._textPreviewCandidates();
+    const file = candidates[this._textPreviewCursor];
+    if (!file) return;
+    const columns = maxTableColumns(this._textPreviewTables);
+    if (columns < 2) return;
+    const at = this._files.indexOf(file);
+    if (at < 0) return;
+
+    const base = file.title.replace(/ — col\. \d+$/u, "");
+    file.column_index = 1;
+    file.title = `${base} — col. 1`;
+    const clones: FileItem[] = [];
+    for (let c = 2; c <= columns; c += 1) {
+      clones.push({
+        ...file,
+        column_index: c,
+        title: `${base} — col. ${c}`,
+        status: "pending",
+        message: "",
+      });
+    }
+    this._files.splice(at + 1, 0, ...clones);
+    this._log(`↳ "${base}" : ${columns} colonnes mises en file`);
+    this._renderList();
+    void this._refreshTextPreview(true);
+  }
+
   private _setTextPreviewEmpty(message: string, details?: string): void {
+    this._textPreviewTables = null;
+    if (this._textTablesEl) this._textTablesEl.hidden = true;
     this._textPreviewBadgeEl.textContent = "Aucun";
     this._textPreviewBadgeEl.className = "chip";
     this._textPreviewFileEl.textContent = message;
@@ -701,6 +777,9 @@ export class ImportScreen {
       });
       if (reqId !== this._textPreviewReq) return;
       this._textPreviewPath = file.path;
+
+      this._textPreviewTables = res.tables ?? null;
+      this._renderTablesNote(file);
 
       const units = res.units;
       const unitsTotal = res.units_total ?? 0;
@@ -797,7 +876,11 @@ export class ImportScreen {
 
     for (const f of pending) {
       const existingId = corpusByPath.get(normalizeImportPath(f.path));
-      if (existingId !== undefined) {
+      // IMPO-01 — le contrôle par CHEMIN cède quand une colonne est demandée : un
+      // bitexte en tableau est un fichier qui doit produire plusieurs documents, et
+      // ils partagent tous ce chemin. Le moteur reste le garde-fou — il refuse deux
+      // fois la MÊME colonne, l'identité d'un document extrait étant (fichier, colonne).
+      if (existingId !== undefined && !f.column_index) {
         f.status = "error";
         f.message = `Déjà dans le corpus (doc_id ${existingId})`;
         this._log(`⊘ "${f.title}": ${f.message}`, true);

@@ -11,6 +11,8 @@ import {
   detectLanguageToken,
   detectLanguageForMode,
   modeAcceptsColumn,
+  maxTableColumns,
+  describeTablesLabel,
   LANG_RE,
   KNOWN_LANG_CODES,
 } from "../importDetect.ts";
@@ -331,5 +333,55 @@ describe("modeAcceptsColumn", () => {
     // tranché ici explicitement plutôt que refusé par omission.
     const docxModes = modeOptionsForExt("docx").map((o) => o.value);
     expect(docxModes.every((m) => modeAcceptsColumn(m))).toBe(true);
+  });
+});
+
+// ─── IMPO-01 : dire ce que le fichier contient ───────────────────────────────
+
+describe("maxTableColumns", () => {
+  it("rend 0 sans table", () => {
+    expect(maxTableColumns(null)).toBe(0);
+    expect(maxTableColumns(undefined)).toBe(0);
+    expect(maxTableColumns([])).toBe(0);
+  });
+
+  it("rend le nombre de colonnes d'un bitexte", () => {
+    expect(maxTableColumns([{ columns: 2, rows: 1 }])).toBe(2);
+  });
+
+  it("prend le MAXIMUM sur plusieurs tables", () => {
+    // Le parcours traverse toutes les tables à l'index demandé et compte les lignes
+    // trop courtes ; proposer le maximum est donc cohérent avec ce que le moteur fait.
+    const sept = [
+      { columns: 5, rows: 6 }, { columns: 2, rows: 1 }, { columns: 2, rows: 1 },
+      { columns: 2, rows: 2 }, { columns: 2, rows: 1 }, { columns: 2, rows: 1 },
+      { columns: 2, rows: 1 },
+    ];
+    expect(maxTableColumns(sept)).toBe(5);
+  });
+});
+
+describe("describeTablesLabel", () => {
+  it("rend null quand il n'y a aucune table", () => {
+    expect(describeTablesLabel(null)).toBeNull();
+    expect(describeTablesLabel([])).toBeNull();
+  });
+
+  it("décrit une table unique avec ses colonnes et ses lignes", () => {
+    expect(describeTablesLabel([{ columns: 2, rows: 1 }])).toBe("Tableau : 2 colonnes × 1 ligne.");
+    expect(describeTablesLabel([{ columns: 1, rows: 46 }])).toBe("Tableau : 1 colonne × 46 lignes.");
+  });
+
+  it("énumère les colonnes quand il y a plusieurs tables, sans conclure", () => {
+    // Cas réel du disque local : sept tables de mise en page, pas un bitexte.
+    const sept = [
+      { columns: 5, rows: 6 }, { columns: 2, rows: 1 }, { columns: 2, rows: 1 },
+      { columns: 2, rows: 2 }, { columns: 2, rows: 1 }, { columns: 2, rows: 1 },
+      { columns: 2, rows: 1 },
+    ];
+    const label = describeTablesLabel(sept)!;
+    expect(label).toContain("7 tableaux");
+    expect(label).toContain("5, 2, 2, 2, 2, 2, 2");
+    expect(label).toContain("aperçu");
   });
 });

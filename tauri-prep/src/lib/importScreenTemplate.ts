@@ -192,6 +192,11 @@ export function importScreenTemplate(): string {
             </div>
             <p id="imp-text-file" class="hint imp-conllu-file">Aucun fichier texte sélectionné.</p>
             <p id="imp-text-summary" class="hint imp-conllu-summary">Ajoutez un fichier DOCX, ODT, TXT ou TEI pour prévisualiser les unités avant l'import.</p>
+            <div id="imp-text-tables" class="imp-tables-note" hidden>
+              <span id="imp-text-tables-msg" class="hint"></span>
+              <button type="button" id="imp-text-tables-split" class="btn btn-secondary btn-sm"
+                      title="Met une ligne par colonne dans la liste d'import, avec un titre suffixé">Une ligne par colonne</button>
+            </div>
             <div class="imp-conllu-table-wrap">
               <table class="imp-conllu-table" aria-label="Aperçu unités texte">
                 <thead>

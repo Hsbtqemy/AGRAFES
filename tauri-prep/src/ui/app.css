@@ -770,6 +770,19 @@ summary:focus-visible,
   color: var(--color-text, #1e2936);
   word-break: break-word;
 }
+/* IMPO-01 — la forme des tables du fichier, et le geste d'en faire une ligne par
+   colonne. Reste caché (attribut `hidden`) tant qu'aucune table n'est trouvée. */
+.prep-import-screen .imp-tables-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--prep-sp-2, 8px);
+  flex-wrap: wrap;
+  margin: var(--prep-sp-2, 8px) 0 0;
+}
+.prep-import-screen .imp-tables-note[hidden] {
+  display: none;
+}
 .prep-import-screen .imp-conllu-summary {
   margin: 0;
   color: var(--prep-muted, #4f5d6d);
