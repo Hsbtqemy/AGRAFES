@@ -138,30 +138,45 @@ const _REND_RE = /\brend=["']([^"']*)["']/;
  * policy, so an untouched line matches exactly (text_norm *is* normalize(text_raw)),
  * and the "voir l'original d'import" fold (raw === fallback) always matches itself.
  */
-export function richTextToHtml(raw: string | null | undefined, fallback: string): string {
-  if (!raw || !raw.includes("<hi")) return _esc(fallback);
-  if (!isRichInSync(raw, fallback)) return _esc(fallback);
+/**
+ * La ligne sera-t-elle rendue par la branche **riche** de `richTextToHtml` ?
+ *
+ * La distinction n'est pas cosmétique : la branche riche injecte les segments tels quels,
+ * donc le navigateur résout leurs entités (`&amp;` devient `&`, un caractère) ; la branche
+ * nue passe par `_esc`, qui ré-échappe, et l'écran affiche alors `&amp;` en toutes lettres,
+ * soit exactement les caractères de la base. Tout ce qui traduit une position lue à l'écran
+ * en position du texte stocké doit savoir laquelle des deux a servi — sans quoi il replie
+ * des entités que personne n'a repliées. C'est la seule source de vérité de ce choix.
+ */
+export function rendersRich(raw: string | null | undefined, fallback: string): boolean {
+  if (!raw || !raw.includes("<hi")) return false;
+  if (!isRichInSync(raw, fallback)) return false;
   // Provenance guard — text segments are injected unescaped, which is only sound for
   // text the DOCX/ODT importers escaped themselves (& < > become entities). A plain
   // importer (txt, TEI) stores the line verbatim, so a source file that happens to
   // contain "<hi" would carry live markup into the page. Real <hi> markup never
   // leaves a bare angle bracket behind once the tags are removed: if one is there,
   // this is not importer markup and the whole line is escaped.
-  if (/[<>]/.test(stripHiTags(raw))) return _esc(fallback);
+  return !/[<>]/.test(stripHiTags(raw));
+}
+
+export function richTextToHtml(raw: string | null | undefined, fallback: string): string {
+  if (!rendersRich(raw, fallback)) return _esc(fallback);
+  const rich = raw as string; // rendersRich l'a garanti non nul
   let result = "";
   let last = 0;
   let m: RegExpExecArray | null;
   _HI_RE.lastIndex = 0;
-  while ((m = _HI_RE.exec(raw)) !== null) {
+  while ((m = _HI_RE.exec(rich)) !== null) {
     // text_raw segments are already XML-escaped — inject as-is
-    result += raw.slice(last, m.index);
+    result += rich.slice(last, m.index);
     const rend = (_REND_RE.exec(m[1]) ?? [])[1] ?? "";
     const tokens = rend.split(/\s+/).filter(Boolean);
     const content = m[2]; // already XML-escaped
     result += _wrapHiTokens(tokens, content);
     last = m.index + m[0].length;
   }
-  result += raw.slice(last);
+  result += rich.slice(last);
   return result;
 }
 

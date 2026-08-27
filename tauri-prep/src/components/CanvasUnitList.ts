@@ -12,9 +12,9 @@
  * lives in lib/*. This holds only DOM + selection wiring. No sidecar calls.
  */
 import type { ConventionRole, UnitRecord } from "../lib/sidecarClient.ts";
-import { richTextToHtml } from "../lib/sidecarClient.ts";
+import { rendersRich, richTextToHtml } from "../lib/sidecarClient.ts";
 import {
-  applyMark, canStyle, domLength, domOffsetToPlain, hasMark, isRichInSync, parseRich,
+  applyMark, canStyle, domOffsetToPlain, hasMark, parseRich,
   plainOffsetToDom, type RichToken,
 } from "../lib/richTextModel.ts";
 import { selectRangeIn, selectionRangeIn } from "../lib/richSelection.ts";
@@ -51,6 +51,19 @@ export interface CanvasUnitListOptions {
    *  apparaître une barre I/G au-dessus de toute sélection faite dans une ligne, et
    *  persiste le `text_raw` balisé. `text_norm` n'est jamais modifié par ce geste. */
   onStyleText?: (unitId: number, newTextRaw: string) => Promise<void>;
+}
+
+/**
+ * Déclarer qu'une couche a repeint le texte de cette ligne.
+ *
+ * À appeler par tout `decorateRow` qui remplace le contenu de `.prep-conv-unit-text` —
+ * aujourd'hui la seule surcouche dans ce cas est celle des tokens de l'Annotation. Le
+ * geste de stylisation lit ce marqueur pour refuser : sur une ligne repeinte, les
+ * positions lues à l'écran ne désignent pas les caractères de la base. Le marqueur meurt
+ * avec la ligne, chaque rendu reconstruisant les `.prep-conv-unit-row`.
+ */
+export function markRowTextRepainted(rowEl: HTMLElement): void {
+  rowEl.dataset.textRepainted = "1";
 }
 
 export class CanvasUnitList {
@@ -303,14 +316,30 @@ export class CanvasUnitList {
 
   // ─── Stylisation inline (docs/DESIGN_inline_restyling.md) ─────────────────
 
-  /** Base à styliser : le verbatim s'il décrit encore le texte, sinon le texte courant.
+  /** Base à styliser : exactement la chaîne dont l'écran est le rendu.
+   *
+   *  `rendersRich` est la condition même de `richTextToHtml` : quand elle est vraie
+   *  l'écran affiche le verbatim balisé, quand elle est fausse il affiche `text_norm`
+   *  ré-échappé. Prendre la même décision ici garantit que les positions lues à l'écran
+   *  désignent bien des caractères de la base — sans cette symétrie, une ligne « en
+   *  phase » mais sans balise pouvait donner un verbatim qui diffère de l'affiché par un
+   *  espace insécable, que `foldNorm` ignore et que les offsets, eux, ne pardonnent pas.
    *
    *  Sur une ligne corrigée, le balisage d'import ne décrit plus rien — styliser repart
    *  donc du texte courant, ce qui réécrit le verbatim et rétablit l'invariant. C'est le
    *  retournement que D-C1 disait réversible ; `text_source` garde l'original d'import. */
   private _styleBase(u: UnitRecord): string {
     const norm = u.text_norm ?? "";
-    return isRichInSync(u.text_raw, norm) ? (u.text_raw ?? norm) : norm;
+    return rendersRich(u.text_raw, norm) ? (u.text_raw as string) : norm;
+  }
+
+  /** L'écran a-t-il replié les entités XML de cette ligne ?
+   *
+   *  Seule la branche riche les laisse résoudre par le navigateur ; la branche nue les
+   *  ré-échappe et les affiche en toutes lettres. Les traducteurs d'offsets doivent le
+   *  savoir : sur la branche nue, écran et base coïncident caractère pour caractère. */
+  private _foldsEntities(u: UnitRecord): boolean {
+    return rendersRich(u.text_raw, u.text_norm ?? "");
   }
 
   /** Pose l'écoute de sélection une seule fois pour la vie de la liste. */
@@ -347,21 +376,28 @@ export class CanvasUnitList {
     const u = this._units.find((x) => x.unit_id === unitId);
     const row = this._host.querySelector<HTMLElement>(`.prep-conv-unit-row[data-uid="${unitId}"]`);
     const span = row?.querySelector<HTMLElement>(".prep-conv-unit-text");
-    if (!u || !span) return this._hideStyleBar();
+    if (!u || !row || !span) return this._hideStyleBar();
 
     const dom = selectionRangeIn(span, span.ownerDocument.defaultView?.getSelection() ?? null);
     const base = this._styleBase(u);
     if (!dom || !canStyle(base)) return this._hideStyleBar();
 
-    // Garde de cohérence : une couche peut avoir repeint la ligne — la surcouche de
-    // tokens de l'Annotation reconstruit le texte depuis les tokens, avec ses propres
-    // règles d'espacement. Les offsets lus à l'écran ne désigneraient alors plus le même
-    // texte, et le style atterrirait à côté. On refuse plutôt que de viser au hasard.
-    const plainText = parseRich(base).plain;
-    if ((span.textContent ?? "").length !== domLength(plainText)) return this._hideStyleBar();
+    // La couche qui repeint une ligne le DÉCLARE (`markRowTextRepainted`). Le texte à
+    // l'écran n'est alors plus celui de la base — la surcouche de tokens de l'Annotation
+    // le reconstruit avec ses propres règles d'espacement — et les offsets lus dessus ne
+    // désigneraient pas les mêmes caractères. On refuse, sans rien deviner : comparer les
+    // longueurs, comme on le faisait, laissait passer toute ligne où deux écarts se
+    // compensent (196 unités du corpus de travail, mesurées le 25 août).
+    if (row.dataset.textRepainted) return this._hideStyleBar();
 
-    const start = domOffsetToPlain(plainText, dom.start);
-    const end = domOffsetToPlain(plainText, dom.end);
+    // Sur la branche nue, l'écran montre les caractères de la base un à un : la
+    // conversion doit alors être l'identité, et non un repliement d'entités que personne
+    // n'a fait (`_foldsEntities`).
+    const plainText = parseRich(base).plain;
+    const folds = this._foldsEntities(u);
+    const toPlain = (o: number): number => (folds ? domOffsetToPlain(plainText, o) : o);
+    const start = toPlain(dom.start);
+    const end = toPlain(dom.end);
     if (start >= end) return this._hideStyleBar();
 
     this._styleTarget = { unitId, start, end };
@@ -403,7 +439,16 @@ export class CanvasUnitList {
       btn.classList.toggle("prep-conv-stylebar-btn--on", on);
       btn.setAttribute("aria-pressed", String(on));
     }
-    const box = span.getBoundingClientRect();
+    // Ancrée sur la SÉLECTION, pas sur la ligne. Une unité de 200 caractères tient sur
+    // plusieurs lignes à l'écran (5,4 % du corpus), et une unité géante sur des écrans
+    // entiers : accrochée au haut du bloc, la barre s'affichait loin du mot visé, voire
+    // au-dessus de la zone visible. Le rectangle de la ligne reste le repli si la
+    // sélection n'en donne pas — c'est le cas en happy-dom, où tout vaut zéro.
+    const sel = doc.defaultView?.getSelection() ?? null;
+    const selBox = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null;
+    const box = selBox && (selBox.width > 0 || selBox.height > 0)
+      ? selBox
+      : span.getBoundingClientRect();
     bar.style.position = "absolute";
     bar.style.left = `${box.left + (doc.defaultView?.scrollX ?? 0)}px`;
     bar.style.top = `${box.top + (doc.defaultView?.scrollY ?? 0) - 28}px`;
@@ -432,8 +477,9 @@ export class CanvasUnitList {
     // sur les nœuds neufs. Poser une balise ne change pas le texte nu, donc elles
     // désignent toujours le même passage.
     const plain = parseRich(base).plain;
-    const domStart = plainOffsetToDom(plain, target.start);
-    const domEnd = plainOffsetToDom(plain, target.end);
+    const folds = this._foldsEntities(u);
+    const domStart = folds ? plainOffsetToDom(plain, target.start) : target.start;
+    const domEnd = folds ? plainOffsetToDom(plain, target.end) : target.end;
 
     try {
       await cb(u.unit_id, next);

@@ -5,7 +5,7 @@
  * badge + text-start behaviour so the R5.1b curation mode can build on it safely.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { CanvasUnitList } from "../CanvasUnitList.ts";
+import { CanvasUnitList, markRowTextRepainted } from "../CanvasUnitList.ts";
 import type { ConventionRole, UnitRecord } from "../../lib/sidecarClient.ts";
 
 function unit(n: number, over: Partial<UnitRecord> = {}): UnitRecord {
@@ -371,17 +371,24 @@ describe("stylisation inline (§5, DESIGN_inline_restyling)", () => {
     span.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
     expect(bar()).toBeNull();
   });
-  it("refuse une ligne nue portant une entité XML — son texte n'est pas ce qu'on croit", () => {
-    // `text_norm` hérite de l'échappement de `text_raw`. Sur une ligne SANS balise, le
-    // rendu ré-échappe : « &amp; » s'affiche tel quel (item ouvert de RICH-01). Le garde
-    // de cohérence le voit — 23 caractères à l'écran contre 19 attendus — et refuse.
-    const list = new CanvasUnitList(host, { onStyleText: async () => {} });
-    const text = "Marks &amp; Spencer plc";
+  it("stylise une ligne nue portant une entité XML, sans décalage", async () => {
+    // Sur une ligne SANS balise, `richTextToHtml` ré-échappe : l'écran affiche « &amp; »
+    // en toutes lettres, donc exactement les caractères de la base. La conversion doit
+    // alors être l'identité. Le garde refusait ces lignes ; c'était un faux refus.
+    const saved: string[] = [];
+    const list = new CanvasUnitList(host, { onStyleText: async (_id, r) => { saved.push(r); } });
+    const text = "Fleury &amp; A.";
     list.setData({ docId: 1, units: [unit(1, { text_norm: text, text_raw: text })] });
     list.render();
-    expect(host.querySelector(".prep-conv-unit-text")!.textContent).toBe("Marks &amp; Spencer plc");
-    selectInRow(8, 15);
-    expect(bar()?.hidden ?? true).toBe(true);
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text")!;
+    expect(span.textContent).toBe("Fleury &amp; A."); // l'entité s'affiche en toutes lettres
+
+    selectInRow(13, 15); // « A. », en coordonnées d'écran
+    expect(bar()!.hidden).toBe(false);
+    bar()!.querySelector<HTMLElement>(".prep-conv-stylebar-btn--italic")!
+      .dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(saved).toEqual(['Fleury &amp; <hi rend="italic">A.</hi>']);
   });
 
   it("repose la sélection au bon endroit malgré une entité XML avant elle", async () => {
@@ -485,19 +492,41 @@ describe("stylisation inline — gardes de la passe adverse", () => {
   }
   const bar = () => document.querySelector<HTMLElement>(".prep-conv-stylebar");
 
-  it("refuse une ligne repeinte par une couche (surcouche de tokens)", () => {
-    // L'Annotation reconstruit le texte depuis les tokens : les offsets à l'écran ne
-    // désignent plus le même texte, le style atterrirait à côté.
+  it("refuse une ligne que la couche DÉCLARE avoir repeinte", () => {
+    // L'Annotation reconstruit le texte depuis les tokens, avec ses propres règles
+    // d'espacement : les offsets lus à l'écran ne désignent plus les mêmes caractères.
+    // La couche le déclare — on ne le devine plus en comparant des longueurs, ce qui
+    // laissait passer toute ligne où deux écarts se compensent.
     const list = new CanvasUnitList(host, {
       onStyleText: async () => {},
       decorateRow: (_u, el) => {
         const span = el.querySelector<HTMLElement>(".prep-conv-unit-text");
         if (span) span.textContent = "un mot ici repeint autrement";
+        markRowTextRepainted(el);
       },
     });
     list.setData({ docId: 1, units: [unit(1, { text_norm: "un mot ici", text_raw: "un mot ici" })] });
     list.render();
     selectAll(host.querySelector<HTMLElement>(".prep-conv-unit-text")!);
+    expect(bar()?.hidden ?? true).toBe(true);
+  });
+
+  it("un repeint de MÊME longueur est refusé lui aussi — l'ancien garde le laissait passer", () => {
+    // Cas des 196 unités espagnoles : « ¡Vaya caterva ! » stocké, « ¡ Vaya caterva! »
+    // affiché, 15 caractères des deux côtés. Comparer les longueurs ne voyait rien.
+    const list = new CanvasUnitList(host, {
+      onStyleText: async () => {},
+      decorateRow: (_u, el) => {
+        const span = el.querySelector<HTMLElement>(".prep-conv-unit-text");
+        if (span) span.textContent = "¡ Vaya caterva!";
+        markRowTextRepainted(el);
+      },
+    });
+    list.setData({ docId: 1, units: [unit(1, { text_norm: "¡Vaya caterva !", text_raw: "¡Vaya caterva !" })] });
+    list.render();
+    const span = host.querySelector<HTMLElement>(".prep-conv-unit-text")!;
+    expect(span.textContent!.length).toBe(15); // même longueur : l'ancien garde passait
+    selectAll(span);
     expect(bar()?.hidden ?? true).toBe(true);
   });
 

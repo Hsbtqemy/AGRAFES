@@ -21,7 +21,7 @@ import { languageLabel, type ModelInfo } from "../lib/models.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { buildProseUnitInline, buildInterlinearSentence, UPOS_TAGS, type ProseToken } from "../ui/annotationProse.ts";
 import { runJobWithPolling, type JobHandle } from "../lib/jobPolling.ts";
-import { CanvasUnitList } from "./CanvasUnitList.ts";
+import { CanvasUnitList, markRowTextRepainted } from "./CanvasUnitList.ts";
 
 const _TOKENS_PAGE = 500;
 // A hard cap on pagination loops — a backstop against a misbehaving next_offset, far
@@ -732,6 +732,10 @@ export class AnnotationPane {
       return;
     }
     el.classList.add("prep-annot-unit-row--annotated");
+    // À partir d'ici la surcouche remplace le texte de la ligne : le déclarer, pour que
+    // le geste de stylisation refuse au lieu de viser des offsets qui ne correspondent
+    // plus (la reconstruction depuis les tokens a ses propres règles d'espacement).
+    markRowTextRepainted(el);
     const opts = { onTokenClick: (id: number) => this._openTokenEditor(id) };
     if (this._viewMode === "extended") {
       el.classList.add("prep-annot-unit-row--extended");
