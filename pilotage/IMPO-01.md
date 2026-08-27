@@ -5,7 +5,15 @@ statut: interrompu
 
 # IMPO-01 — la page d'import : elle écrit sans jamais se relire
 
-**Arrêté sur** — le moteur est fait, le front reste entier. Les deux sévérités manquantes et la
+**Arrêté sur** — le bitexte en tableau marche de bout en bout, la passe `qa/import-colonne-tableau.md`
+attend d'être jouée ; l'aperçu comparatif, lui, n'est toujours pas commencé.
+
+**Trois fois j'ai écrit « livré » une couche trop tôt** le 27 août : moteur fait, puis le champ
+d'écran réservé au mauvais mode, puis deux gardes d'écran de plus. Chaque fois, ce qui l'a
+révélé est la préparation de la QA — écrire les gestes qu'un utilisateur ferait vraiment, dans
+l'ordre. À faire plus tôt la prochaine fois.
+
+**État précédent** — le moteur est fait, le front reste entier. Les deux sévérités manquantes et la
 capacité « bitexte en tableau » sont livrées le 27 août 2026 ; l'aperçu comparatif, qui est la
 raison d'être de la fiche, n'est pas commencé — mais son prérequis l'est : `/import/preview`
 sait enfin prévisualiser une colonne.
@@ -19,7 +27,7 @@ l'écran affiche une coche verte.
 - [ ] Construire l'**aperçu comparatif** décidé le 26 août (voir Contexte) : une ligne par mode applicable, colonnes « unités / trouvables à la recherche / non indexées » + la première ligne extraite, mode pré-sélectionné sur le plus d'unités trouvables
 - [ ] Trouver le libellé juste pour la colonne du milieu : « indexables » est du jargon, « trouvables à la recherche » dit ce que l'utilisateur perd s'il se trompe
 - [ ] Chiffrer le coût : un appel `/import/preview` **par mode applicable** (2 pour un `.docx`/`.odt`, 1 ailleurs) au lieu d'un seul, donc autant de parses complets — mesurer sur les plus gros fichiers avant de décider si l'aperçu comparatif est calculé à l'ajout ou à la sélection de la ligne
-- [ ] Décider comment l'aperçu comparatif traite les **variantes de colonne** d'un bitexte en tableau : une ligne par colonne (2, 3…) ou une seule entrée « extraction par colonne » qui ouvre un second choix
+- [x] **Variantes de colonne — tranché le 27 août** : une ligne par colonne, parce que c'est le fichier qui dit combien il y en a. La question ne se posait que faute de savoir la forme du document ; depuis que l'aperçu la rend, elle tombe
 - [x] Sévérité moteur sur `line_unit_count == 0` — **faite le 27 août**. Le filet vaut pour le
       CLI, `import-remote` et l'import par lot, que l'écran ne protégera jamais. Posée **en
       dernier** dans l'échelle : c'est le verdict le plus grave, aucun des précédents ne doit
@@ -96,10 +104,43 @@ l'écran affiche une coche verte.
       plus. Remède possible : que l'audit connaisse la colonne, ce qui suppose de la ranger
       ailleurs que dans le suffixe du hash (`meta_json` du document). À ne coder que quand le bruit
       se constate, pas avant
-- [ ] **Le CLI ne sait pas extraire une colonne — pour aucun mode.** Constaté le 27 août :
-      `dispatch_import` accepte `column_index`, mais `cmd_import` n'expose aucune option
-      `--column-index`, donc l'extraction par colonne n'est atteignable que par le sidecar. Trois
-      lignes d'`add_argument`, mais c'est une décision de surface CLI, laissée hors de la tranche
+- [x] **Dire ce que le fichier contient, avant de lui demander une colonne** — fait le
+      27 août, sur votre recadrage : la vraie question n'était pas « comment ajouter deux fois
+      un fichier » mais « qu'y a-t-il dedans ». `POST /import/preview` renvoie `tables`
+      (`[{columns, rows}]`, `null` hors DOCX, `[]` quand il n'y en a pas), l'écran l'affiche
+      — « Tableau : 2 colonnes × 1 ligne. » — et propose **« Une ligne par colonne »**, qui
+      éclate le fichier prévisualisé en autant de lignes d'import, titres suffixés. Ça tranche
+      du même coup l'item qui hésitait entre « une ligne par colonne » et « une entrée qui
+      ouvre un second choix » : c'est le fichier qui décide. **Décrit, ne conclut pas** —
+      porter un tableau ne fait pas d'un document un bitexte : `Conventions-Textes
+      journalistiques` en porte **sept**, de 5, 2, 2, 2, 2, 2 et 2 colonnes, qui sont de la
+      mise en page. Coût mesuré avant de coder : 8 ms par fichier, le document étant déjà
+      ouvert par le parseur. Contrat 1.6.79, 112 routes inchangées. 6 tests
+- [x] **Deux gardes d'écran de plus interdisaient le geste**, tous deux bâtis sur « un fichier
+      = un document » : `_addFile` refusait le même chemin deux fois dans la liste, et le
+      pré-contrôle passait le fichier en **erreur** si son `source_path` était déjà dans le
+      corpus — donc refusait la seconde colonne **côté client**, avant même que la requête
+      parte. Le premier est contourné par le geste d'éclatement, qui clone la ligne (donc reste
+      explicite : pas d'empilement par inadvertance) ; le second cède quand une colonne est
+      demandée, le moteur restant le garde-fou. Trouvés en préparant la passe de QA, qui aurait
+      échoué au deuxième point
+- [x] **L'écran d'import réservait le champ « colonne » au mode numéroté** — donc la capacité
+      était **inatteignable depuis l'application**, exactement là où elle sert : un bitexte en
+      tableau non numéroté ne se lit qu'en mode paragraphes. Trouvé le 27 août en préparant la
+      passe de QA, qui aurait été injouable au premier point. Six sites dans `ImportScreen.ts`,
+      pas un : le rendu du champ, l'effacement au changement de mode (qui **conserve** désormais
+      la valeur en passant d'un mode DOCX à l'autre — c'est le geste même de comparer), l'envoi
+      du job, la charge de l'aperçu, le commentaire du type, et le rafraîchissement de l'aperçu
+      à la saisie — ce dernier manquait aussi : le garde de cache tient sur le **chemin** du
+      fichier, qui ne bouge pas d'une colonne à l'autre, si bien que changer de colonne laissait
+      l'aperçu sur la précédente. Le prédicat vit dans `importDetect.modeAcceptsColumn`, où la
+      connaissance des modes est déjà, plutôt qu'en six conditions recopiées. 3 tests
+- [ ] **Ni le CLI ni ShareDocs ne savent extraire une colonne — pour aucun mode.** Constaté le
+      27 août : `dispatch_import` accepte `column_index`, mais `cmd_import` n'expose aucune option
+      `--column-index` et l'écran ShareDocs n'offre aucun champ. L'extraction par colonne n'est
+      donc atteignable que par l'import **local** de l'application. Trois lignes d'`add_argument`
+      côté CLI ; côté ShareDocs c'est une décision d'écran, un fichier distant en tableau devant
+      alors se voir proposer la colonne comme en local
 - [ ] **Un `.txt` numéroté « 1. » n'a lui non plus aucun mode qui le lise** — c'est le cas du
       `doc_id` 426, et c'est la **cinquième forme**, jumelle du bitexte en tableau. `IMPORT_MODES`
       ne connaît que `txt_numbered_lines` pour le `.txt` : pas de `txt_paragraphs`. L'aperçu
@@ -109,6 +150,10 @@ l'écran affiche une coche verte.
 - [ ] Élucider les 5 fichiers en zone grise du sondage (ratio ~0,66 de lignes marquées, famille Beigbeder / cullioli) — non localisés au moment du sondage, la forme reste inconnue
 - [ ] Renommer ou étoffer le « précontrôle » de l'écran d'import : `_updatePrecheck` ne compte que les fichiers par statut (total / en attente / importés / en erreur), il ne vérifie aucun contenu — le mot promet ce que la fonction ne fait pas
 - [ ] Décider du sort de l'aperçu : il reste **volontaire** et n'affiche qu'un fichier à la fois (curseur `_textPreviewCursor`), donc il ne protège que l'utilisateur qui sait déjà quoi regarder
+
+## QA
+
+- qa/import-colonne-tableau.md
 
 ## Contexte
 
