@@ -86,8 +86,8 @@ Trois choses valent d'être sues avant de commencer, parce qu'elles décident du
 - [x] **Concordancier** — « Observer » rend **16 unités sur 10 documents**, dont **3** pour le document 423 : mêmes nombres avant et après le geste (le compteur groupe par document et compte les unités trouvées, pas les apparitions du mot dans une unité)
 - [x] **Concordancier** — l'unité stylisée figure toujours dans les résultats, et son texte s'y affiche **sans balise** : « The Observer, 14 Aug 2022 », et non un `<hi rend=…>` en toutes lettres
 - [x] **Concordancier** — cocher **Respecter la casse** puis chercher `Observer` : l'unité n° 3 du document 423, dont le mot est entièrement en italique, figure toujours dans les résultats
-- [x] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 11 (95 caractères des deux côtés, la barre y apparaît) — poser l'italique laisse la prose colorée en place, et **aucune** pastille « ⟳ texte modifié — à réannoter » ne s'affiche. L'italique lui-même **ne se voit pas** : la surcouche repeint le texte depuis les tokens. C'est attendu, et suivi dans RICH-01 ; ce point vérifie que l'annotation survit, pas que le style se voie
-- [x] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 11 — pour comparer une fois : corriger cette même unité au stylo ✎ fait bien apparaître la pastille, et le compteur « ⚠ 1 à réannoter » dans le résumé du haut. C'est le signal que la stylisation ne doit jamais déclencher
+- [ ] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 11 — sélectionner du texte dans une unité **annotée** ne fait plus apparaître **aucune** barre, quelle que soit l'unité et quelle que soit la vue. La couche déclare qu'elle a repeint la ligne, et le geste refuse — il ne compare plus des longueurs. Vérifier au passage que l'annotation reste intacte : aucune pastille « ⟳ texte modifié — à réannoter » n'apparaît
+- [ ] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 11 — pour comparer une fois : corriger cette même unité au stylo ✎ fait bien apparaître la pastille, et le compteur « ⚠ 1 à réannoter » dans le résumé du haut. C'est le signal que la stylisation ne doit jamais déclencher — et elle ne le peut plus, puisqu'elle y est refusée
 
 ### Ligne corrigée — l'adoption du verbatim
 
@@ -108,8 +108,8 @@ Trois choses valent d'être sues avant de commencer, parce qu'elles décident du
 
 ### Refus et gardes
 
-- [x] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 20 — sélectionner du texte dans cette ligne : **aucune** barre n'apparaît. La raison se voit à l'œil, en comparant la même ligne dans deux couches : ici elle finit par « días: », alors qu'en couche **Rôles** elle finit par « días : », avec une espace. L'écran ne montre donc pas le texte enregistré, et l'application refuse plutôt que de risquer de poser l'italique à côté
-- [x] **Annotation**, vue **Étendue** · `Lodge-Small_ES.docx` n° 11 — basculer cette unité en Étendue et refaire la sélection : **aucune** barre, alors qu'elle apparaissait en Prose. Ici l'écart saute aux yeux — la vue empile sous chaque mot son UPOS et son lemme, donc ce qui est affiché n'a plus la forme d'une phrase. Le refus vaut pour **toute** unité annotée en vue Étendue, sans exception
+- [ ] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 20 — même refus que sur la n° 11, et pour la même raison : la ligne est repeinte. L'écart se voit toujours à l'œil — ici elle finit par « días: », alors qu'en couche **Rôles** elle finit par « días : », avec une espace — mais ce n'est plus ce qui décide du refus
+- [ ] **Annotation**, vue **Étendue** · `Lodge-Small_ES.docx` n° 11 — basculer en Étendue et refaire la sélection : **aucune** barre, comme en Prose. Les deux vues se comportent désormais à l'identique ; c'est le changement le plus visible du lot, l'écart entre elles ayant disparu
 - [x] **Rôles** · doc de réf. n° 8 — ouvrir le stylo ✎ sur la ligne : dans **cette** ligne, sélectionner du texte ne fait apparaître aucune barre (la textarea ne porte que du texte nu)
 - [x] **Rôles** · doc de réf., stylo ✎ ouvert sur n° 8 — taper une correction sans l'enregistrer, puis mettre du texte en italique dans **une autre** ligne (n° 9) : l'italique s'applique **et** la correction en cours est toujours à l'écran, intacte
 - [x] **Rôles** · doc de réf. — un simple clic sans glisser (sélection vide) ne fait apparaître aucune barre
@@ -128,7 +128,7 @@ Trois choses valent d'être sues avant de commencer, parce qu'elles décident du
 
 - [x] **Rôles** · doc de réf. n° 8 — la barre se pose au-dessus de la ligne sélectionnée, sans recouvrir son texte
 - [x] **Rôles** · doc de réf. n° 1, la première de la liste — la barre reste entièrement visible et n'est pas coupée en haut
-- [x] **Rôles** · doc de réf. — point de compréhension : la barre se pose au coin **haut-gauche de la ligne**, jamais au-dessus du passage surligné. Sur une unité qui tient sur plusieurs lignes à l'écran — c'est le cas de toutes celles de ce document — elle apparaît donc loin du mot visé. Comportement actuel, suivi dans RICH-01 : ce n'est pas un défaut de placement à signaler
+- [ ] **Rôles** · doc de réf. — la barre se pose au-dessus du **passage surligné**, et non au coin de la ligne. Le vérifier sur une unité qui tient sur plusieurs lignes à l'écran — toutes celles de ce document — en surlignant un mot de la **dernière** ligne visuelle : la barre doit apparaître juste au-dessus de lui
 - [x] **Rôles** · doc de réf. — faire défiler la liste alors qu'une barre est affichée la fait disparaître, plutôt que de la laisser flotter loin de son texte
 - [x] **Rôles** · doc de réf. — réduire la fenêtre alors qu'une barre est affichée la fait disparaître
 - [x] **Rôles** · doc de réf. — les boutons restent lisibles et cliquables à la souris sans viser au pixel
