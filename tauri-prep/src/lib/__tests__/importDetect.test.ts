@@ -11,7 +11,7 @@ import {
   detectLanguageToken,
   detectLanguageForMode,
   modeAcceptsColumn,
-  maxTableColumns,
+  uniformTableColumns,
   describeTablesLabel,
   LANG_RE,
   KNOWN_LANG_CODES,
@@ -338,26 +338,36 @@ describe("modeAcceptsColumn", () => {
 
 // ─── IMPO-01 : dire ce que le fichier contient ───────────────────────────────
 
-describe("maxTableColumns", () => {
+describe("uniformTableColumns", () => {
   it("rend 0 sans table", () => {
-    expect(maxTableColumns(null)).toBe(0);
-    expect(maxTableColumns(undefined)).toBe(0);
-    expect(maxTableColumns([])).toBe(0);
+    expect(uniformTableColumns(null)).toBe(0);
+    expect(uniformTableColumns(undefined)).toBe(0);
+    expect(uniformTableColumns([])).toBe(0);
   });
 
   it("rend le nombre de colonnes d'un bitexte", () => {
-    expect(maxTableColumns([{ columns: 2, rows: 1 }])).toBe(2);
+    // La forme de 26 des 387 .docx du disque : une table, deux colonnes.
+    expect(uniformTableColumns([{ columns: 2, rows: 1 }])).toBe(2);
+    expect(uniformTableColumns([{ columns: 2, rows: 46 }])).toBe(2);
   });
 
-  it("prend le MAXIMUM sur plusieurs tables", () => {
-    // Le parcours traverse toutes les tables à l'index demandé et compte les lignes
-    // trop courtes ; proposer le maximum est donc cohérent avec ce que le moteur fait.
-    const sept = [
-      { columns: 5, rows: 6 }, { columns: 2, rows: 1 }, { columns: 2, rows: 1 },
-      { columns: 2, rows: 2 }, { columns: 2, rows: 1 }, { columns: 2, rows: 1 },
-      { columns: 2, rows: 1 },
-    ];
-    expect(maxTableColumns(sept)).toBe(5);
+  it("rend le nombre commun quand plusieurs tables s'accordent", () => {
+    expect(uniformTableColumns([
+      { columns: 2, rows: 1 }, { columns: 2, rows: 3 }, { columns: 2, rows: 1 },
+    ])).toBe(2);
+  });
+
+  it("rend 0 quand les tables se contredisent — jamais un bitexte", () => {
+    // Cas réels du disque : une HDR et un fichier de conventions. Prendre le MAXIMUM
+    // proposerait 8 colonnes sur la première, ce qui n'a aucun sens.
+    const hdr = [4, 4, 2, 2, 2, 6, 6, 2, 3, 3, 2, 3, 3, 8].map((c) => ({ columns: c, rows: 1 }));
+    expect(uniformTableColumns(hdr)).toBe(0);
+    const conventions = [5, 2, 2, 2, 2, 2, 2].map((c) => ({ columns: c, rows: 1 }));
+    expect(uniformTableColumns(conventions)).toBe(0);
+  });
+
+  it("rend 1 sur des tables d'une seule colonne — l'appelant exige >= 2", () => {
+    expect(uniformTableColumns([{ columns: 1, rows: 5 }, { columns: 1, rows: 2 }])).toBe(1);
   });
 });
 

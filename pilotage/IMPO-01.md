@@ -104,6 +104,22 @@ l'écran affiche une coche verte.
       plus. Remède possible : que l'audit connaisse la colonne, ce qui suppose de la ranger
       ailleurs que dans le suffixe du hash (`meta_json` du document). À ne coder que quand le bruit
       se constate, pas avant
+- [x] **Passe adverse du 27 août — trois défauts dans le geste que je venais d'écrire.**
+      (1) Le `catch` de l'aperçu ne remettait ni la forme ni la note : prévisualiser un
+      fichier à tableau puis un fichier illisible laissait à l'écran la forme du **premier**,
+      et le bouton proposait de découper le second selon les colonnes d'un autre document.
+      (2) Une ligne **déjà importée** restait découpable : le geste réécrivait son titre en
+      « — col. 1 » alors qu'elle avait été importée *sans* colonne — un titre qui ment. Gardé
+      des deux côtés (bouton masqué **et** geste refusé), avec un message plutôt qu'un refus
+      muet, l'aperçu ne se rafraîchissant pas de lui-même après un import.
+      (3) La règle du nombre de colonnes proposé était le **maximum** sur les tables, ce qui
+      aurait offert **8 colonnes** sur une HDR. Remplacée par une règle **tirée de la
+      distribution réelle** — mesurée sur les **387 `.docx`** du disque : 352 sans table,
+      **26 avec une seule table de 2 colonnes** (exactement la population des bitextes), **8
+      avec des tables de tailles différentes**, toutes des documents de mise en page (deux
+      HDR, un modèle, les conventions), jamais un bitexte. Le geste en lot n'est donc proposé
+      que si les tables **s'accordent** ; sinon le champ colonne reste saisissable à la main.
+      On retire une proposition, jamais une capacité. 5 tests
 - [x] **Dire ce que le fichier contient, avant de lui demander une colonne** — fait le
       27 août, sur votre recadrage : la vraie question n'était pas « comment ajouter deux fois
       un fichier » mais « qu'y a-t-il dedans ». `POST /import/preview` renvoie `tables`

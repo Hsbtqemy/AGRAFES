@@ -63,6 +63,7 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 - [ ] `3-M-GW-OrFrTrEn-2010-Aligné Tableau.docx` affiche **« Tableau : 2 colonnes × 22 lignes. »** — la forme diffère, le nombre de colonnes non
 - [ ] Un `.docx` ordinaire sans tableau (par exemple `Asimov-Foundation_FR.docx`) n'affiche **aucune** note de tableau, et aucun bouton
 - [ ] Sur un fichier sans tableau, tout le reste de l'aperçu se comporte comme avant
+- [ ] Prévisualiser un fichier à tableau **puis** un fichier illisible fait disparaître la note : elle ne doit jamais rester sur la forme du fichier précédent
 
 ### Un document par colonne
 
@@ -71,6 +72,7 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 - [ ] Chaque ligne porte un champ **colonne** renseigné, `1` et `2`
 - [ ] Le journal de l'écran affiche **« ↳ … : un document par colonne (2 colonnes) »**
 - [ ] Le bouton « Un document par colonne » disparaît une fois le fichier éclaté — il n'y a plus rien à éclater
+- [ ] Après l'import, le bouton ne découpe plus la ligne : le journal dit « n'est plus en attente… » au lieu de réécrire le titre d'un document déjà importé
 - [ ] Passer une des deux lignes du mode **Paragraphes** au mode **Lignes numérotées** **conserve** la colonne saisie
 
 ### L'aperçu suit la colonne
@@ -104,7 +106,8 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 - [ ] `2021_Texte6_…Tableau - Copie.docx` éclaté en deux lignes : la colonne 1 annonce **95 unités**, la colonne 2 **96**
 - [ ] L'écart se voit donc **avant** l'import, dans l'aperçu, sans avoir à ouvrir le fichier dans Word
 - [ ] Après import des deux colonnes, l'alignement par ancre laisse une unité sans correspondance côté colonne 2 — c'est la source qui est irrégulière, pas l'import
-- [ ] Un fichier portant **plusieurs** tableaux affiche l'énumération (« N tableaux (…) — vérifiez l'aperçu avant de choisir. ») et non « Tableau : … » au singulier
+- [ ] Un fichier portant des tableaux de **tailles différentes** — par exemple `HDR V7 06 juillet.docx` ou `Conventions-Textes journalistiques…docx` — affiche l'énumération (« N tableaux (…) — vérifiez l'aperçu avant de choisir. ») et **aucun bouton** : « un document par colonne » n'a pas de réponse quand les tableaux se contredisent, et le champ colonne reste saisissable à la main
+- [ ] Un fichier portant **plusieurs** tableaux **de même largeur** propose bien le bouton
 - [ ] L'audit de corpus (écran **Métadonnées**, panneau d'audit) liste les deux documents sous **« Doublons de nom de fichier »** — c'est exact, et c'est le prix assumé d'un fichier qui produit deux documents ; leurs `source_hash` ne collisionnent pas, eux
 
 ### Non-régression

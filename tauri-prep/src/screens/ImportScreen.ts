@@ -30,7 +30,7 @@ import {
   detectLanguageToken,
   isKnownImportExt,
   modeAcceptsColumn,
-  maxTableColumns,
+  uniformTableColumns,
   describeTablesLabel,
   type TableShape,
 } from "../lib/importDetect.ts";
@@ -676,13 +676,17 @@ export class ImportScreen {
     }
     this._textTablesEl.hidden = false;
     this._textTablesMsgEl.textContent = label;
-    const columns = maxTableColumns(this._textPreviewTables);
-    // Rien à proposer sur une table d'une seule colonne, ni sur un fichier déjà
-    // éclaté : la liste porte alors plusieurs lignes pour ce même chemin.
+    const columns = uniformTableColumns(this._textPreviewTables);
+    // Rien à proposer : sur une table d'une seule colonne, sur des tables qui se
+    // contredisent (mise en page, jamais un bitexte — cf. `uniformTableColumns`), sur
+    // un fichier déjà éclaté (la liste porte alors plusieurs lignes pour ce chemin),
+    // ni sur une ligne qui n'est plus en attente — la découper réécrirait le titre
+    // d'un document DÉJÀ importé sans colonne, ce qui serait un mensonge.
     const queued = this._files.filter(
       (f) => normalizeImportPath(f.path) === normalizeImportPath(file.path),
     ).length;
-    this._textTablesSplitBtn.hidden = columns < 2 || queued > 1;
+    this._textTablesSplitBtn.hidden =
+      columns < 2 || queued > 1 || file.status !== "pending";
   }
 
   /**
@@ -697,7 +701,16 @@ export class ImportScreen {
     const candidates = this._textPreviewCandidates();
     const file = candidates[this._textPreviewCursor];
     if (!file) return;
-    const columns = maxTableColumns(this._textPreviewTables);
+    // Le bouton peut rester affiché après un import : l'aperçu ne se rafraîchit pas de
+    // lui-même. Refuser en silence laisserait croire à un clic manqué.
+    if (file.status !== "pending") {
+      this._log(
+        `↳ "${file.title}" n'est plus en attente — vider la liste et le rajouter pour le découper par colonne.`,
+        true,
+      );
+      return;
+    }
+    const columns = uniformTableColumns(this._textPreviewTables);
     if (columns < 2) return;
     const at = this._files.indexOf(file);
     if (at < 0) return;
@@ -813,6 +826,10 @@ export class ImportScreen {
     } catch (err) {
       if (reqId !== this._textPreviewReq) return;
       this._textPreviewPath = null;
+      // Sans ça, la note gardait la forme du fichier PRÉCÉDENT et le bouton proposait
+      // de découper celui-ci selon les colonnes d'un autre document.
+      this._textPreviewTables = null;
+      this._textTablesEl.hidden = true;
       this._textPreviewSummaryEl.textContent = "Lecture impossible du fichier.";
       this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Erreur de lecture du fichier.</td></tr>';
       this._log(

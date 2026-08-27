@@ -56,15 +56,23 @@ export interface TableShape {
 }
 
 /**
- * Nombre de colonnes exploitables : le **maximum** sur les tables du document.
+ * Nombre de colonnes du document quand **toutes ses tables s'accordent** ; 0 sinon.
  *
- * Le parcours d'extraction traverse *toutes* les tables à l'index demandé et compte
- * les lignes trop courtes plutôt que d'échouer — proposer le maximum est donc cohérent
- * avec ce que le moteur sait faire, et l'aperçu dira ce que chaque colonne rend.
+ * Règle tirée de la mesure, pas du raisonnement : sur les **387 `.docx`** du disque
+ * local (27 août 2026), 352 ne portent aucune table, **26 en portent une seule de deux
+ * colonnes** — c'est exactement la population des bitextes — et **8 portent des tables
+ * de tailles différentes**, qui sont toutes des documents de mise en page (deux HDR, un
+ * modèle, un fichier de conventions), jamais un bitexte.
+ *
+ * Prendre le *maximum* proposerait donc **8 colonnes** sur une HDR, ce qui n'a aucun
+ * sens. Exiger l'accord couvre les 26 bitextes sans une seule fausse offre. Quand les
+ * tables se contredisent, le geste en lot disparaît et le champ « colonne » reste
+ * saisissable à la main : on retire une proposition, jamais une capacité.
  */
-export function maxTableColumns(tables: TableShape[] | null | undefined): number {
+export function uniformTableColumns(tables: TableShape[] | null | undefined): number {
   if (!tables || tables.length === 0) return 0;
-  return tables.reduce((m, t) => Math.max(m, t.columns || 0), 0);
+  const first = tables[0].columns || 0;
+  return tables.every((t) => (t.columns || 0) === first) ? first : 0;
 }
 
 /**
