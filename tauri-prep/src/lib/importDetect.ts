@@ -26,6 +26,29 @@ const IMPORT_MODE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "conllu", label: "CoNLL-U annoté (.conllu)" },
 ];
 
+/**
+ * Modes acceptant une extraction par colonne de tableau (IMPO-01).
+ *
+ * Les deux modes DOCX, et eux seuls : le moteur ne connaît le parcours de table que
+ * pour ceux-là (`importers/docx_columns.py`, partagé par les deux importeurs), et
+ * l'ignore ailleurs comme il ignore `tei_unit` hors TEI.
+ *
+ * Le mode **paragraphes** est le seul qui lise un bitexte en tableau dont les cellules
+ * ne sont pas numérotées — le mode numéroté n'y trouve aucun `[n]` et en fait un
+ * document entièrement `structure`, donc hors index. Réserver le champ « colonne » au
+ * mode numéroté, comme c'était le cas, rendait donc la capacité inatteignable
+ * exactement là où elle sert.
+ */
+const COLUMN_CAPABLE_MODES: ReadonlySet<string> = new Set([
+  "docx_numbered_lines",
+  "docx_paragraphs",
+]);
+
+/** True si *mode* honore `column_index` (extraction d'une colonne de tableau). */
+export function modeAcceptsColumn(mode: string): boolean {
+  return COLUMN_CAPABLE_MODES.has(mode);
+}
+
 /** Extension (minuscule, sans point) du dernier segment d'un chemin / nom de fichier. */
 export function extFromFileName(fileName: string): string {
   const base = fileName.split(/[/\\]/u).pop() ?? fileName;

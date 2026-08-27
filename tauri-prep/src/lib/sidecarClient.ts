@@ -1550,7 +1550,8 @@ export interface ImportPreviewResponse {
 
 export async function previewImport(
   conn: Conn,
-  opts: { path: string; mode: string; limit?: number },
+  /** `column_index` (IMPO-01) : 1-based, honoré par les deux modes DOCX, ignoré ailleurs. */
+  opts: { path: string; mode: string; limit?: number; column_index?: number },
 ): Promise<ImportPreviewResponse> {
   return conn.post("/import/preview", opts) as Promise<ImportPreviewResponse>;
 }

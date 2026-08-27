@@ -29,6 +29,7 @@ import {
   detectLanguageForMode,
   detectLanguageToken,
   isKnownImportExt,
+  modeAcceptsColumn,
 } from "../lib/importDetect.ts";
 import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
 import { buildFamilyDetectionBannerHtml } from "../lib/importFamilyDetectionTemplate.ts";
@@ -54,7 +55,7 @@ interface FileItem {
    */
   langGuessed?: boolean;
   /**
-   * For `docx_numbered_lines` ONLY — 1-based index of the column to extract
+   * Pour les deux modes DOCX (IMPO-01) — index 1-based de la colonne à extraire
    * from tables (DOCX bilingue 2-col). Undefined = legacy behavior (tables
    * ignored).
    */
@@ -405,11 +406,12 @@ export class ImportScreen {
       row.className = `imp-file-item imp-file-item-${f.status}`;
       row.dataset.index = String(i);
       const chipCls = this._chipClass(f.status);
-      // Column-index input : visible uniquement pour docx_numbered_lines.
-      // Si le DOCX contient les textes dans une table multi-colonnes (bilingue
-      // 2-col typique), indiquer la colonne à extraire. Vide = comportement
-      // legacy (tables ignorées).
-      const colCtrl = f.mode === "docx_numbered_lines"
+      // Column-index input : visible pour les DEUX modes DOCX (IMPO-01). Si le
+      // DOCX porte les textes dans une table multi-colonnes (bitexte 2-col typique),
+      // indiquer la colonne à extraire. Vide = comportement legacy (tables ignorées).
+      // Le mode PARAGRAPHES est le seul qui lise un tel tableau non numéroté : le
+      // réserver au mode numéroté rendait la capacité inatteignable là où elle sert.
+      const colCtrl = modeAcceptsColumn(f.mode)
         ? `<input class="imp-col-inp" type="number" min="1" step="1" data-i="${i}"
                   value="${f.column_index ?? ""}" placeholder="col"
                   title="Colonne du tableau à extraire (1 = première). Laisser vide pour ignorer les tables." />`
@@ -445,10 +447,11 @@ export class ImportScreen {
       (el as HTMLSelectElement).addEventListener("change", (e) => {
         const i = parseInt((e.target as HTMLElement).dataset.i!);
         this._files[i].mode = (e.target as HTMLSelectElement).value;
-        // Clear column_index quand on quitte docx_numbered_lines — il n'a
-        // pas de sens hors de ce mode et le backend l'ignore mais autant
-        // ne pas garder de valeur fantôme.
-        if (this._files[i].mode !== "docx_numbered_lines") {
+        // Clear column_index quand on quitte les modes qui l'honorent — il n'a
+        // pas de sens ailleurs et le backend l'ignore, mais autant ne pas garder
+        // de valeur fantôme. Passer d'un mode DOCX à l'autre la CONSERVE : c'est
+        // le geste même de comparer ce que chaque mode fait de la même colonne.
+        if (!modeAcceptsColumn(this._files[i].mode)) {
           this._files[i].column_index = undefined;
         }
         this._renderList();
@@ -466,6 +469,10 @@ export class ImportScreen {
           const n = parseInt(raw, 10);
           this._files[i].column_index = Number.isFinite(n) && n >= 1 ? n : undefined;
         }
+        // L'aperçu doit suivre la colonne. Il est gardé par le CHEMIN du fichier,
+        // qui ne bouge pas d'une colonne à l'autre : sans le forçage, changer de
+        // colonne laissait l'aperçu sur la précédente.
+        void this._refreshTextPreview(true);
       });
     });
     this._listEl.querySelectorAll(".imp-lang-inp").forEach(el => {
@@ -684,7 +691,14 @@ export class ImportScreen {
     const reqId = ++this._textPreviewReq;
     this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Chargement…</td></tr>';
     try {
-      const res = await previewImport(this._conn, { path: file.path, mode: file.mode, limit: 50 });
+      const res = await previewImport(this._conn, {
+        path: file.path,
+        mode: file.mode,
+        limit: 50,
+        ...(modeAcceptsColumn(file.mode) && file.column_index
+          ? { column_index: file.column_index }
+          : {}),
+      });
       if (reqId !== this._textPreviewReq) return;
       this._textPreviewPath = file.path;
 
@@ -832,7 +846,7 @@ export class ImportScreen {
           language: fileLang,
           title: f.title,
           check_filename: checkFilename,
-          ...(f.mode === "docx_numbered_lines" && f.column_index
+          ...(modeAcceptsColumn(f.mode) && f.column_index
             ? { column_index: f.column_index }
             : {}),
         });

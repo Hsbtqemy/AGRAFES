@@ -10,6 +10,7 @@ import {
   detectLanguageFromName,
   detectLanguageToken,
   detectLanguageForMode,
+  modeAcceptsColumn,
   LANG_RE,
   KNOWN_LANG_CODES,
 } from "../importDetect.ts";
@@ -297,5 +298,38 @@ describe("exports partagés", () => {
     expect(KNOWN_LANG_CODES.has("fr")).toBe(true);
     expect(KNOWN_LANG_CODES.has("eng")).toBe(true);
     expect(KNOWN_LANG_CODES.has("xx")).toBe(false);
+  });
+});
+
+// ─── IMPO-01 : quels modes acceptent une colonne de tableau ──────────────────
+//
+// Le champ « colonne » de l'écran d'import était réservé à `docx_numbered_lines`,
+// ce qui rendait la capacité inatteignable exactement là où elle sert : un bitexte
+// en tableau NON numéroté ne se lit qu'en mode paragraphes.
+
+describe("modeAcceptsColumn", () => {
+  it("accepte les deux modes DOCX", () => {
+    expect(modeAcceptsColumn("docx_numbered_lines")).toBe(true);
+    expect(modeAcceptsColumn("docx_paragraphs")).toBe(true);
+  });
+
+  it("refuse tous les autres modes", () => {
+    for (const mode of [
+      "txt_numbered_lines",
+      "odt_paragraphs",
+      "odt_numbered_lines",
+      "tei",
+      "conllu",
+      "",
+    ]) {
+      expect(modeAcceptsColumn(mode)).toBe(false);
+    }
+  });
+
+  it("couvre exactement les modes proposés pour un .docx", () => {
+    // Garde de cohérence : si le menu du .docx gagne un mode, il doit être
+    // tranché ici explicitement plutôt que refusé par omission.
+    const docxModes = modeOptionsForExt("docx").map((o) => o.value);
+    expect(docxModes.every((m) => modeAcceptsColumn(m))).toBe(true);
   });
 });
