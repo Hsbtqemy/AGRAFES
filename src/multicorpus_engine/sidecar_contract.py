@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.77"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.78"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -245,6 +245,16 @@ API_VERSION = CONTRACT_VERSION
 #         duplicate (pivot,target) link is refused. Logic in
 #         services/align_links_service.set_pivot. Additive enum+field → no new route →
 #         snapshot unchanged; openapi moves (version); .md action list updated.
+# 1.6.78: bitexte en tableau (IMPO-01). POST /import/preview accepte `column_index`, qui
+#         manquait pour TOUS les modes : l'aperçu d'une extraction par colonne montrait
+#         zéro unité là où l'import en écrivait des centaines. Et `column_index` devient
+#         valide pour le mode `docx_paragraphs` (POST /import, job d'import, dispatch CLI),
+#         seule porte d'entrée d'un tableau à deux colonnes NON numéroté — le mode numéroté
+#         le lisait mais, n'y trouvant pas de `[n]`, en faisait un document entièrement
+#         `structure`, donc hors index. Champ optionnel sur routes existantes → pas de
+#         nouvelle route → snapshot inchangé ; openapi bouge (version + propriété).
+#         Logique dans importers/docx_columns.iter_column_paragraphs, partagée par les deux
+#         importeurs DOCX.
 # 1.6.62: paragraphes manuels (R6). New POST /segment/paragraph_boundary — toggle one line
 #         segment as a paragraph start (or remove it when it already heads a multi-segment
 #         block): the coarse grain is relabelled a block at a time (regroupe le run précédent
@@ -929,6 +939,11 @@ def openapi_spec() -> dict[str, Any]:
                                         "path": {"type": "string"},
                                         "mode": {"type": "string"},
                                         "limit": {"type": "integer", "default": 100},
+                                        "column_index": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "nullable": True,
+                                        },
                                     },
                                 }
                             }

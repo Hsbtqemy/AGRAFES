@@ -67,9 +67,11 @@ def dispatch_import(
     remote URL so provenance is written **inside the import's own transaction** —
     no follow-up UPDATE, hence no crash window leaving a temp path (SID-05).
 
-    Raises ``ValueError`` for an unknown *mode*. ``column_index`` and ``tei_unit``
-    are only meaningful for ``docx_numbered_lines`` and ``tei`` respectively; they
-    are ignored for the other modes.
+    Raises ``ValueError`` for an unknown *mode*. ``tei_unit`` is only meaningful for
+    ``tei``; ``column_index`` for the two DOCX modes — ``docx_numbered_lines`` and,
+    depuis IMPO-01, ``docx_paragraphs``, sans quoi un bitexte en tableau à deux
+    colonnes non numéroté n'avait aucun mode d'import valide. Ils sont ignorés par
+    les autres modes.
     """
     if mode == "docx_numbered_lines":
         from .docx_numbered_lines import import_docx_numbered_lines
@@ -94,7 +96,7 @@ def dispatch_import(
         return import_docx_paragraphs(
             conn=conn, path=path, language=language, title=title,
             doc_role=doc_role, resource_type=resource_type,
-            run_id=run_id, run_logger=run_logger,
+            column_index=column_index, run_id=run_id, run_logger=run_logger,
             check_filename=check_filename,
             source_path=source_path,
         )

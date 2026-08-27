@@ -2533,7 +2533,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         For mode=conllu: returns sentence/token counts and a sample of rows.
         For other modes: returns a preview of the first `limit` text units.
 
-        Body: { path: str, mode: str, limit?: int }
+        Body: { path: str, mode: str, limit?: int, column_index?: int }
         Response: {
             ok, mode,
             conllu_stats?: {
@@ -2557,6 +2557,25 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if "\x00" in path_str:
             self._send_error("Invalid path", code=ERR_VALIDATION, http_status=400)
             return
+
+        # IMPO-01 — validé à l'entrée, comme dans _handle_import : sans quoi un index
+        # nul ou négatif remonterait en 500 générique au lieu d'un refus lisible.
+        _ci_raw = body.get("column_index")
+        column_index: "int | None" = None
+        if _ci_raw is not None:
+            try:
+                column_index = int(_ci_raw)
+            except (TypeError, ValueError):
+                self._send_error(
+                    "column_index must be an integer >= 1 or null",
+                    code=ERR_VALIDATION, http_status=400,
+                )
+                return
+            if column_index < 1:
+                self._send_error(
+                    "column_index must be >= 1", code=ERR_VALIDATION, http_status=400
+                )
+                return
 
         fpath = _Path(path_str).resolve()
         if not fpath.exists():
@@ -2586,7 +2605,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
         else:
             try:
-                units, total = self._preview_text_units(fpath, mode, limit)
+                units, total = self._preview_text_units(
+                    fpath, mode, limit, column_index=column_index
+                )
                 self._send_json(success_payload({
                     "mode": mode,
                     "conllu_stats": None,
@@ -2910,7 +2931,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         self._send_json(success_payload(result))
 
     def _preview_text_units(
-        self, fpath: "Path", mode: str, limit: int
+        self, fpath: "Path", mode: str, limit: int, column_index: "int | None" = None
     ) -> "tuple[list[dict], int]":
         """Parse a file without writing to DB. Returns (units[:limit], total_count).
 
@@ -2921,6 +2942,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         A-02: every mode goes through the importer's own ``parse_<mode>`` so the
         preview shows EXACTLY what an import would write — no parsing is
         reimplemented here.
+
+        IMPO-01 : ``column_index`` manquait ici pour **tous** les modes, si bien
+        qu'aucun aperçu d'une extraction par colonne n'était possible — l'aperçu
+        montrait zéro unité là où l'import en écrivait des centaines. Il n'a de
+        sens que pour les deux modes DOCX ; ailleurs il est ignoré, comme au
+        dispatch.
         """
         from multicorpus_engine.importers import (
             docx_numbered_lines, docx_paragraphs,
@@ -2931,9 +2958,13 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         if mode in ("txt_numbered_lines", "txt"):
             parsed = txt.parse_txt_numbered_lines(fpath)
         elif mode in ("docx_numbered_lines", "docx"):
-            parsed = docx_numbered_lines.parse_docx_numbered_lines(fpath)
+            parsed = docx_numbered_lines.parse_docx_numbered_lines(
+                fpath, column_index=column_index
+            )
         elif mode == "docx_paragraphs":
-            parsed = docx_paragraphs.parse_docx_paragraphs(fpath)
+            parsed = docx_paragraphs.parse_docx_paragraphs(
+                fpath, column_index=column_index
+            )
         elif mode in ("odt_numbered_lines", "odt"):
             parsed = odt_numbered_lines.parse_odt_numbered_lines(fpath)
         elif mode == "odt_paragraphs":
@@ -10031,7 +10062,9 @@ class CorpusServer:
             resource_type = params.get("resource_type")
             tei_unit = params.get("tei_unit", "p")
             check_filename = bool(params.get("check_filename", False))
-            # column_index forwarded to docx_numbered_lines only (cf. _handle_import).
+            # column_index forwarded to the two DOCX modes (cf. _handle_import) : numbered
+            # lines, and paragraphs depuis IMPO-01 — un tableau à deux colonnes non
+            # numéroté n'a de porte d'entrée que par le second.
             _ci_raw = params.get("column_index")
             column_index: int | None = None
             if _ci_raw is not None:
@@ -10072,6 +10105,7 @@ class CorpusServer:
                         conn, path=file_path, language=language,
                         title=title, doc_role=doc_role, resource_type=resource_type,
                         check_filename=check_filename,
+                        column_index=column_index,
                     )
                 elif mode == "odt_paragraphs":
                     from multicorpus_engine.importers.odt_paragraphs import import_odt_paragraphs

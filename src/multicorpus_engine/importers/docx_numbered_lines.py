@@ -26,7 +26,8 @@ from pathlib import Path
 from typing import Optional
 
 from ..unicode_policy import count_sep, normalize
-from .import_guard import assert_not_duplicate_import
+from .docx_columns import ColumnWalkStats, column_walk_warnings, iter_column_paragraphs
+from .import_guard import assert_not_duplicate_import, column_scoped_source_hash
 from .parsed import ParsedDoc, ParsedUnit, file_sha256, insert_units
 from .rich_text import para_to_rich_lines
 
@@ -132,47 +133,6 @@ def _rich_line_to_unit(
     return ("structure", n, None, text_raw, text_norm, None)
 
 
-def _iter_body_blocks(document):
-    """Yield each top-level Paragraph or Table in document order.
-
-    python-docx's ``Document.paragraphs`` skips paragraphs nested inside
-    tables — we walk the body XML directly via lxml so column_index
-    extraction can reach table content.
-    """
-    from docx.oxml.ns import qn
-    from docx.table import Table
-    from docx.text.paragraph import Paragraph
-    body = document.element.body
-    for child in body.iterchildren():
-        if child.tag == qn("w:p"):
-            yield Paragraph(child, document)
-        elif child.tag == qn("w:tbl"):
-            yield Table(child, document)
-
-
-def _is_vmerge_continuation(cell) -> bool:
-    """True if *cell* is a vertical-merge CONTINUATION (not the start).
-
-    In WordML, a vMerge has the start cell tagged ``<w:vMerge w:val="restart"/>``
-    and continuation cells tagged ``<w:vMerge/>`` (absent val = continue).
-    python-docx ``cell.merge`` sometimes leaves stale paragraph content
-    in continuation cells, so simple ``id(cell)`` dedup is insufficient.
-    We inspect the XML directly. Defensive : returns False on any error.
-    """
-    try:
-        from docx.oxml.ns import qn
-        tc_pr = cell._tc.tcPr
-        if tc_pr is None:
-            return False
-        vmerge = tc_pr.find(qn("w:vMerge"))
-        if vmerge is None:
-            return False
-        val = vmerge.get(qn("w:val"))
-        return val != "restart"
-    except Exception:
-        return False
-
-
 #: Hard cap on the number of holes collected. A pathological external_id span — a single
 #: fat-fingered ``[900000000]``, an ``xml:id="p99999999"`` or a ``# sent_id = 999999999`` —
 #: would otherwise make ``range(min, max)`` hang and the holes list OOM (it freezes the whole
@@ -243,7 +203,8 @@ def parse_docx_numbered_lines(
         raise ValueError(f"DOCX file too large (max {_MAX_FILE_BYTES // (1024 * 1024)} MiB)")
 
     log = run_logger or logger
-    source_hash = file_sha256(path)
+    # IMPO-01 — l'identite d'un document extrait est (fichier, colonne).
+    source_hash = column_scoped_source_hash(file_sha256(path), column_index)
 
     # Validate column_index early so the user gets a clear error.
     if column_index is not None and column_index < 1:
@@ -279,73 +240,34 @@ def parse_docx_numbered_lines(
     else:
         # Column extraction — walk body in document order, dive into tables
         # at the requested column. Edge cases produce warnings + counters,
-        # never silent data loss.
-        from docx.table import Table as _DocxTable
-        from docx.text.paragraph import Paragraph as _DocxParagraph
-        target_idx = column_index - 1
-        for block in _iter_body_blocks(document):
-            if isinstance(block, _DocxParagraph):
-                for unit in _paragraph_to_units(block, 0):
-                    _append_unit(unit)
+        # never silent data loss. Le parcours lui-même vit dans `docx_columns`,
+        # partagé avec `docx_paragraphs` (IMPO-01) ; ce qui reste ici est le
+        # comptage propre au mode numéroté, qui ne pèse son ratio de lignes non
+        # numérotées que sur le contenu DE LA COLONNE, jamais sur les
+        # paragraphes de premier niveau — d'où le test sur `table_no`.
+        walk_stats = ColumnWalkStats()
+        for para, table_no, row_no in iter_column_paragraphs(
+            document, column_index, walk_stats, log
+        ):
+            for unit in _paragraph_to_units(para, 0):
+                if table_no is not None:
+                    # Counted per extracted *line*: on a cell holding soft
+                    # breaks, one paragraph carries many `[n]` lines, and the
+                    # unnumbered-ratio warning below must weigh them all.
+                    col_paragraphs_total += 1
+                    if unit[0] == "line":
+                        col_paragraphs_line += 1
+                _append_unit(unit)
+                if table_no is None:
                     log.debug("Top-level para n=%d type=%s", n, unit[0])
-            elif isinstance(block, _DocxTable):
-                tables_processed += 1
-                # Per-table dedup pour cellules fusionnées verticalement (vMerge) :
-                # python-docx renvoie le MÊME élément <w:tc> pour les rows de
-                # continuation d'un merge vertical. On garde les ÉLÉMENTS _tc
-                # déjà vus (et non leur id()) : les proxies lxml sont
-                # GC-ables et id() est réutilisé après collecte — d'où des
-                # faux positifs de dedup en suite de tests complète. Conserver
-                # la référence maintient le proxy en vie, donc la comparaison
-                # `is` est stable.
-                seen_target_tcs: list = []
-                for row_idx, row in enumerate(block.rows):
-                    cells = row.cells
-                    if target_idx >= len(cells):
-                        rows_skipped_short += 1
-                        continue
-                    target_cell = cells[target_idx]
-                    # Horizontal merge from a lower column: same Cell wrapper
-                    # appears at an earlier index. Skip rather than dupliquer
-                    # le contenu d'une cellule fusionnée venant de col 1.
-                    if target_idx > 0 and any(
-                        cells[i] is target_cell for i in range(target_idx)
-                    ):
-                        rows_skipped_short += 1
-                        continue
-                    # Vertical merge dedup : identité d'élément _tc via `is`.
-                    target_tc = target_cell._tc
-                    if any(target_tc is seen for seen in seen_target_tcs):
-                        rows_skipped_short += 1
-                        continue
-                    # Défense secondaire : DOCX produits par Word (et non par
-                    # python-docx) marquent la continuation vMerge sans
-                    # val="restart" — le marqueur XML les attrape alors.
-                    if _is_vmerge_continuation(target_cell):
-                        rows_skipped_short += 1
-                        continue
-                    seen_target_tcs.append(target_tc)
-                    # Nested table inside the target cell — skip, warning.
-                    if target_cell.tables:
-                        nested_tables_skipped += len(target_cell.tables)
-                        log.warning(
-                            "Nested table in table %d row %d col %d — skipped",
-                            tables_processed, row_idx + 1, column_index,
-                        )
-                    for para in target_cell.paragraphs:
-                        # Counted per extracted *line*: on a cell holding soft
-                        # breaks, one paragraph carries many `[n]` lines, and the
-                        # unnumbered-ratio warning below must weigh them all.
-                        for unit in _paragraph_to_units(para, 0):
-                            col_paragraphs_total += 1
-                            if unit[0] == "line":
-                                col_paragraphs_line += 1
-                            _append_unit(unit)
-                            log.debug(
-                                "Table %d row %d col %d para n=%d type=%s",
-                                tables_processed, row_idx + 1, column_index,
-                                n, unit[0],
-                            )
+                else:
+                    log.debug(
+                        "Table %d row %d col %d para n=%d type=%s",
+                        table_no, row_no, column_index, n, unit[0],
+                    )
+        tables_processed = walk_stats.tables_processed
+        rows_skipped_short = walk_stats.rows_skipped_short
+        nested_tables_skipped = walk_stats.nested_tables_skipped
 
     units = [
         ParsedUnit(
@@ -400,7 +322,10 @@ def import_docx_numbered_lines(
     log.info("Starting import of %s (mode=docx_numbered_lines)", path)
 
     parsed = parse_docx_numbered_lines(path, column_index=column_index, run_logger=run_logger)
-    assert_not_duplicate_import(conn, path, parsed.source_hash, check_filename=check_filename)
+    assert_not_duplicate_import(
+        conn, path, parsed.source_hash,
+        check_filename=check_filename, column_index=column_index,
+    )
     source_hash = parsed.source_hash
     doc_title = title or path.stem
     utcnow = __import__("datetime").datetime.now(
@@ -467,19 +392,12 @@ def import_docx_numbered_lines(
 
     # Column-index warnings — transform "0 line units" silence into actionable signal.
     if column_index is not None:
-        if rows_skipped_short > 0:
-            msg = (
-                f"{rows_skipped_short} ligne(s) sur {tables_processed} table(s) ignorée(s) : "
-                f"colonne {column_index} absente (table plus étroite ou cellule fusionnée "
-                f"venant d'une colonne précédente)."
-            )
-            report.warnings.append(msg)
-            log.warning(msg)
-        if nested_tables_skipped > 0:
-            msg = (
-                f"{nested_tables_skipped} sous-table(s) imbriquée(s) ignorée(s) — "
-                f"leur contenu n'a pas été importé."
-            )
+        # Les deux pertes de données du parcours sont communes aux deux modes DOCX et
+        # vivent dans `docx_columns` (IMPO-01) ; ce qui suit est propre à la numérotation.
+        for msg in column_walk_warnings(
+            ColumnWalkStats(tables_processed, rows_skipped_short, nested_tables_skipped),
+            column_index,
+        ):
             report.warnings.append(msg)
             log.warning(msg)
         if len(external_ids) == 0 and tables_processed > 0:

@@ -16,6 +16,22 @@ class DuplicateImportMatch:
     matched_value: str | None = None
 
 
+def column_scoped_source_hash(file_hash: str, column_index: int | None) -> str:
+    """L'identité d'un document extrait par colonne, c'est ``(fichier, colonne)``.
+
+    Un bitexte en tableau est **un** fichier qui doit produire **deux** documents.
+    Tant que le ``source_hash`` était celui du fichier entier, la seconde colonne
+    était refusée comme doublon de la première (IMPO-01) — défaut partagé par les
+    deux modes DOCX, et invisible en test parce que les deux cas de colonne
+    utilisaient chacun une base neuve.
+
+    Sans colonne, le hash est rendu inchangé : la mesure du 27 août 2026 sur la
+    base de travail (1141 runs d'import, **0** avec un ``column_index``) garantit
+    qu'aucun document existant ne voit son identité bouger.
+    """
+    return file_hash if column_index is None else f"{file_hash}:col{column_index}"
+
+
 def normalize_import_path_str(s: str) -> str:
     """Align with Prep UI `normalizeImportPath`: separators, case, trailing slash.
 
@@ -43,8 +59,16 @@ def find_duplicate_import_match(
     path: Path,
     source_hash: str,
     check_filename: bool = False,
+    column_index: int | None = None,
 ) -> DuplicateImportMatch | None:
-    """Return duplicate match metadata if this file is already in the corpus."""
+    """Return duplicate match metadata if this file is already in the corpus.
+
+    Avec un ``column_index``, seul le hash — déjà porté à la colonne par
+    :func:`column_scoped_source_hash` — décide : les contrôles par **chemin** et par
+    **nom de fichier** sont écartés, puisque le fichier est légitimement importé une
+    fois par colonne et que son chemin est le même des deux côtés. Réimporter la
+    *même* colonne reste refusé, le hash portant la colonne.
+    """
     if not source_hash:
         return None
     row = conn.execute(
@@ -57,6 +81,9 @@ def find_duplicate_import_match(
             reason="source_hash",
             matched_value=source_hash[:12],
         )
+
+    if column_index is not None:
+        return None
 
     raw_paths = _path_raw_variants(path)
     placeholders = ",".join("?" * len(raw_paths))
@@ -100,6 +127,7 @@ def find_duplicate_doc_id(
     path: Path,
     source_hash: str,
     check_filename: bool = False,
+    column_index: int | None = None,
 ) -> int | None:
     """Return an existing doc_id if this file is already in the corpus."""
     match = find_duplicate_import_match(
@@ -107,6 +135,7 @@ def find_duplicate_doc_id(
         path,
         source_hash,
         check_filename=check_filename,
+        column_index=column_index,
     )
     return match.doc_id if match is not None else None
 
@@ -116,6 +145,7 @@ def assert_not_duplicate_import(
     path: Path,
     source_hash: str,
     check_filename: bool = False,
+    column_index: int | None = None,
 ) -> None:
     """Raise ValueError if the file is already imported."""
     match = find_duplicate_import_match(
@@ -123,6 +153,7 @@ def assert_not_duplicate_import(
         path,
         source_hash,
         check_filename=check_filename,
+        column_index=column_index,
     )
     if match is None:
         return

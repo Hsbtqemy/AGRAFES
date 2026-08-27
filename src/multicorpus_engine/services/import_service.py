@@ -41,8 +41,9 @@ def import_document(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
     tei_unit = body.get("tei_unit", "p")
     check_filename = bool(body.get("check_filename", False))
 
-    # column_index: specific to docx_numbered_lines (2-col tables). Validated here,
-    # forwarded only to that importer; ignored for other modes.
+    # column_index: 2-col tables, honoré par les deux modes DOCX — lignes numérotées,
+    # et paragraphes depuis IMPO-01, seule porte d'entrée d'un tableau non numéroté.
+    # Validé ici, ignoré par les autres modes.
     column_index_raw = body.get("column_index")
     column_index: int | None = None
     if column_index_raw is not None:

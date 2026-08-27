@@ -279,3 +279,84 @@ def test_tei_preview_units_xmlid_fallback(preview_sidecar):
         {"n": 1, "external_id": 5, "unit_type": "line", "text_raw": "Premier."},
         {"n": 2, "external_id": 2, "unit_type": "line", "text_raw": "Deuxieme."},
     ]
+
+
+# ─── IMPO-01 : l'aperçu d'une extraction par colonne ──────────────────────────
+#
+# `/import/preview` n'acceptait `column_index` pour AUCUN mode : l'aperçu d'un
+# bitexte en tableau montrait zéro unité là où l'import en écrivait des centaines.
+
+
+def _table_docx_bytes(col1: list[str], col2: list[str]) -> bytes:
+    """Un bitexte de la forme réelle : une ligne, deux colonnes multi-paragraphes."""
+    import io as _io
+
+    import docx  # python-docx
+
+    doc = docx.Document()
+    table = doc.add_table(rows=1, cols=2)
+    for cell, paragraphs in ((table.cell(0, 0), col1), (table.cell(0, 1), col2)):
+        cell.paragraphs[0].text = paragraphs[0]
+        for extra in paragraphs[1:]:
+            cell.add_paragraph(extra)
+    buf = _io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def test_preview_of_a_table_bitext_is_empty_without_a_column(preview_sidecar):
+    """Le point de départ : sans colonne, `Document.paragraphs` ne voit pas la table."""
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "tableau.docx"
+    f.write_bytes(_table_docx_bytes(["Un.", "Deux."], ["One.", "Two."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview", {"path": str(f), "mode": "docx_paragraphs"}
+    )
+    assert code == 200, body
+    assert body["units"] == []
+    assert body["units_total"] == 0
+
+
+def test_preview_extracts_the_requested_table_column(preview_sidecar):
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "tableau.docx"
+    f.write_bytes(_table_docx_bytes(["Un.", "Deux."], ["One.", "Two."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview",
+        {"path": str(f), "mode": "docx_paragraphs", "column_index": 2},
+    )
+    assert code == 200, body
+    assert body["units"] == [
+        {"n": 1, "external_id": 1, "unit_type": "line", "text_raw": "One."},
+        {"n": 2, "external_id": 2, "unit_type": "line", "text_raw": "Two."},
+    ]
+
+
+def test_preview_column_works_for_the_numbered_mode_too(preview_sidecar):
+    """Le mode numéroté n'avait pas non plus d'aperçu de colonne."""
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "tableau.docx"
+    f.write_bytes(_table_docx_bytes(["[1] Un.", "[2] Deux."], ["[1] One.", "[2] Two."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview",
+        {"path": str(f), "mode": "docx_numbered_lines", "column_index": 1},
+    )
+    assert code == 200, body
+    assert [u["text_raw"] for u in body["units"]] == ["Un.", "Deux."]
+
+
+def test_preview_refuses_a_column_index_below_one(preview_sidecar):
+    """Refus lisible à l'entrée, plutôt qu'un 500 générique venu de l'importeur."""
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "tableau.docx"
+    f.write_bytes(_table_docx_bytes(["Un."], ["One."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview",
+        {"path": str(f), "mode": "docx_paragraphs", "column_index": 0},
+    )
+    assert code == 400, body
+    assert "column_index" in json.dumps(body)

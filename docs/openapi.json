@@ -4499,8 +4499,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.77",
-    "x-contract-version": "1.6.77"
+    "version": "1.6.78",
+    "x-contract-version": "1.6.78"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -7226,6 +7226,11 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "column_index": {
+                    "minimum": 1,
+                    "nullable": true,
+                    "type": "integer"
+                  },
                   "limit": {
                     "default": 100,
                     "type": "integer"
