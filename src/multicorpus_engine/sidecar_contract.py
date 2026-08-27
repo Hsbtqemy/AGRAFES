@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.79"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.80"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -245,6 +245,14 @@ API_VERSION = CONTRACT_VERSION
 #         duplicate (pivot,target) link is refused. Logic in
 #         services/align_links_service.set_pivot. Additive enum+field → no new route →
 #         snapshot unchanged; openapi moves (version); .md action list updated.
+# 1.6.80: comptes par type a l'apercu (IMPO-01). POST /import/preview renvoie
+#         `units_line` / `units_structure`, comptes sur TOUTES les unites et non sur les
+#         `limit` rapatriees. C'est la seule mesure qui separe deux modes rendant le meme
+#         total — un bitexte en tableau rend 48 unites dans les deux modes DOCX, dont 48
+#         indexables d'un cote et 0 de l'autre. Sans eux, l'apercu comparatif devait
+#         redemander le document ENTIER par mode juste pour compter (~110 Ko de texte sur
+#         la boucle locale, deux fois, pour deux entiers). Champs additifs sur route
+#         existante -> snapshot inchange ; openapi bouge.
 # 1.6.79: forme des tables (IMPO-01). POST /import/preview renvoie `tables`
 #         (`[{columns, rows}]` en ordre de lecture, `null` hors modes DOCX) : de quoi
 #         dire ce que le fichier CONTIENT avant de lui demander une colonne. Sans elle,
@@ -987,6 +995,12 @@ def openapi_spec() -> dict[str, Any]:
                                                 "description": "Text modes: the first `limit` units the import would write.",
                                             },
                                             "units_total": {"type": "integer", "nullable": True},
+                                            "units_line": {
+                                                "type": "integer",
+                                                "nullable": True,
+                                                "description": "IMPO-01: units the import would index (unit_type='line'), counted over ALL units — the only measure that separates two modes yielding the same total.",
+                                            },
+                                            "units_structure": {"type": "integer", "nullable": True},
                                             "truncated": {"type": "boolean", "nullable": True},
                                             "tables": {
                                                 "type": "array",

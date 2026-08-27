@@ -1545,6 +1545,13 @@ export interface ImportPreviewResponse {
   // text-mode fields (DOCX / ODT / TXT / TEI)
   units?: ImportPreviewUnit[];
   units_total?: number;
+  /**
+   * IMPO-01 — unités que l'import indexerait (`unit_type = 'line'`), comptées sur TOUTES
+   * les unités et non sur les `limit` rapatriées. C'est la seule mesure qui sépare deux
+   * modes rendant le même total.
+   */
+  units_line?: number;
+  units_structure?: number;
   truncated?: boolean;
   /**
    * IMPO-01 — forme des tables du document, en ordre de lecture. Modes DOCX seulement

@@ -4499,8 +4499,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.79",
-    "x-contract-version": "1.6.79"
+    "version": "1.6.80",
+    "x-contract-version": "1.6.80"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -7322,6 +7322,15 @@
                       },
                       "nullable": true,
                       "type": "array"
+                    },
+                    "units_line": {
+                      "description": "IMPO-01: units the import would index (unit_type='line'), counted over ALL units — the only measure that separates two modes yielding the same total.",
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "units_structure": {
+                      "nullable": true,
+                      "type": "integer"
                     },
                     "units_total": {
                       "nullable": true,

@@ -2537,6 +2537,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         Les modes DOCX renvoient en plus `tables: [{columns, rows}]` — la forme des
         tables du document, de quoi dire ce que le fichier CONTIENT avant qu'on lui
         demande une colonne (IMPO-01). `null` pour les autres modes.
+        Tous les modes texte renvoient `units_line` / `units_structure`, comptés sur
+        TOUTES les unités : c'est la seule mesure qui sépare deux modes rendant le même
+        total, et l'aperçu comparatif s'en sert sans redemander le document entier.
         Response: {
             ok, mode,
             conllu_stats?: {
@@ -2608,7 +2611,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
         else:
             try:
-                units, total, tables = self._preview_text_units(
+                units, total, tables, n_line, n_structure = self._preview_text_units(
                     fpath, mode, limit, column_index=column_index
                 )
                 self._send_json(success_payload({
@@ -2616,6 +2619,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                     "conllu_stats": None,
                     "units": units,
                     "units_total": total,
+                    "units_line": n_line,
+                    "units_structure": n_structure,
                     "truncated": total > limit,
                     "tables": tables,
                 }))
@@ -2936,7 +2941,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
     def _preview_text_units(
         self, fpath: "Path", mode: str, limit: int, column_index: "int | None" = None
-    ) -> "tuple[list[dict], int, list[dict] | None]":
+    ) -> "tuple[list[dict], int, list[dict] | None, int, int]":
         """Parse a file without writing to DB. Returns (units[:limit], total_count).
 
         Each unit dict: { n, external_id, unit_type, text_raw }
@@ -2984,7 +2989,12 @@ class _CorpusHandler(BaseHTTPRequestHandler):
         # modes DOCX. `None` ailleurs : ne rien promettre qu'on ne sait pas honorer,
         # l'ODT portant des tables mais aucun parcours par colonne.
         tables = parsed.stats.get("tables") if isinstance(parsed.stats, dict) else None
-        return units, total, tables
+        # IMPO-01 — les comptes par type, calculés sur TOUTES les unités et non sur les
+        # `limit` rapatriées. Sans eux, l'aperçu comparatif devait redemander le document
+        # entier par mode juste pour compter ses unités indexables : ~110 Ko de texte sur
+        # la boucle locale, deux fois, pour deux entiers que le parse tient déjà.
+        units_line = sum(1 for u in parsed.units if u.unit_type == "line")
+        return units, total, tables, units_line, total - units_line
 
     def _handle_curate_exceptions_list(self, body: dict) -> None:
         # Thin adapter over the curate service (audit P0-1 / A-01).

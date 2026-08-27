@@ -5,9 +5,10 @@ statut: interrompu
 
 # IMPO-01 — la page d'import : elle écrit sans jamais se relire
 
-**Arrêté sur** — le bitexte en tableau est **livré et validé** : passe
-`qa/import-colonne-tableau.md` close **45/45** le 27 août 2026, sur le binaire reconstruit.
-L'aperçu comparatif, qui reste la raison d'être de la fiche, n'est toujours pas commencé.
+**Arrêté sur** — l'**aperçu comparatif est construit** (27 août 2026), après le bitexte en
+tableau livré et validé le même jour (passe `qa/import-colonne-tableau.md`, close 45/45). Il
+reste à le **voir tourner** : le contrat a bougé à 1.6.80, donc le sidecar doit être rebâti,
+et aucune passe de QA ne le couvre encore.
 
 **La passe n'a rien trouvé, et c'est trompeur.** Tout ce qu'elle aurait dû trouver l'a été
 **avant** qu'elle soit jouée — trois fois j'ai écrit « livré » une couche trop tôt (moteur fait,
@@ -29,9 +30,27 @@ l'écran affiche une coche verte.
 
 ## Reste
 
-- [ ] Construire l'**aperçu comparatif** décidé le 26 août (voir Contexte) : une ligne par mode applicable, colonnes « unités / trouvables à la recherche / non indexées » + la première ligne extraite, mode pré-sélectionné sur le plus d'unités trouvables
-- [ ] Trouver le libellé juste pour la colonne du milieu : « indexables » est du jargon, « trouvables à la recherche » dit ce que l'utilisateur perd s'il se trompe
-- [ ] Chiffrer le coût : un appel `/import/preview` **par mode applicable** (2 pour un `.docx`/`.odt`, 1 ailleurs) au lieu d'un seul, donc autant de parses complets — mesurer sur les plus gros fichiers avant de décider si l'aperçu comparatif est calculé à l'ajout ou à la sélection de la ligne
+- [x] **L'aperçu comparatif est construit** — 27 août. Une ligne par mode comparable,
+      colonnes *unités / trouvables à la recherche / non indexées* + la première unité, mode
+      recommandé marqué, chaque ligne cliquable pour l'appliquer. Le rendu vit dans
+      `importModeComparisonTemplate.ts` (pur, 8 tests) et la décision dans
+      `importDetect.pickBestMode` (5 tests). Quand **aucun** mode ne rend d'unité trouvable,
+      l'écran le **dit** — « Aucun mode ne lit ce document » — au lieu de pré-sélectionner le
+      moins mauvais : c'est ainsi qu'un défaut de capacité devient visible plutôt que caché
+      derrière un mauvais choix
+- [x] Libellé de la colonne du milieu — **« Trouvables à la recherche »**, retenu tel quel :
+      « indexables » est du jargon, celui-ci dit ce que l'utilisateur perd s'il se trompe
+- [x] **Coût chiffré, et il tranche la question** — mesuré le 27 août : les deux modes
+      ensemble coûtent **32 à 251 ms** sur un DOCX du corpus et **59 ms** sur l'ODT médian.
+      Un seul `.odt` sur douze dépasse 200 Ko (1,9 s) et ce n'est pas un document de corpus.
+      Mais ajouter 25 fichiers en paierait ~4 s : la comparaison se calcule donc **à la
+      sélection**, jamais à l'ajout — l'aperçu n'en montre de toute façon qu'un à la fois.
+      Le premier jet redemandait en plus le document **entier** par mode juste pour compter
+      ses unités indexables (~110 Ko sur la boucle locale, deux fois, pour deux entiers) :
+      corrigé en faisant remonter `units_line` / `units_structure` par l'endpoint
+      (contrat **1.6.80**), comptés sur *toutes* les unités. Le front refuse de conclure si
+      ces champs manquent — un sidecar antérieur ferait sinon afficher « aucun mode ne lit ce
+      document » sur **tous** les fichiers, un faux verdict étant pire que pas de tableau
 - [x] **Variantes de colonne — tranché le 27 août** : un document par colonne, parce que c'est le fichier qui dit combien il y en a. La question ne se posait que faute de savoir la forme du document ; depuis que l'aperçu la rend, elle tombe
 - [x] Sévérité moteur sur `line_unit_count == 0` — **faite le 27 août**. Le filet vaut pour le
       CLI, `import-remote` et l'import par lot, que l'écran ne protégera jamais. Posée **en

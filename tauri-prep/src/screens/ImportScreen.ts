@@ -32,8 +32,14 @@ import {
   modeAcceptsColumn,
   uniformTableColumns,
   describeTablesLabel,
+  comparableModesForExt,
+  pickBestMode,
   type TableShape,
 } from "../lib/importDetect.ts";
+import {
+  buildModeComparisonHtml,
+  type ModeComparisonRow,
+} from "../lib/importModeComparisonTemplate.ts";
 import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
 import { buildFamilyDetectionBannerHtml } from "../lib/importFamilyDetectionTemplate.ts";
 import { importStatusLabel } from "../lib/importStatusLabel.ts";
@@ -104,6 +110,8 @@ export class ImportScreen {
   private _textTablesEl!: HTMLElement;
   private _textTablesMsgEl!: HTMLElement;
   private _textTablesSplitBtn!: HTMLButtonElement;
+  private _textCmpEl!: HTMLElement;
+  private _textCmpReq = 0;
 
   // Sprint 8 — family dialog
   private _skipFamilyDialog = false;
@@ -137,6 +145,7 @@ export class ImportScreen {
     this._textTablesEl = root.querySelector("#imp-text-tables")!;
     this._textTablesMsgEl = root.querySelector("#imp-text-tables-msg")!;
     this._textTablesSplitBtn = root.querySelector("#imp-text-tables-split")!;
+    this._textCmpEl = root.querySelector("#imp-text-cmp")!;
     this._textPreviewNextBtn = root.querySelector("#imp-text-next")!;
 
     root.querySelector("#imp-add-btn")!.addEventListener("click", () => this._addFiles());
@@ -735,9 +744,92 @@ export class ImportScreen {
     void this._refreshTextPreview(true);
   }
 
+  /**
+   * L'aperçu comparatif (IMPO-01) : ce que **chaque** mode applicable ferait du fichier.
+   *
+   * Calculé **à la sélection**, jamais à l'ajout : un parse complet par mode coûte 32 à
+   * 251 ms sur un DOCX du corpus (mesuré le 27 août), donc ajouter 25 fichiers en paierait
+   * ~4 s pour rien — l'aperçu n'en montre de toute façon qu'un à la fois.
+   *
+   * Un mode qui échoue n'annule pas la comparaison : sa ligne est marquée illisible, les
+   * autres restent lisibles. C'est justement quand un mode ne passe pas que voir les autres
+   * a le plus de valeur.
+   */
+  private async _refreshModeComparison(file: FileItem): Promise<void> {
+    if (!this._conn || !this._textCmpEl) return;
+    const modes = comparableModesForExt(extFromFileName(file.path));
+    if (modes.length === 0) {
+      this._textCmpEl.hidden = true;
+      return;
+    }
+    const reqId = ++this._textCmpReq;
+    const conn = this._conn;
+    const column = modeAcceptsColumn(file.mode) ? file.column_index : undefined;
+    const labelOf = (m: string) =>
+      modeOptionsForExt(extFromFileName(file.path)).find((o) => o.value === m)?.label ?? m;
+
+    const rows: ModeComparisonRow[] = await Promise.all(
+      modes.map(async (mode): Promise<ModeComparisonRow> => {
+        try {
+          const res = await previewImport(conn, {
+            path: file.path,
+            mode,
+            limit: 1,
+            ...(modeAcceptsColumn(mode) && column ? { column_index: column } : {}),
+          });
+          // Un seul appel, `limit: 1` : les comptes par type viennent du moteur
+          // (contrat 1.6.80), qui les calcule sur TOUTES les unités. Les déduire de la
+          // liste imposerait de rapatrier le document entier, par mode.
+          if (res.units_line === undefined) {
+            // Sidecar antérieur au contrat 1.6.80 : il ne compte pas les unités par type.
+            // Retomber sur 0 ferait conclure « aucun mode ne lit ce document » sur TOUS
+            // les fichiers — un faux verdict est pire que pas de tableau du tout.
+            throw new Error("units_line absent (sidecar < 1.6.80)");
+          }
+          return {
+            mode,
+            label: labelOf(mode),
+            units: res.units_total ?? 0,
+            searchable: res.units_line,
+            sample: stripHiTags(res.units?.[0]?.text_raw ?? ""),
+          };
+        } catch {
+          return { mode, label: labelOf(mode), units: 0, searchable: 0, sample: "", failed: true };
+        }
+      }),
+    );
+    if (reqId !== this._textCmpReq) return;
+
+    // Aucun mode lisible : soit le fichier est illisible partout, soit le sidecar
+    // embarqué est antérieur au contrat 1.6.80. Se taire plutôt que de rendre un
+    // tableau de zéros dont la conclusion serait fausse.
+    if (rows.every((r) => r.failed)) {
+      this._textCmpEl.hidden = true;
+      return;
+    }
+
+    this._textCmpEl.hidden = false;
+    setHtml(this._textCmpEl, raw(buildModeComparisonHtml({
+      rows,
+      currentMode: file.mode,
+      bestMode: pickBestMode(rows.filter((r) => !r.failed)),
+    })));
+    this._textCmpEl.querySelectorAll(".imp-cmp-pick").forEach((el) => {
+      el.addEventListener("click", () => {
+        const mode = (el as HTMLElement).dataset.mode;
+        if (!mode || mode === file.mode) return;
+        file.mode = mode;
+        if (!modeAcceptsColumn(mode)) file.column_index = undefined;
+        this._renderList();
+        void this._refreshTextPreview(true);
+      });
+    });
+  }
+
   private _setTextPreviewEmpty(message: string, details?: string): void {
     this._textPreviewTables = null;
     if (this._textTablesEl) this._textTablesEl.hidden = true;
+    if (this._textCmpEl) this._textCmpEl.hidden = true;
     this._textPreviewBadgeEl.textContent = "Aucun";
     this._textPreviewBadgeEl.className = "chip";
     this._textPreviewFileEl.textContent = message;
@@ -794,6 +886,7 @@ export class ImportScreen {
 
       this._textPreviewTables = res.tables ?? null;
       this._renderTablesNote(file);
+      void this._refreshModeComparison(file);
 
       const units = res.units;
       const unitsTotal = res.units_total ?? 0;
@@ -836,6 +929,7 @@ export class ImportScreen {
       // de découper celui-ci selon les colonnes d'un autre document.
       this._textPreviewTables = null;
       this._textTablesEl.hidden = true;
+      this._textCmpEl.hidden = true;
       this._textPreviewSummaryEl.textContent = "Lecture impossible du fichier.";
       this._textPreviewRowsEl.innerHTML = '<tr><td colspan="3" class="empty-hint">Erreur de lecture du fichier.</td></tr>';
       this._log(

@@ -413,3 +413,42 @@ def test_a_non_docx_mode_promises_nothing(preview_sidecar):
     )
     assert code == 200, body
     assert body["tables"] is None
+
+
+# ─── IMPO-01 : les comptes par type, sans rapatrier le document ───────────────
+#
+# C'est la seule mesure qui sépare deux modes rendant le MÊME total : un bitexte en
+# tableau rend 48 unités dans les deux modes DOCX, dont 48 indexables d'un côté et
+# zéro de l'autre. Comptés sur TOUTES les unités, pas sur les `limit` rapatriées.
+
+
+def test_preview_counts_indexable_units_over_the_whole_document(preview_sidecar):
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "d.docx"
+    f.write_bytes(make_docx(["Intro", "[1] Bonjour.", "[2] Le monde.", "[3] Enfin."]))
+
+    code, body = _post(
+        f"{base_url}/import/preview",
+        {"path": str(f), "mode": "docx_numbered_lines", "limit": 1},
+    )
+    assert code == 200, body
+    assert len(body["units"]) == 1          # une seule unité rapatriée…
+    assert body["units_total"] == 4
+    assert body["units_line"] == 3          # …mais les comptes portent sur les quatre
+    assert body["units_structure"] == 1
+
+
+def test_the_two_modes_separate_on_the_counts_not_on_the_total(preview_sidecar):
+    """Le cas qui justifie l'aperçu comparatif."""
+    base_url, tmp_path = preview_sidecar
+    f = tmp_path / "tableau.docx"
+    f.write_bytes(_table_docx_bytes(["Un.", "Deux."], ["One.", "Two."]))
+
+    para = _post(f"{base_url}/import/preview",
+                 {"path": str(f), "mode": "docx_paragraphs", "limit": 1, "column_index": 1})[1]
+    num = _post(f"{base_url}/import/preview",
+                {"path": str(f), "mode": "docx_numbered_lines", "limit": 1, "column_index": 1})[1]
+
+    assert para["units_total"] == num["units_total"] == 2   # même total…
+    assert para["units_line"] == 2 and para["units_structure"] == 0
+    assert num["units_line"] == 0 and num["units_structure"] == 2   # …verdicts opposés

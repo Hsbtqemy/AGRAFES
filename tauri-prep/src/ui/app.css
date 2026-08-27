@@ -770,6 +770,58 @@ summary:focus-visible,
   color: var(--color-text, #1e2936);
   word-break: break-word;
 }
+/* IMPO-01 — le tableau comparatif : ce que CHAQUE mode ferait du fichier. La colonne
+   qui décide est « trouvables à la recherche », pas le total d'unités : sur un bitexte en
+   tableau les deux modes rendent 48 unités, et seul l'un des deux les indexe. */
+.prep-import-screen .imp-cmp {
+  margin: var(--prep-sp-2, 8px) 0 0;
+}
+.prep-import-screen .imp-cmp[hidden] { display: none; }
+.prep-import-screen .imp-cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.prep-import-screen .imp-cmp-table th,
+.prep-import-screen .imp-cmp-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  text-align: left;
+  vertical-align: baseline;
+}
+.prep-import-screen .imp-cmp-num { text-align: right; white-space: nowrap; }
+.prep-import-screen .imp-cmp-searchable { font-weight: 700; }
+.prep-import-screen .imp-cmp-row-current { background: var(--color-surface-2, #f1f5f9); }
+.prep-import-screen .imp-cmp-row-empty .imp-cmp-searchable { color: var(--color-danger, #c0392b); }
+.prep-import-screen .imp-cmp-pick {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-link, #2563eb);
+  cursor: pointer;
+  text-align: left;
+}
+.prep-import-screen .imp-cmp-pick:hover { text-decoration: underline; }
+.prep-import-screen .imp-cmp-check { color: var(--color-success, #1a7f4e); font-weight: 700; }
+.prep-import-screen .imp-cmp-best {
+  font-size: 0.74rem;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--color-success-bg, #d1fae5);
+  color: var(--color-success, #1a7f4e);
+}
+.prep-import-screen .imp-cmp-none { color: var(--color-text-muted, #64748b); }
+.prep-import-screen .imp-cmp-sample { color: var(--color-text-muted, #475569); }
+.prep-import-screen .imp-cmp-nomode {
+  margin: 0 0 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: var(--color-warn-bg, #fff3cd);
+  color: var(--color-warn, #b8590a);
+  font-size: 0.86rem;
+}
+
 /* IMPO-01 — la forme des tables du fichier, et le geste d'en faire une ligne par
    colonne. Reste caché (attribut `hidden`) tant qu'aucune table n'est trouvée. */
 .prep-import-screen .imp-tables-note {

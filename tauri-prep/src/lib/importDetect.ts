@@ -94,6 +94,58 @@ export function describeTablesLabel(tables: TableShape[] | null | undefined): st
   return `${tables.length} tableaux (${cols} colonnes) — vérifiez l'aperçu avant de choisir.`;
 }
 
+/**
+ * Modes à **comparer** dans l'aperçu, pour une extension donnée (IMPO-01).
+ *
+ * Ce sont les modes de *style* du format — ceux entre lesquels l'utilisateur doit
+ * trancher et qui produisent tous des unités de texte comparables. Pas les
+ * échappatoires de `modeOptionsForExt` : un `.txt` peut être re-routé en CoNLL-U ou en
+ * TEI quand il est mal nommé, mais ces deux-là répondent une charge d'une autre forme
+ * (`conllu_stats`, pas des unités) et ne se rangent pas dans le même tableau.
+ *
+ * Coût mesuré le 27 août 2026 : un parse complet par mode, soit 32 à 251 ms pour un
+ * DOCX du corpus, 59 ms pour l'ODT médian. C'est ce qui autorise à comparer **à la
+ * sélection** d'un fichier — ajouter 25 fichiers coûterait ~4 s si on comparait à
+ * l'ajout, alors que l'aperçu n'en montre de toute façon qu'un à la fois.
+ */
+export function comparableModesForExt(ext: string): string[] {
+  const e = ext.toLowerCase();
+  if (e === "docx") return ["docx_paragraphs", "docx_numbered_lines"];
+  if (e === "odt") return ["odt_paragraphs", "odt_numbered_lines"];
+  if (e === "txt") return ["txt_numbered_lines"];
+  if (e === "xml" || e === "tei") return ["tei"];
+  return [];
+}
+
+/** Une ligne du tableau comparatif : ce qu'un mode fait du fichier. */
+export interface ModeOutcome {
+  mode: string;
+  /** Unités totales que l'import écrirait. */
+  units: number;
+  /** Unités indexées, donc trouvables à la recherche (`unit_type = 'line'`). */
+  searchable: number;
+}
+
+/**
+ * Le mode à pré-sélectionner : **celui qui rend le plus d'unités trouvables**, ou
+ * `null` si aucun n'en rend une seule.
+ *
+ * `null` est un verdict, pas un échec de la règle : sur un bitexte en tableau sans
+ * colonne, ou sur un `.txt` numéroté « 1. », **aucun** mode ne lit le document, et
+ * l'écran doit le dire au lieu de laisser choisir le moins mauvais. C'est ce qui rend
+ * le défaut de capacité visible plutôt que caché derrière un mauvais choix.
+ *
+ * À égalité, le premier de `comparableModesForExt` gagne — l'ordre y place le mode
+ * paragraphes en tête, qui n'exige aucune convention d'écriture.
+ */
+export function pickBestMode(outcomes: ModeOutcome[]): string | null {
+  let best: ModeOutcome | null = null;
+  for (const o of outcomes) {
+    if (o.searchable > 0 && (best === null || o.searchable > best.searchable)) best = o;
+  }
+  return best ? best.mode : null;
+}
+
 /** Extension (minuscule, sans point) du dernier segment d'un chemin / nom de fichier. */
 export function extFromFileName(fileName: string): string {
   const base = fileName.split(/[/\\]/u).pop() ?? fileName;

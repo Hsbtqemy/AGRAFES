@@ -13,6 +13,8 @@ import {
   modeAcceptsColumn,
   uniformTableColumns,
   describeTablesLabel,
+  comparableModesForExt,
+  pickBestMode,
   LANG_RE,
   KNOWN_LANG_CODES,
 } from "../importDetect.ts";
@@ -393,5 +395,71 @@ describe("describeTablesLabel", () => {
     expect(label).toContain("7 tableaux");
     expect(label).toContain("5, 2, 2, 2, 2, 2, 2");
     expect(label).toContain("aperçu");
+  });
+});
+
+// ─── IMPO-01 : l'aperçu comparatif ───────────────────────────────────────────
+
+describe("comparableModesForExt", () => {
+  it("DOCX et ODT : les deux modes de style, paragraphes en tête", () => {
+    expect(comparableModesForExt("docx")).toEqual(["docx_paragraphs", "docx_numbered_lines"]);
+    expect(comparableModesForExt("odt")).toEqual(["odt_paragraphs", "odt_numbered_lines"]);
+  });
+
+  it("TXT : un seul mode — d'où le cas « aucun mode ne lit ce document »", () => {
+    // doc 426 du corpus : un .txt numéroté « 1. » qu'aucun mode ne lit.
+    expect(comparableModesForExt("txt")).toEqual(["txt_numbered_lines"]);
+  });
+
+  it("n'inclut PAS les échappatoires de modeOptionsForExt", () => {
+    // Un .txt peut être re-routé en CoNLL-U/TEI (IMP-09), mais ces modes répondent
+    // une charge d'une autre forme et ne se rangent pas dans le même tableau.
+    const options = modeOptionsForExt("txt").map((o) => o.value);
+    expect(options).toContain("conllu");
+    expect(comparableModesForExt("txt")).not.toContain("conllu");
+  });
+
+  it("CoNLL-U n'a rien à comparer — il a son propre aperçu", () => {
+    expect(comparableModesForExt("conllu")).toEqual([]);
+  });
+
+  it("casse insensible", () => {
+    expect(comparableModesForExt("DOCX")).toEqual(comparableModesForExt("docx"));
+  });
+});
+
+describe("pickBestMode", () => {
+  it("choisit le mode rendant le plus d'unités trouvables", () => {
+    // Le bitexte en tableau, colonne 1 : mêmes unités des deux côtés, mais l'un les
+    // rend indexables et l'autre non. Compter les unités ne suffirait pas.
+    expect(pickBestMode([
+      { mode: "docx_paragraphs", units: 48, searchable: 48 },
+      { mode: "docx_numbered_lines", units: 48, searchable: 0 },
+    ])).toBe("docx_paragraphs");
+  });
+
+  it("choisit le mode numéroté quand c'est lui qui lit le document", () => {
+    // Le blob à sauts de ligne doux : 833 lignes numérotées contre 1 seul paragraphe.
+    expect(pickBestMode([
+      { mode: "docx_paragraphs", units: 1, searchable: 1 },
+      { mode: "docx_numbered_lines", units: 836, searchable: 833 },
+    ])).toBe("docx_numbered_lines");
+  });
+
+  it("ne recommande RIEN quand aucun mode ne rend d'unité trouvable", () => {
+    // Verdict, pas échec : l'écran doit dire « aucun mode ne lit ce document »
+    // plutôt que de laisser choisir le moins mauvais.
+    expect(pickBestMode([
+      { mode: "docx_paragraphs", units: 0, searchable: 0 },
+      { mode: "docx_numbered_lines", units: 48, searchable: 0 },
+    ])).toBeNull();
+    expect(pickBestMode([])).toBeNull();
+  });
+
+  it("à égalité, garde le premier — donc le mode paragraphes", () => {
+    expect(pickBestMode([
+      { mode: "docx_paragraphs", units: 28, searchable: 28 },
+      { mode: "docx_numbered_lines", units: 28, searchable: 28 },
+    ])).toBe("docx_paragraphs");
   });
 });
