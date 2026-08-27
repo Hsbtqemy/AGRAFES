@@ -117,7 +117,7 @@ Trois choses valent d'être sues avant de commencer, parce qu'elles décident du
 
 - [x] **Annotation**, vue **Prose** · `Lodge-Small_ES.docx` n° 20 — même refus que sur la n° 11, et pour la même raison : la ligne est repeinte. L'écart se voit toujours à l'œil — ici elle finit par « días: », alors qu'en couche **Rôles** elle finit par « días : », avec une espace — mais ce n'est plus ce qui décide du refus
 - [x] **Annotation**, vue **Étendue** · `Lodge-Small_ES.docx` **n° 20** — basculer en Étendue et sélectionner du texte : **aucune** barre, comme en Prose. Les deux vues se comportent désormais à l'identique ; c'est le changement le plus visible du lot, l'écart entre elles ayant disparu. Prendre la n° 20 et **pas** la n° 11 : celle-ci a été corrigée plus haut, sa surcouche est tombée, et elle accepte donc la barre à juste titre (le point précédent le vérifie)
-- [ ] **Annotation**, vue **Étendue** · `Lodge-Small_ES.docx` n° 11 corrigée — y poser un italique : il apparaît **immédiatement**, sans que la liste entière se refasse. Avant ce lot, une balise posée sur un mot faisait redessiner les 1754 lignes du document et leurs 20 636 tokens ; l'attente se voyait à l'œil, en Étendue surtout, où chaque ligne est une grille
+- [x] **Annotation**, vue **Étendue** · `Lodge-Small_ES.docx` n° 11 corrigée — y poser un italique : il apparaît **immédiatement**, sans que la liste entière se refasse. Avant ce lot, une balise posée sur un mot faisait redessiner les 1754 lignes du document et leurs 20 636 tokens ; l'attente se voyait à l'œil, en Étendue surtout, où chaque ligne est une grille
 - [x] **Rôles** · doc de réf. n° 8 — ouvrir le stylo ✎ sur la ligne : dans **cette** ligne, sélectionner du texte ne fait apparaître aucune barre (la textarea ne porte que du texte nu)
 - [x] **Rôles** · doc de réf., stylo ✎ ouvert sur n° 8 — taper une correction sans l'enregistrer, puis mettre du texte en italique dans **une autre** ligne (n° 9) : l'italique s'applique **et** la correction en cours est toujours à l'écran, intacte
 - [x] **Rôles** · doc de réf. — un simple clic sans glisser (sélection vide) ne fait apparaître aucune barre
@@ -136,7 +136,7 @@ Trois choses valent d'être sues avant de commencer, parce qu'elles décident du
 
 - [x] **Rôles** · doc de réf. n° 8 — la barre se pose au-dessus de la ligne sélectionnée, sans recouvrir son texte
 - [x] **Rôles** · doc de réf. n° 1, la première de la liste — la barre reste entièrement visible et n'est pas coupée en haut
-- [ ] **Rôles** · doc de réf. — la barre se pose au-dessus du **passage surligné**, et non au coin de la ligne. Le vérifier sur une unité qui tient sur plusieurs lignes à l'écran — toutes celles de ce document — en surlignant un mot de la **dernière** ligne visuelle : la barre doit apparaître juste au-dessus de lui
+- [x] **Rôles** · doc de réf. — la barre se pose au-dessus du **passage surligné**, et non au coin de la ligne. Le vérifier sur une unité qui tient sur plusieurs lignes à l'écran — toutes celles de ce document — en surlignant un mot de la **dernière** ligne visuelle : la barre doit apparaître juste au-dessus de lui
 - [x] **Rôles** · doc de réf. — faire défiler la liste alors qu'une barre est affichée la fait disparaître, plutôt que de la laisser flotter loin de son texte
 - [x] **Rôles** · doc de réf. — réduire la fenêtre alors qu'une barre est affichée la fait disparaître
 - [x] **Rôles** · doc de réf. — les boutons restent lisibles et cliquables à la souris sans viser au pixel
