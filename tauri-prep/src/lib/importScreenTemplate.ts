@@ -69,25 +69,11 @@ export function importScreenTemplate(): string {
         <div class="imp-col-side">
           <details class="card imp-settings-card" open>
             <summary class="imp-settings-summary">
-              <span class="imp-settings-title" id="imp-settings-title">Profil de lot</span>
-              <span class="chip">par défaut</span>
+              <span class="imp-settings-title" id="imp-settings-title">Langue par défaut</span>
+              <span class="chip">appliquée aux nouveaux fichiers</span>
             </summary>
             <div class="imp-settings-body" role="region" aria-labelledby="imp-settings-title">
               <div class="imp-settings-grid">
-                <div class="imp-settings-field">
-                  <label for="imp-default-mode">Format par défaut</label>
-                  <select id="imp-default-mode" aria-describedby="imp-settings-hint-apply">
-                    <optgroup label="Traitement de texte (DOCX / ODT)">
-                      <option value="${WP_DEFAULT_NUMBERED}" selected>Lignes numérotées [n]</option>
-                      <option value="${WP_DEFAULT_PARAGRAPHS}">Paragraphes</option>
-                    </optgroup>
-                    <optgroup label="Autres formats">
-                      <option value="txt_numbered_lines">TXT · lignes [n]</option>
-                      <option value="conllu">CoNLL-U annoté</option>
-                      <option value="tei">TEI XML</option>
-                    </optgroup>
-                  </select>
-                </div>
                 <div class="imp-settings-field">
                   <label for="imp-default-lang">Langue par défaut</label>
                   <input
@@ -112,7 +98,7 @@ export function importScreenTemplate(): string {
                   Appliquer aux fichiers en attente
                 </button>
                 <p id="imp-settings-hint-apply" class="hint imp-settings-hint">
-                  Pour DOCX/ODT, le profil « traitement de texte » s’applique selon l’extension de chaque fichier. Réapplique format + langue aux lignes en attente.
+                  Réapplique la langue aux lignes en attente. Le <strong>mode d’import</strong>, lui, ne se décide plus par lot&nbsp;: il est déduit fichier par fichier et affiché sur chaque ligne, avec son motif.
                 </p>
                 <p class="hint imp-settings-hint" title="Le mode lignes numérotées reconnaît [n] seulement en tête de ligne/paragraphe après trim.">
                   Balises <code>[n]</code> : le mode <strong>Lignes numérotées</strong> attend <code>[12]</code> en début de ligne/paragraphe. Si les balises sont au milieu du texte, importez en <strong>Paragraphes</strong> puis segmentez en mode <strong>Balises [N]</strong>.

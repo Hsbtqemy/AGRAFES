@@ -117,6 +117,184 @@ export function comparableModesForExt(ext: string): string[] {
   return [];
 }
 
+/* ------------------------------------------------------------------------- *
+ * Déduction du mode par fichier (IMPO-01, lot « l'écran décide et le dit »)
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Forme de numérotation portée par un document.
+ *
+ * `bracket` = `[12]`, la convention ADR-001, que les importeurs consomment (le
+ * marqueur devient l'`external_id` et disparaît du texte). `dot` = `1.`, que
+ * **aucun** mode ne consomme aujourd'hui : le numéro reste collé dans le texte et
+ * l'`external_id` redevient positionnel, donc l'ancre d'alignement est perdue.
+ */
+export type NumberingForm = "bracket" | "dot";
+
+const NUMBERING_PATTERNS: ReadonlyArray<[NumberingForm, RegExp]> = [
+  // `[n]` d'abord : une prose numérotée `[12]` peut contenir des « 1. » en cours de
+  // texte, l'inverse n'arrive pas. La convention du moteur gagne les ex æquo.
+  ["bracket", /^[ \t]*\[\d+\]/u],
+  ["dot", /^[ \t]*\d+\.[ \t]/u],
+];
+
+/**
+ * Part minimale de lignes marquées pour conclure à une numérotation.
+ *
+ * **Posé au milieu du vide, pas au jugé.** Mesuré le 27 août 2026 sur les 273
+ * `.docx`/`.odt` des deux dossiers de corpus, en simulant la fenêtre de l'aperçu
+ * (50 unités) : pour `[n]`, 149 fichiers à exactement 0 et 98 au-dessus de 0,95 ;
+ * pour `1.`, 243 à 0 et 3 au-dessus de 0,95. **Aucun fichier entre 0,2 et 0,95.**
+ * N'importe quelle valeur de cet intervalle trie donc à l'identique ; 0,5 laisse la
+ * marge la plus large des deux côtés, et tolère qu'un titre ou deux ne soient pas
+ * numérotés.
+ */
+export const NUMBERING_MIN_RATIO = 0.5;
+
+/** Ce que la lecture d'un échantillon apprend de la numérotation d'un document. */
+export interface NumberingEvidence {
+  form: NumberingForm | null;
+  /** Part des lignes portant le marqueur de la forme retenue. */
+  ratio: number;
+  /** Lignes non vides examinées. */
+  lines: number;
+}
+
+/**
+ * La numérotation d'un document, lue sur un échantillon de ses unités.
+ *
+ * **Compte les lignes, pas les unités.** Un document « blob » (R2.3) tient tout
+ * entier dans **une** unité dont les centaines de marqueurs vivent après des sauts de
+ * ligne doux : compter par unité n'en verrait qu'un seul, et le fichier passerait pour
+ * non numéroté. C'est exactement le piège dans lequel la première sonde de mesure est
+ * tombée.
+ *
+ * L'échantillon doit venir d'un aperçu en mode **paragraphes**, qui ne retire rien —
+ * le mode numéroté, lui, consomme les marqueurs et les rendrait invisibles.
+ * La fenêtre de 50 unités de l'aperçu suffit très largement : sur les 101 fichiers
+ * numérotés du corpus, le premier marqueur vit à l'unité **#0**, sans exception.
+ */
+export function detectNumbering(texts: string[]): NumberingEvidence {
+  const lines: string[] = [];
+  for (const t of texts) {
+    for (const ln of (t ?? "").split("\n")) {
+      if (ln.trim() !== "") lines.push(ln);
+    }
+  }
+  if (lines.length === 0) return { form: null, ratio: 0, lines: 0 };
+  for (const [form, rx] of NUMBERING_PATTERNS) {
+    const hits = lines.reduce((n, ln) => (rx.test(ln) ? n + 1 : n), 0);
+    const ratio = hits / lines.length;
+    if (ratio >= NUMBERING_MIN_RATIO) return { form, ratio, lines: lines.length };
+  }
+  return { form: null, ratio: 0, lines: lines.length };
+}
+
+/**
+ * Verdict de la déduction — ce que l'écran doit faire de ce fichier.
+ *
+ * `ok` : le mode déduit lit le document. `column_needed` : le texte est dans un
+ * tableau, il manque une information que le fichier ne porte pas. `numbering_lost` :
+ * le document s'importera, mais sa numérotation restera dans le texte au lieu de
+ * devenir une ancre. `no_mode` : aucun mode ne rend d'unité trouvable.
+ */
+export type PlanVerdict = "ok" | "column_needed" | "numbering_lost" | "no_mode";
+
+export interface ImportPlan {
+  /** Mode à poser sur le fichier — toujours un mode valide pour l'extension. */
+  mode: string;
+  verdict: PlanVerdict;
+  /** Motif en clair, affiché sur la carte du fichier : *pourquoi* ce mode. */
+  reason: string;
+}
+
+/** Ce qu'on sait du fichier au moment de déduire (un seul aperçu suffit). */
+export interface PlanEvidence {
+  ext: string;
+  /** Numérotation lue sur l'aperçu en mode paragraphes. */
+  numbering: NumberingForm | null;
+  /** Unités trouvables que le mode **paragraphes** rendrait. */
+  searchableAsParagraphs: number;
+  /** Colonnes du document quand ses tables s'accordent (cf. {@link uniformTableColumns}). */
+  uniformColumns?: number;
+  /** Une colonne est déjà demandée pour ce fichier. */
+  hasColumn?: boolean;
+}
+
+/**
+ * Le mode qu'un fichier demande, et pourquoi — **la décision, en un seul endroit**.
+ *
+ * Remplace le profil de lot comme source du mode. Le profil décidait une fois pour
+ * tous les fichiers, et il était faux : mesuré le 27 août 2026 sur 273 `.docx`/`.odt`
+ * réels, son défaut « Lignes numérotées [n] » est le **mauvais** mode sur **149**
+ * d'entre eux, et 26 de plus demandent une colonne qu'un profil ne sait pas exprimer.
+ * Le signal des marqueurs, lui, tombe juste sur 272 des 273 — le seul écart
+ * (`Houellebecq-Carte_FR.docx`) étant un fichier où le *comptage* des unités désigne
+ * le mauvais mode pour un écart de 1, là où le signal ne se trompe pas.
+ *
+ * D'où le renoncement au comptage comme critère : il est aveugle sur les 15 fichiers
+ * où les deux modes rendent le **même nombre** d'unités tout en produisant des textes
+ * entièrement différents (l'un consomme `[4] `, l'autre le laisse collé au texte).
+ */
+export function planImport(ev: PlanEvidence): ImportPlan {
+  const e = ev.ext.toLowerCase();
+  const wp = e === "docx" || e === "odt";
+
+  if (wp) {
+    const numbered = e === "docx" ? "docx_numbered_lines" : "odt_numbered_lines";
+    const paragraphs = e === "docx" ? "docx_paragraphs" : "odt_paragraphs";
+
+    if (ev.numbering === "bracket") {
+      return { mode: numbered, verdict: "ok", reason: "marqueurs [n] détectés" };
+    }
+    if (ev.numbering === "dot") {
+      return {
+        mode: paragraphs,
+        verdict: "numbering_lost",
+        reason: "numéroté « 1. » — l'import ne sait pas consommer cette forme : "
+          + "le numéro restera dans le texte et ne servira pas d'ancre",
+      };
+    }
+    // Rien à lire hors tableau, alors que le document en porte un : c'est le
+    // bitexte en tableau, et la colonne est la seule chose qui manque.
+    if (ev.searchableAsParagraphs === 0 && !ev.hasColumn && (ev.uniformColumns ?? 0) >= 2) {
+      return {
+        mode: paragraphs,
+        verdict: "column_needed",
+        reason: `le texte est dans un tableau de ${ev.uniformColumns} colonnes — indiquez la colonne à extraire`,
+      };
+    }
+    if (ev.searchableAsParagraphs === 0) {
+      return { mode: paragraphs, verdict: "no_mode", reason: "aucun mode ne rend d'unité trouvable" };
+    }
+    return { mode: paragraphs, verdict: "ok", reason: "aucun marqueur — un paragraphe par unité" };
+  }
+
+  if (e === "txt") {
+    // `txt_numbered_lines` est le SEUL mode TXT (`dispatch.py`) : un `.txt` qui ne
+    // porte pas de `[n]` n'a aucune porte d'entrée, et l'écran doit le dire plutôt que
+    // de l'importer en 100 % `structure`. 45 fichiers du corpus sont dans ce cas.
+    if (ev.numbering === "bracket") {
+      return { mode: "txt_numbered_lines", verdict: "ok", reason: "marqueurs [n] détectés" };
+    }
+    return {
+      mode: "txt_numbered_lines",
+      verdict: "no_mode",
+      reason: ev.numbering === "dot"
+        ? "numéroté « 1. », forme qu'aucun mode TXT ne lit — rien ne serait trouvable"
+        : "texte sans marqueurs [n], et c'est le seul mode TXT — rien ne serait trouvable",
+    };
+  }
+
+  if (e === "xml" || e === "tei") {
+    return { mode: "tei", verdict: "ok", reason: "TEI XML" };
+  }
+  if (e === "conllu" || e === "conll") {
+    return { mode: "conllu", verdict: "ok", reason: "CoNLL-U annoté" };
+  }
+  return { mode: deriveModeFromExt(e, WP_DEFAULT_PARAGRAPHS), verdict: "ok", reason: "" };
+}
+
 /** Une ligne du tableau comparatif : ce qu'un mode fait du fichier. */
 export interface ModeOutcome {
   mode: string;
@@ -127,16 +305,19 @@ export interface ModeOutcome {
 }
 
 /**
- * Le mode à pré-sélectionner : **celui qui rend le plus d'unités trouvables**, ou
- * `null` si aucun n'en rend une seule.
+ * Le mode qui rend le plus d'unités trouvables, ou `null` si aucun n'en rend une seule.
  *
  * `null` est un verdict, pas un échec de la règle : sur un bitexte en tableau sans
  * colonne, ou sur un `.txt` numéroté « 1. », **aucun** mode ne lit le document, et
  * l'écran doit le dire au lieu de laisser choisir le moins mauvais. C'est ce qui rend
  * le défaut de capacité visible plutôt que caché derrière un mauvais choix.
  *
- * À égalité, le premier de `comparableModesForExt` gagne — l'ordre y place le mode
- * paragraphes en tête, qui n'exige aucune convention d'écriture.
+ * **Ce comptage ne décide plus du mode** — voir {@link recommendedMode}. Il est
+ * aveugle sur les 15 fichiers du corpus où les deux modes rendent le *même nombre*
+ * d'unités en produisant des textes entièrement différents, et il désigne le mauvais
+ * mode sur `Houellebecq-Carte_FR.docx` pour un écart de 1 (724 contre 725). Il ne
+ * répond plus qu'à une question, celle où il ne peut pas se tromper : **quelque chose
+ * lit-il ce document ?**
  */
 export function pickBestMode(outcomes: ModeOutcome[]): string | null {
   let best: ModeOutcome | null = null;
@@ -144,6 +325,27 @@ export function pickBestMode(outcomes: ModeOutcome[]): string | null {
     if (o.searchable > 0 && (best === null || o.searchable > best.searchable)) best = o;
   }
   return best ? best.mode : null;
+}
+
+/**
+ * Le mode marqué **recommandé** dans le tableau comparatif.
+ *
+ * Deux règles, chacune sur la question qu'elle sait trancher : le *comptage* dit si
+ * quoi que ce soit lit le document (`null` sinon, et l'écran le dit) ; le *signal des
+ * marqueurs*, lui, dit **lequel** — parce qu'un mode peut rendre autant d'unités qu'un
+ * autre en perdant l'ancre d'alignement, ce qu'aucun compte ne montre.
+ *
+ * Sans cela l'écran se contredirait : la carte du fichier poserait le mode déduit et le
+ * tableau juste en dessous en recommanderait un autre.
+ */
+export function recommendedMode(
+  outcomes: ModeOutcome[],
+  planMode: string | null | undefined,
+): string | null {
+  const anyReadable = pickBestMode(outcomes);
+  if (anyReadable === null) return null;
+  if (planMode && outcomes.some((o) => o.mode === planMode)) return planMode;
+  return anyReadable;
 }
 
 /** Extension (minuscule, sans point) du dernier segment d'un chemin / nom de fichier. */

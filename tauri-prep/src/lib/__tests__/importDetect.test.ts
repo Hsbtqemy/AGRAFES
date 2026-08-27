@@ -15,6 +15,9 @@ import {
   describeTablesLabel,
   comparableModesForExt,
   pickBestMode,
+  recommendedMode,
+  detectNumbering,
+  planImport,
   LANG_RE,
   KNOWN_LANG_CODES,
 } from "../importDetect.ts";
@@ -461,5 +464,139 @@ describe("pickBestMode", () => {
       { mode: "docx_paragraphs", units: 28, searchable: 28 },
       { mode: "docx_numbered_lines", units: 28, searchable: 28 },
     ])).toBe("docx_paragraphs");
+  });
+});
+
+describe("detectNumbering", () => {
+  it("reconnaît la convention [n]", () => {
+    const texts = Array.from({ length: 12 }, (_, i) => `[${i + 1}] Une ligne de texte.`);
+    expect(detectNumbering(texts)).toMatchObject({ form: "bracket", lines: 12 });
+  });
+
+  it("reconnaît la numérotation « 1. », que le moteur ne consomme pas", () => {
+    const texts = Array.from({ length: 12 }, (_, i) => `${i + 1}. Une ligne de texte.`);
+    expect(detectNumbering(texts).form).toBe("dot");
+  });
+
+  it("compte les LIGNES, pas les unités — le cas du blob", () => {
+    // Un document à sauts de ligne doux tient en UNE unité qui porte tous ses
+    // marqueurs. Compter par unité n'en verrait qu'un seul et conclurait « aucune
+    // numérotation » : c'est le piège où la première sonde de mesure est tombée.
+    const blob = Array.from({ length: 40 }, (_, i) => `[${i + 1}] ligne`).join("\n");
+    expect(detectNumbering([blob])).toMatchObject({ form: "bracket", lines: 40 });
+  });
+
+  it("ne prend pas une liste numérotée dans de la prose pour une numérotation", () => {
+    const texts = [
+      "Un paragraphe ordinaire, assez long pour peser dans le compte.",
+      "1. premier point",
+      "2. second point",
+      "Puis la prose reprend, et elle domine largement le document.",
+      "Encore de la prose.",
+      "Toujours de la prose.",
+      "Et de la prose.",
+    ];
+    expect(detectNumbering(texts).form).toBeNull();
+  });
+
+  it("préfère [n] quand les deux formes coexistent", () => {
+    // Une prose numérotée [12] peut contenir des « 1. » en cours de texte ;
+    // l'inverse ne se produit pas.
+    const texts = Array.from({ length: 10 }, (_, i) => `[${i + 1}] 1. citation numérotée`);
+    expect(detectNumbering(texts).form).toBe("bracket");
+  });
+
+  it("ne conclut rien d'un échantillon vide", () => {
+    expect(detectNumbering([])).toEqual({ form: null, ratio: 0, lines: 0 });
+    expect(detectNumbering(["", "   ", "\n"])).toEqual({ form: null, ratio: 0, lines: 0 });
+  });
+});
+
+describe("planImport", () => {
+  it("pose le mode numéroté quand les marqueurs [n] sont là", () => {
+    expect(planImport({ ext: "docx", numbering: "bracket", searchableAsParagraphs: 40 }))
+      .toMatchObject({ mode: "docx_numbered_lines", verdict: "ok" });
+  });
+
+  it("pose paragraphes en l'absence de marqueur — le cas des 149 fichiers", () => {
+    expect(planImport({ ext: "docx", numbering: null, searchableAsParagraphs: 17 }))
+      .toMatchObject({ mode: "docx_paragraphs", verdict: "ok" });
+  });
+
+  it("importe un « 1. » en paragraphes MAIS annonce l'ancre perdue", () => {
+    // 48 fichiers du corpus. Le document s'importe et reste trouvable ; ce qui se
+    // perd est le numéro comme ancre d'alignement, et ça doit se dire.
+    const plan = planImport({ ext: "docx", numbering: "dot", searchableAsParagraphs: 46 });
+    expect(plan.mode).toBe("docx_paragraphs");
+    expect(plan.verdict).toBe("numbering_lost");
+    expect(plan.reason).toContain("ancre");
+  });
+
+  it("réclame une colonne quand le texte est dans un tableau", () => {
+    const plan = planImport({
+      ext: "docx", numbering: null, searchableAsParagraphs: 0, uniformColumns: 2,
+    });
+    expect(plan.verdict).toBe("column_needed");
+    expect(plan.reason).toContain("2 colonnes");
+  });
+
+  it("ne réclame plus la colonne une fois qu'elle est donnée", () => {
+    expect(planImport({
+      ext: "docx", numbering: null, searchableAsParagraphs: 0,
+      uniformColumns: 2, hasColumn: true,
+    }).verdict).toBe("no_mode");
+  });
+
+  it("dit qu'un .txt sans [n] n'a aucun mode — il n'y en a qu'un", () => {
+    // `txt_numbered_lines` est le SEUL mode TXT : 45 fichiers du corpus entrent en
+    // base à 100 % `structure`, donc introuvables, et rien ne le disait.
+    const plain = planImport({ ext: "txt", numbering: null, searchableAsParagraphs: 0 });
+    expect(plain.verdict).toBe("no_mode");
+    const dot = planImport({ ext: "txt", numbering: "dot", searchableAsParagraphs: 0 });
+    expect(dot.verdict).toBe("no_mode");
+    expect(dot.reason).toContain("1.");
+  });
+
+  it("laisse passer un .txt correctement numéroté", () => {
+    expect(planImport({ ext: "txt", numbering: "bracket", searchableAsParagraphs: 48 }))
+      .toMatchObject({ mode: "txt_numbered_lines", verdict: "ok" });
+  });
+
+  it("route TEI et CoNLL-U sans rien déduire", () => {
+    expect(planImport({ ext: "xml", numbering: null, searchableAsParagraphs: 0 }).mode).toBe("tei");
+    expect(planImport({ ext: "conllu", numbering: null, searchableAsParagraphs: 0 }).mode).toBe("conllu");
+  });
+
+  it("l'ODT suit la même règle que le DOCX", () => {
+    // Le cas mesuré : 1141 unités des deux côtés, 1141 trouvables en paragraphes
+    // et 0 en numéroté, parce que la numérotation est calculée au rendu.
+    expect(planImport({ ext: "odt", numbering: null, searchableAsParagraphs: 1141 }).mode)
+      .toBe("odt_paragraphs");
+  });
+});
+
+describe("recommendedMode", () => {
+  const OUTCOMES = [
+    { mode: "docx_paragraphs", units: 1133, searchable: 1133 },
+    { mode: "docx_numbered_lines", units: 1133, searchable: 1133 },
+  ];
+
+  it("suit le mode déduit, là où les comptes sont à égalité", () => {
+    // Les 15 fichiers où les deux modes rendent le même nombre d'unités en
+    // produisant des textes entièrement différents : l'un consomme « [4] »,
+    // l'autre le laisse collé au texte. Aucun compte ne montre ça.
+    expect(recommendedMode(OUTCOMES, "docx_numbered_lines")).toBe("docx_numbered_lines");
+  });
+
+  it("garde le verdict « aucun mode ne lit ce document »", () => {
+    expect(recommendedMode(
+      [{ mode: "docx_paragraphs", units: 0, searchable: 0 }],
+      "docx_paragraphs",
+    )).toBeNull();
+  });
+
+  it("retombe sur les comptes quand la déduction n'a rien à dire", () => {
+    expect(recommendedMode(OUTCOMES, null)).toBe("docx_paragraphs");
+    expect(recommendedMode(OUTCOMES, "mode_inconnu")).toBe("docx_paragraphs");
   });
 });

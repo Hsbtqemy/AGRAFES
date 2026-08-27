@@ -25,6 +25,7 @@ import {
   extFromFileName,
   modeOptionsForExt,
   deriveModeFromExt,
+  WP_DEFAULT_PARAGRAPHS,
   normalizeModeForExt,
   detectLanguageForMode,
   detectLanguageToken,
@@ -33,13 +34,22 @@ import {
   uniformTableColumns,
   describeTablesLabel,
   comparableModesForExt,
-  pickBestMode,
+  recommendedMode,
+  detectNumbering,
+  planImport,
   type TableShape,
+  type ImportPlan,
 } from "../lib/importDetect.ts";
 import {
   buildModeComparisonHtml,
   type ModeComparisonRow,
 } from "../lib/importModeComparisonTemplate.ts";
+import {
+  buildVerdictHtml,
+  buildQueueWarningHtml,
+  verdictForChoice,
+  type FileVerdict,
+} from "../lib/importVerdictTemplate.ts";
 import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
 import { buildFamilyDetectionBannerHtml } from "../lib/importFamilyDetectionTemplate.ts";
 import { importStatusLabel } from "../lib/importStatusLabel.ts";
@@ -70,6 +80,18 @@ interface FileItem {
    * ignored).
    */
   column_index?: number;
+  /**
+   * Ce que l'analyse a déduit du fichier (IMPO-01) — le mode posé et *pourquoi*.
+   * `undefined` = pas encore analysé, `null` = analyse impossible (fichier illisible).
+   */
+  plan?: ImportPlan | null;
+  /**
+   * Unités trouvables que le mode déduit rendrait, quand le compte est exact ; `null`
+   * sinon (cf. `FileVerdict.searchable`). Absent tant que l'analyse n'a pas tourné.
+   */
+  searchable?: number | null;
+  /** L'utilisateur a choisi le mode lui-même : l'analyse ne le réécrit plus. */
+  modeLocked?: boolean;
 }
 
 export class ImportScreen {
@@ -112,6 +134,8 @@ export class ImportScreen {
   private _textTablesSplitBtn!: HTMLButtonElement;
   private _textCmpEl!: HTMLElement;
   private _textCmpReq = 0;
+  /** Une seule boucle d'analyse à la fois (IMPO-01) — cf. `_analyzePending`. */
+  private _analyzing = false;
 
   // Sprint 8 — family dialog
   private _skipFamilyDialog = false;
@@ -193,7 +217,6 @@ export class ImportScreen {
         dz.classList.remove("dragover");
         const files = e.dataTransfer?.files;
         if (!files || files.length === 0) return;
-        const defaultMode = (this._root.querySelector<HTMLSelectElement>("#imp-default-mode"))!.value;
         const defaultLang = (this._root.querySelector<HTMLInputElement>("#imp-default-lang"))!.value.trim() || "fr";
         let added = 0;
         let skippedDup = 0;
@@ -207,7 +230,7 @@ export class ImportScreen {
           // qui filtre déjà via isKnownImportExt) — sinon un .doc/.pdf/sans-ext entrerait
           // dans la liste avec un mode bidon qui n'échoue qu'au dispatch.
           if (!isKnownImportExt(extFromFileName(name))) { skippedUnknown++; continue; }
-          const r = this._tryAddSingle(path, name, defaultMode, defaultLang);
+          const r = this._tryAddSingle(path, name, defaultLang);
           if (r === "added") added++;
           else skippedDup++;
         }
@@ -242,7 +265,12 @@ export class ImportScreen {
     this._textPreviewPath = null;
     this._updateButtons();
     this._refreshRuntimeState();
-    if (conn) void this._refreshTextPreview();
+    if (conn) {
+      void this._refreshTextPreview();
+      // Des fichiers ajoutés avant que le sidecar réponde restaient sur « analyse… »
+      // indéfiniment : leur analyse n'avait jamais eu de connexion pour tourner.
+      void this._analyzePending();
+    }
   }
 
   /**
@@ -307,7 +335,6 @@ export class ImportScreen {
   private _tryAddSingle(
     path: string,
     fileName: string,
-    defaultMode: string,
     defaultLang: string,
   ): "added" | "dup_queue" {
     const norm = normalizeImportPath(path);
@@ -315,7 +342,12 @@ export class ImportScreen {
       return "dup_queue";
     }
     const ext = extFromFileName(fileName);
-    const mode = normalizeModeForExt(deriveModeFromExt(ext, defaultMode), ext);
+    // Mode d'attente, le temps que `_analyzeFile` lise le fichier et le remplace par
+    // le mode déduit. **Paragraphes**, jamais numéroté : c'est celui qui lit *quelque
+    // chose* de n'importe quel document, donc le moins mauvais si l'analyse échoue —
+    // là où le défaut numéroté produisait un document 100 % `structure`, importé sans
+    // un mot et introuvable à la recherche.
+    const mode = normalizeModeForExt(deriveModeFromExt(ext, WP_DEFAULT_PARAGRAPHS), ext);
     this._files.push({
       path,
       mode,
@@ -341,14 +373,13 @@ export class ImportScreen {
     });
     if (!selected) return;
     const paths = Array.isArray(selected) ? selected : [selected];
-    const defaultMode = (this._root.querySelector("#imp-default-mode") as HTMLSelectElement).value;
     const defaultLang = (this._root.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
 
     let added = 0;
     let skippedDup = 0;
     for (const p of paths) {
       const name = p.split("/").pop()?.split("\\").pop() ?? p;
-      const r = this._tryAddSingle(p, name, defaultMode, defaultLang);
+      const r = this._tryAddSingle(p, name, defaultLang);
       if (r === "added") added++;
       else skippedDup++;
     }
@@ -380,14 +411,15 @@ export class ImportScreen {
       );
       return;
     }
-    const defaultMode = (this._root.querySelector("#imp-default-mode") as HTMLSelectElement).value;
     const defaultLang = (this._root.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
     let touched = 0;
     for (const file of this._files) {
       if (file.status !== "pending") continue;
       const base = file.path.split(/[/\\]/u).pop() ?? "";
-      const ext = extFromFileName(base);
-      file.mode = normalizeModeForExt(deriveModeFromExt(ext, defaultMode), ext);
+      // Le MODE n'est plus réappliqué ici : il est déduit du fichier (`_analyzeFile`)
+      // et le profil de lot ne le décide plus. Il décidait pour tous à la fois, et il
+      // était faux — mesuré le 27 août 2026 sur 273 fichiers réels, son défaut
+      // « Lignes numérotées [n] » se trompait sur 149 d'entre eux.
       // Ne pas imposer le défaut à un TEI sans token : laisser le xml:lang décider
       // (champ vide), cohérent avec _tryAddSingle (DESIGN §11.8).
       file.language = detectLanguageForMode(file.mode, base, defaultLang) ?? "";
@@ -439,11 +471,16 @@ export class ImportScreen {
                   value="${f.column_index ?? ""}" placeholder="col"
                   title="Colonne du tableau à extraire (1 = première). Laisser vide pour ignorer les tables." />`
         : "";
+      // Le verdict voyage avec le fichier (IMPO-01) : c'est le seul endroit où il est
+      // vu sans qu'on l'ait cherché. L'aperçu comparatif, lui, reste replié par défaut
+      // et n'en montre qu'un à la fois — il ne protège que qui sait déjà quoi regarder.
+      const verdict = f.status === "pending" ? buildVerdictHtml(this._verdictOf(f)) : "";
       setHtml(row, raw(`
         <div class="imp-file-main">
           <span class="imp-file-name" title="${_escHtml(f.path)}">${_escHtml(f.title)}</span>
           <span class="chip${chipCls ? " " + chipCls : ""}">${_escHtml(importStatusLabel(f))}</span>
         </div>
+        ${verdict ? `<div class="imp-file-verdict">${verdict}</div>` : ""}
         <div class="imp-file-controls">
           <select class="imp-mode-sel" data-i="${i}" title="Mode d'import — ajustable si l'extension ne reflète pas le format (ex. un CoNLL-U ou TEI nommé .txt)">
             ${modeOpts
@@ -470,6 +507,9 @@ export class ImportScreen {
       (el as HTMLSelectElement).addEventListener("change", (e) => {
         const i = parseInt((e.target as HTMLElement).dataset.i!);
         this._files[i].mode = (e.target as HTMLSelectElement).value;
+        // L'utilisateur a tranché : la déduction ne réécrira plus son choix. Elle
+        // propose, elle n'impose pas — et c'est ce qui la rend contestable.
+        this._files[i].modeLocked = true;
         // Clear column_index quand on quitte les modes qui l'honorent — il n'a
         // pas de sens ailleurs et le backend l'ignore, mais autant ne pas garder
         // de valeur fantôme. Passer d'un mode DOCX à l'autre la CONSERVE : c'est
@@ -492,10 +532,15 @@ export class ImportScreen {
           const n = parseInt(raw, 10);
           this._files[i].column_index = Number.isFinite(n) && n >= 1 ? n : undefined;
         }
+        // La colonne change ce que le fichier contient : le verdict est à refaire.
+        // Sans ça, « indiquez la colonne à extraire » survivrait à sa propre réponse.
+        this._files[i].plan = undefined;
+        this._files[i].searchable = undefined;
         // L'aperçu doit suivre la colonne. Il est gardé par le CHEMIN du fichier,
         // qui ne bouge pas d'une colonne à l'autre : sans le forçage, changer de
         // colonne laissait l'aperçu sur la précédente.
         void this._refreshTextPreview(true);
+        void this._analyzePending();
       });
     });
     this._listEl.querySelectorAll(".imp-lang-inp").forEach(el => {
@@ -524,9 +569,21 @@ export class ImportScreen {
       });
     });
 
+    // Ce que la file annonce avant qu'on appuie sur Importer — pour que le geste
+    // d'import ne soit pas le premier endroit où on apprend qu'un fichier est perdu.
+    const warn = buildQueueWarningHtml(
+      this._files.filter((f) => f.status === "pending").map((f) => this._verdictOf(f)),
+    );
+    if (warn) {
+      const el = document.createElement("div");
+      setHtml(el, raw(warn));
+      this._listEl.prepend(el);
+    }
+
     this._updatePrecheck();
     void this._refreshConlluPreview();
     void this._refreshTextPreview();
+    void this._analyzePending();
   }
 
   private _updatePrecheck(): void {
@@ -728,6 +785,11 @@ export class ImportScreen {
     const base = file.title.replace(/ — col\. \d+$/u, "");
     file.column_index = 1;
     file.title = `${base} — col. 1`;
+    // Le verdict portait sur le fichier ENTIER, où rien n'est lisible hors tableau :
+    // le recopier tel quel ferait réclamer à chaque colonne celle qu'on vient de lui
+    // donner. Chaque ligne se fait réanalyser avec la sienne.
+    file.plan = undefined;
+    file.searchable = undefined;
     const clones: FileItem[] = [];
     for (let c = 2; c <= columns; c += 1) {
       clones.push({
@@ -736,6 +798,8 @@ export class ImportScreen {
         title: `${base} — col. ${c}`,
         status: "pending",
         message: "",
+        plan: undefined,
+        searchable: undefined,
       });
     }
     this._files.splice(at + 1, 0, ...clones);
@@ -755,6 +819,97 @@ export class ImportScreen {
    * autres restent lisibles. C'est justement quand un mode ne passe pas que voir les autres
    * a le plus de valeur.
    */
+  /**
+   * Analyse les fichiers en attente : un aperçu chacun, la numérotation lue dessus,
+   * puis le mode déduit et posé (IMPO-01, lot « l'écran décide et le dit »).
+   *
+   * **Un seul appel par fichier, en mode paragraphes** — celui qui ne retire rien, donc
+   * le seul où les marqueurs sont encore visibles. Il répond du même coup à la question
+   * de sûreté (« quelque chose sera-t-il trouvable ? ») sans second aller-retour : si
+   * des marqueurs `[n]` sont là, le mode numéroté rendra des unités, c'est certain ;
+   * s'il n'y en a pas, `units_line` de cet appel *est* le compte du mode paragraphes.
+   *
+   * **En série, pas en parallèle.** Mesuré le 27 août : 32 à 251 ms par DOCX. Une
+   * rafale de 33 fichiers — la plus grosse de l'historique réel — coûte donc quelques
+   * secondes, pendant lesquelles chaque ligne se met à jour dès que la sienne tombe,
+   * plutôt que d'ouvrir 33 requêtes d'un coup au sidecar.
+   */
+  private async _analyzePending(): Promise<void> {
+    if (!this._conn || this._analyzing) return;
+    this._analyzing = true;
+    try {
+      // Relu à chaque tour : la liste bouge pendant l'analyse (ajout, retrait,
+      // éclatement par colonne). On travaille sur les fichiers, pas sur les index.
+      //
+      // La connexion est retestée à CHAQUE tour, pas seulement à l'entrée : si le
+      // sidecar tombe en cours de route, `_analyzeFile` rend la main sans poser de
+      // verdict, et le même fichier ressortirait indéfiniment. `setConn` relance la
+      // boucle quand la connexion revient.
+      while (this._conn) {
+        const file = this._files.find((f) => f.status === "pending" && f.plan === undefined);
+        if (!file) break;
+        await this._analyzeFile(file);
+      }
+    } finally {
+      this._analyzing = false;
+    }
+  }
+
+  /** Analyse un fichier et pose son verdict. Ne jette jamais : un échec est un verdict. */
+  private async _analyzeFile(file: FileItem): Promise<void> {
+    const conn = this._conn;
+    const ext = extFromFileName(file.path);
+    if (!conn) return;
+    // Le mode de lecture, pas le mode d'import : on veut voir le texte tel quel.
+    const probe = ext === "docx" ? "docx_paragraphs"
+      : ext === "odt" ? "odt_paragraphs"
+      : ext === "txt" ? "txt_numbered_lines"
+      : null;
+    if (probe === null) {
+      // TEI / CoNLL-U : rien à déduire, le format se décrit lui-même.
+      file.plan = planImport({ ext, numbering: null, searchableAsParagraphs: 0 });
+      file.searchable = null;
+      this._renderList();
+      return;
+    }
+    try {
+      const res = await previewImport(conn, {
+        path: file.path,
+        mode: probe,
+        limit: 50,
+        ...(modeAcceptsColumn(probe) && file.column_index ? { column_index: file.column_index } : {}),
+      });
+      const numbering = detectNumbering((res.units ?? []).map((u) => stripHiTags(u.text_raw ?? "")));
+      const plan = planImport({
+        ext,
+        numbering: numbering.form,
+        searchableAsParagraphs: res.units_line ?? 0,
+        uniformColumns: uniformTableColumns(res.tables),
+        hasColumn: file.column_index !== undefined,
+      });
+      file.plan = plan;
+      // Le compte n'est exact que si le mode déduit EST celui qu'on vient de lire.
+      file.searchable = plan.mode === probe ? (res.units_line ?? 0) : null;
+      // Le choix de l'utilisateur prime : on ne réécrit pas un mode qu'il a posé.
+      if (!file.modeLocked) file.mode = plan.mode;
+    } catch {
+      // Illisible : on ne prétend rien. La ligne le dira, l'import échouera de son côté.
+      file.plan = null;
+      file.searchable = null;
+    }
+    this._renderList();
+  }
+
+  /** Le verdict d'un fichier tel que la ligne l'affiche, ou `null` si pas encore su. */
+  private _verdictOf(f: FileItem): FileVerdict | null {
+    if (!f.plan) return null;
+    const opts = modeOptionsForExt(extFromFileName(f.path));
+    const labelOf = (m: string) => opts.find((o) => o.value === m)?.label ?? m;
+    return verdictForChoice(
+      f.plan, f.mode, labelOf(f.mode), labelOf(f.plan.mode), f.searchable ?? null,
+    );
+  }
+
   private async _refreshModeComparison(file: FileItem): Promise<void> {
     if (!this._conn || !this._textCmpEl) return;
     const modes = comparableModesForExt(extFromFileName(file.path));
@@ -812,13 +967,22 @@ export class ImportScreen {
     setHtml(this._textCmpEl, raw(buildModeComparisonHtml({
       rows,
       currentMode: file.mode,
-      bestMode: pickBestMode(rows.filter((r) => !r.failed)),
+      // Le tableau recommande le mode que la **déduction** a posé sur la carte du
+      // fichier, pas celui qui compte le plus d'unités : sans ça l'écran se
+      // contredirait, la carte posant un mode et le tableau juste en dessous en
+      // recommandant un autre. Le comptage garde la seule question où il ne peut
+      // pas se tromper — quelque chose lit-il ce document ?
+      bestMode: recommendedMode(rows.filter((r) => !r.failed), file.plan?.mode),
     })));
     this._textCmpEl.querySelectorAll(".imp-cmp-pick").forEach((el) => {
       el.addEventListener("click", () => {
         const mode = (el as HTMLElement).dataset.mode;
         if (!mode || mode === file.mode) return;
         file.mode = mode;
+        // Même geste que le sélecteur de la ligne : c'est un choix, la déduction ne
+        // le réécrira pas — y compris après un changement de colonne, qui relance
+        // l'analyse.
+        file.modeLocked = true;
         if (!modeAcceptsColumn(mode)) file.column_index = undefined;
         this._renderList();
         void this._refreshTextPreview(true);
@@ -1059,6 +1223,7 @@ export class ImportScreen {
             const result = done.result as {
               doc_id?: number;
               units_line?: number;
+              units_structure?: number;
               tables_processed?: number;
               rows_skipped_short?: number;
               nested_tables_skipped?: number;
@@ -1067,13 +1232,28 @@ export class ImportScreen {
             const docId = result?.doc_id;
             f.status = "done";
             f.message = String(docId ?? "?");
+            // Ce que l'import vient d'écrire, dit à chaque fois (IMPO-01). Les deux
+            // comptes sont dans la réponse depuis toujours, mais n'étaient journalisés
+            // que pour une extraction par colonne : un import ordinaire pouvait donc
+            // annoncer « ✓ » en n'écrivant que des unités hors index. Mesuré de bout en
+            // bout le 27 août sur un DOCX de prose ordinaire — statut `ok`,
+            // `warnings: []`, 17 unités écrites, 0 indexée, 0 résultat à la recherche.
+            const nLine = result?.units_line;
+            const nStruct = result?.units_structure;
+            const compte = nLine === undefined
+              ? ""
+              : nLine === 0
+                ? " · ⚠ AUCUNE unité trouvable à la recherche"
+                : ` · ${nLine} unité(s) trouvable(s)`
+                  + ((nStruct ?? 0) > 0 ? `, ${nStruct} hors index` : "");
             // `fts_units` est une table FTS5 SANS trigger, peuplée explicitement par
             // l'indexeur (migration 002 : « contrôle explicite de ce qui est indexé »).
             // Un document fraîchement importé n'est donc JAMAIS trouvable à la
             // recherche avant une réindexation — et rien ne le disait, alors que le
             // même avertissement existe déjà après une curation (`CurationPane`).
             this._log(
-              `✓ "${fileTitle}" → doc_id ${docId ?? "?"} · réindexez pour la recherche.`,
+              `✓ "${fileTitle}" → doc_id ${docId ?? "?"}${compte} · réindexez pour la recherche.`,
+              nLine === 0,
             );
             // Surface table extraction stats when column_index was used.
             if ((result?.tables_processed ?? 0) > 0) {
