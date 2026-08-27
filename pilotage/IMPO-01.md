@@ -7,8 +7,9 @@ statut: interrompu
 
 **Arrêté sur** — l'**aperçu comparatif est construit** (27 août 2026), après le bitexte en
 tableau livré et validé le même jour (passe `qa/import-colonne-tableau.md`, close 45/45). Il
-reste à le **voir tourner** : le contrat a bougé à 1.6.80, donc le sidecar doit être rebâti,
-et aucune passe de QA ne le couvre encore.
+reste à le **voir tourner** : le contrat a bougé à 1.6.80, donc le sidecar doit être rebâti.
+Sa passe `qa/import-apercu-comparatif.md` est écrite **avant** que le lot soit déclaré fini —
+application directe de la leçon du matin.
 
 **La passe n'a rien trouvé, et c'est trompeur.** Tout ce qu'elle aurait dû trouver l'a été
 **avant** qu'elle soit jouée — trois fois j'ai écrit « livré » une couche trop tôt (moteur fait,
@@ -217,6 +218,7 @@ l'écran affiche une coche verte.
 ## QA
 
 - qa/import-colonne-tableau.md — close 45/45 le 27 août 2026
+- qa/import-apercu-comparatif.md — à jouer (sidecar ≥ contrat 1.6.80 requis)
 
 ## Contexte
 
