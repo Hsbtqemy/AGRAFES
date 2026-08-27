@@ -142,6 +142,24 @@ l'écran affiche une coche verte.
       une **unique** unité (qui piégeait la première sonde de mesure, laquelle comptait par unité
       et non par ligne), l'ODT dont la numérotation est calculée au rendu, et le bitexte en
       tableau avec et sans colonne. Les sept rendent le verdict attendu
+- [x] **Seconde passe adverse — un `.txt` correctement numéroté était déclaré introuvable.**
+      27 août, `cde32e0`. La sonde d'un `.txt` est `txt_numbered_lines`, le seul mode TXT — et
+      ce mode **consomme** le marqueur, qui devient l'`external_id` et disparaît du texte.
+      `detectNumbering` n'y voyait donc aucune numérotation sur un fichier qui en porte une, et
+      le verdict tombait sur « rien ne serait trouvable » — sur `Asimov-Foundation_EN.txt`, qui
+      rend **1683 unités toutes indexables**, et sur **195 autres `.txt`** du disque. Corrigé
+      par le compte du mode de sonde, qui est la preuve restante : la consommation du marqueur
+      atteste qu'il existait. `searchableAsParagraphs` renommé `searchableInProbe`, son nom
+      mentant sur ce qu'il porte hors DOCX. **La première vérification sur charges réelles
+      n'avait capturé que le `.txt` numéroté « 1. »** — le seul cas où le verdict était juste par
+      accident : un jeu de vérification qui ne contient pas le cas où la réponse serait fausse
+      ne vérifie rien
+- [x] **Deux autres corrections de la même passe** — 27 août. Le motif d'origine ne survivait
+      pas à un choix manuel : un fichier attendant une colonne cessait de le dire dès qu'on
+      changeait son mode, et le verdict restait orange sans qu'on sache pourquoi. Et l'ordre des
+      verdicts est inversé pour que **le plus grave gagne**, même échelle que la sévérité du
+      moteur et pour la même raison — inerte sur les fichiers mesurés, mais vrai par
+      construction plutôt que par chance
 - [ ] **ShareDocs garde le défaut qu'on vient de retirer en local.** `#prep-sd-profile`
       (`shareDocsImportTemplate.ts:77`) propose toujours `WP_DEFAULT_NUMBERED` en `selected`, et
       `shareDocs.ts:242` en dérive le mode. Les deux écrans sont donc désormais en désaccord sur
