@@ -117,7 +117,7 @@ export function importScreenTemplate(): string {
 
             <div id="imp-detail-body" hidden>
               <div class="imp-detail-controls">
-                <label class="imp-detail-field">
+                <label class="imp-detail-field imp-detail-field-mode">
                   <span>Mode d'import</span>
                   <select id="imp-detail-mode" title="Mode d'import — déduit du fichier, ajustable si vous savez quelque chose que le fichier ne dit pas"></select>
                 </label>

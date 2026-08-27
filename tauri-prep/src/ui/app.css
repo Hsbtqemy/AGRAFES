@@ -510,15 +510,28 @@ summary:focus-visible,
      s'inversent, parce que c'est le panneau qui porte les tableaux : la comparaison
      des modes fait cinq colonnes, et l'extrait des unites en fait trois avec du texte
      long. Dans l'ancienne repartition, « Lignes numerotees [n] » se cassait en deux
-     lignes et la pastille « recommande » retombait sous le nom du mode. */
-  grid-template-columns: minmax(240px, 1fr) minmax(360px, 1.6fr);
+     lignes et la pastille « recommande » retombait sous le nom du mode.
+
+     La liste garde une largeur FIXE et le panneau prend le reste : sans ça, un nom de
+     fichier long ou un extrait large repoussait la frontière entre les deux, et
+     l'écran bougeait d'un fichier à l'autre. `minmax(0, …)` des deux côtés est ce qui
+     l'interdit — un `1fr` nu vaut `minmax(auto, 1fr)`, dont le minimum *auto* laisse
+     précisément le contenu pousser la colonne. */
+  grid-template-columns: 340px minmax(0, 1fr);
   gap: var(--prep-sp-3, 12px);
   align-items: start;
 }
 
 /* Columns */
 .prep-import-screen .imp-col-main,
-.prep-import-screen .imp-col-side { display: flex; flex-direction: column; gap: var(--prep-sp-3, 12px); }
+.prep-import-screen .imp-col-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--prep-sp-3, 12px);
+  /* Un enfant flex a `min-width: auto` : sans ce 0, son contenu le pousse et la
+     largeur fixe de la grille ne sert à rien. */
+  min-width: 0;
+}
 
 /* Cancel .card default margin-bottom inside columns */
 .prep-import-screen .imp-col-main > .card,
@@ -5867,3 +5880,40 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 .prep-import-screen .imp-detail-field-title { flex: 1; min-width: 10rem; }
 .prep-import-screen .imp-detail-field-title input { width: 100%; }
 .prep-import-screen .imp-detail-field[hidden] { display: none; }
+
+/* ── IMPO-01 : largeurs stables, quel que soit le contenu ─────────────────── */
+
+/* Le tableau comparatif fait cinq colonnes dont une porte du texte libre. Il défile
+   dans son propre conteneur plutôt que d'élargir la carte qui le contient. */
+.prep-import-screen .imp-cmp {
+  overflow-x: auto;
+  margin-bottom: var(--prep-sp-2, 8px);
+}
+.prep-import-screen .imp-cmp-sample {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prep-import-screen .imp-cmp-num { white-space: nowrap; }
+
+/* Commandes du panneau : des largeurs posées, pour que passer d'un fichier à l'autre
+   ne redistribue pas la ligne. « TXT lignes numérotées [n] » et « Paragraphes » ne
+   doivent pas donner deux mises en page. */
+.prep-import-screen .imp-detail-field select,
+.prep-import-screen .imp-detail-field input { width: 100%; }
+.prep-import-screen .imp-detail-field { width: 9rem; }
+.prep-import-screen .imp-detail-field-mode { width: 14rem; }
+.prep-import-screen .imp-detail-field-col { width: 5rem; }
+.prep-import-screen .imp-detail-field-title { flex: 1 1 12rem; width: auto; min-width: 0; }
+
+/* La carte du panneau ne se laisse pas élargir par ce qu'elle contient. */
+.prep-import-screen .imp-detail-card { min-width: 0; overflow: hidden; }
+.prep-import-screen .imp-detail-card #imp-detail-summary {
+  overflow-wrap: anywhere;
+}
+
+/* Un nom de fichier long s'abrège au lieu de pousser la liste. */
+.prep-import-screen .imp-file-main { min-width: 0; }
+.prep-import-screen .imp-files-card { min-width: 0; overflow: hidden; }
+.prep-import-screen .imp-file-verdict { overflow-wrap: anywhere; }
