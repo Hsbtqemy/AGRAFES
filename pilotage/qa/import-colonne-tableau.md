@@ -26,7 +26,7 @@ l'application répond l'ancien comportement sans rien signaler. Fermer l'applica
 `python scripts/build_sidecar.py --preset shell --format onefile` — le défaut Windows
 (`onedir`) produit un exe que `externalBin` ignore. Vérifier que
 `tauri-shell/src-tauri/binaries/multicorpus-x86_64-pc-windows-msvc.exe` est **postérieur au
-commit `6f913c2`**. Le premier démarrage d'un onefile neuf est lent : lui laisser une minute.
+commit `d491469`**. Le premier démarrage d'un onefile neuf est lent : lui laisser une minute.
 **Un aperçu qui n'annonce aucun tableau sur un fichier de la table ci-dessous ne dit pas que
 le lot a échoué — il dit d'abord que le sidecar est périmé.**
 
