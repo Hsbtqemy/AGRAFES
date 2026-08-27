@@ -70,6 +70,7 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 - [ ] Sur `2021_Texte1_…Tableau.docx`, cliquer « Un document par colonne » porte la liste à **deux lignes** pour ce fichier — le même fichier y figure deux fois, réglé sur deux colonnes différentes
 - [ ] Les deux lignes portent le même nom de fichier, mais des titres distincts finissant par **« — col. 1 »** et **« — col. 2 »**
 - [ ] Chaque ligne porte un champ **colonne** renseigné, `1` et `2`
+- [ ] Les deux lignes portent la **même langue**, celle du profil de lot, signalée comme devinée — c'est attendu : aucun de ces noms de fichier ne porte de code de langue, la détection n'a rien à se mettre sous la dent. Régler `en` sur la colonne 1 et `fr` sur la colonne 2 **avant** d'importer
 - [ ] Le journal de l'écran affiche **« ↳ … : un document par colonne (2 colonnes) »**
 - [ ] Le bouton « Un document par colonne » disparaît une fois le fichier éclaté — il n'y a plus rien à éclater
 - [ ] Après l'import, le bouton ne découpe plus la ligne : le journal dit « n'est plus en attente… » au lieu de réécrire le titre d'un document déjà importé
@@ -95,7 +96,7 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 
 ### Alignement et recherche
 
-- [ ] Une famille relie les deux documents (à rétablir à la main dans Métadonnées si l'import par lot ne l'a pas fait)
+- [ ] **Aucune famille n'est proposée à l'import** — c'est attendu et non un défaut : la détection travaille sur le nom de fichier, qui ne porte ici aucun code de langue, et les deux colonnes partagent de toute façon le même nom. Créer la relation source↔traduction à la main dans **Métadonnées**
 - [ ] L'alignement par ancre `external_id` journalise **48 liens créés**, sans orpheline
 - [ ] La matrice affiche deux colonnes peuplées et en regard : la ligne 2 montre « The Observer view… » face à « Vaccins… »
 - [ ] Les deux documents apparaissent dans le sélecteur du concordancier
