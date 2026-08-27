@@ -6,10 +6,13 @@ statut: interrompu
 # IMPO-01 — la page d'import : elle écrit sans jamais se relire
 
 **Arrêté sur** — l'écran **déduit le mode de chaque fichier et affiche son verdict sur sa
-ligne** (27 août 2026, `5ceb1be`). Le profil de lot ne décide plus le mode ; il ne porte plus
-que la langue. Deux passes de QA restent à jouer : `qa/import-apercu-comparatif.md` (sidecar
-≥ 1.6.80, rebâti et vérifié le 27 août — l'exe empaqueté répond bien `api_version 1.6.80`) et
-`qa/import-deduction-mode.md`, écrite avant que ce lot soit déclaré fini.
+ligne**, et **la page est refaite en maître-détail** (27 août 2026, `5ceb1be` → `8b3dd14`,
+poussés). Le profil de lot ne décide plus le mode ; il ne porte plus que la langue, laquelle
+a rejoint la zone de dépôt. Quatre cartes sont retirées, 155 lignes de CSS purgées, et les
+largeurs ne bougent plus avec le contenu — trois passes de correction menées sur captures.
+**Les deux passes de QA n'ont toujours pas été jouées** (`qa/import-apercu-comparatif.md`,
+`qa/import-deduction-mode.md`) : elles ont été remises d'aplomb après la refonte, mais rien
+de ce lot n'a encore été vérifié à l'écran par un parcours complet.
 
 **Ce que la journée a mesuré, et qu'il ne faut pas re-dériver.** Sur les **273** `.docx`/`.odt`
 des deux dossiers de corpus (`00-Hugo-Corpus Multilingues` et `GRAFE-Lit-Aligne`) : le défaut
@@ -175,6 +178,53 @@ l'écran affiche une coche verte.
       verdicts est inversé pour que **le plus grave gagne**, même échelle que la sévérité du
       moteur et pour la même raison — inerte sur les fichiers mesurés, mais vrai par
       construction plutôt que par chance
+- [x] **L'écran passe en maître-détail** — 27 août, `d688efe`. La page était encore
+      organisée selon l'ancien modèle (fichiers à gauche, « profil et aperçus » à droite)
+      alors que le modèle est devenu *par fichier* : le tableau comparatif d'un fichier
+      vivait trois écrans plus bas, dans l'autre colonne, avec une pastille « 1/1 » et un
+      bouton « Suivant » désactivé. La liste choisit, le panneau montre. La ligne ne porte
+      plus que nom, statut et verdict ; les commandes descendent dans le panneau du fichier
+      sélectionné. **La sélection remplace les deux curseurs** — ils n'existaient que parce
+      que l'aperçu était global et n'avait aucun moyen de savoir de quel fichier on parlait
+- [x] **Quatre cartes retirées, chacune sur une mesure** — 27 août. La carte **CoNLL-U**,
+      dépliée en permanence pour annoncer qu'aucun `.conllu` n'était sélectionné : il n'en
+      existe **aucun** sur le disque ni dans le corpus, et le panneau rend désormais
+      l'évidence du fichier sélectionné quel qu'il soit (unités ou tokens) — la capacité
+      reste entière, c'est la carte permanente qui tombe. La carte **Index FTS** (voir
+      l'item dédié). Le **fil d'Ariane**, dont la classe `active` était écrite en dur sur la
+      première étape et dont l'étape ② nommait un profil de lot disparu. Et la **case de
+      doublons en double**, recopiée en JS entre le profil et le pied de page. La **langue
+      par défaut** rejoint la zone de dépôt, puisque son étiquette disait « appliquée aux
+      nouveaux fichiers » ; elle travaille vraiment — sur 514 fichiers réels, 58 % portent
+      leur langue dans leur nom, **42 % prennent le défaut**
+- [x] **155 lignes de CSS purgées** — 27 août. 31 règles dont plus aucun sélecteur n'a de
+      classe vivante, vérifiées une à une : une règle mêlant mort et vivant est **conservée**,
+      on laisse du mort plutôt que de retirer du vif. Feuille 6024 → 5869 lignes
+- [x] **Les largeurs cessent de bouger avec le contenu** — 27 août, `d6bc499` + `81d2550` +
+      `c274f83`, en trois passes signalées par l'utilisateur sur captures. (1) La grille de
+      l'écran : un `1fr` nu vaut `minmax(auto, 1fr)`, dont le minimum *auto* laisse le
+      contenu pousser la colonne ; la liste passe à une largeur fixe, les deux colonnes
+      reçoivent `min-width: 0` (un enfant flex vaut `min-width: auto` par défaut).
+      (2) La ligne de commandes passe d'un flex à une **grille**, chaque champ épinglé à sa
+      colonne : « Titre » prenait près de 700 px, et « Colonne » masqué faisait glisser ses
+      voisins — il est désormais grisé et désactivé, ce qui dit en outre que la capacité
+      existe. (3) Les trois tables passent en `table-layout: fixed` : en `auto`, l'extrait de
+      la première unité — d'« Afghanistan. » à une phrase entière — décalait « Unités » de
+      65 px d'un fichier à l'autre. Trouvé en chemin : une règle `[hidden]` écrite plus tôt
+      dans la même session en **annulait** une autre en la suivant dans la feuille
+- [x] **« Indexables » remplace « Trouvables à la recherche »** — 27 août, `8b3dd14`, sur
+      proposition de l'utilisateur. Raccourci d'abord pour la place, puis changé de mot sur
+      une raison plus forte : « trouvables » **affirme quelque chose de faux**, puisque les
+      unités ne le deviennent qu'à la réindexation, laquelle vient après la segmentation et
+      la curation. Et le reste de l'application parle déjà d'index (« ✓ Index à jour »,
+      « ⚠ Index », « ⟳ Réindexer ») : deux mots pour une même chose obligeaient l'utilisateur
+      à faire le lien. Le mot bascule partout où il était vu ; le qualificatif survit dans
+      l'infobulle, qui dit aussi que l'indexation vient plus tard
+- [ ] **Les deux passes de QA sont à rejouer, pas seulement à relire.** Elles ont été
+      remises d'aplomb le 27 août — libellés et gestes disparus (déplier « Aperçu texte »,
+      bouton « Suivant », champ « col » sur la ligne, carte « Langue par défaut ») — mais
+      **aucune n'a encore été jouée**, et l'écran a changé de forme entre-temps. Elles
+      restent le seul filet sur ce lot
 - [ ] **ShareDocs garde le défaut qu'on vient de retirer en local.** `#prep-sd-profile`
       (`shareDocsImportTemplate.ts:77`) propose toujours `WP_DEFAULT_NUMBERED` en `selected`, et
       `shareDocs.ts:242` en dérive le mode. Les deux écrans sont donc désormais en désaccord sur
