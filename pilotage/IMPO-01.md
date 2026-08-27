@@ -104,6 +104,16 @@ l'écran affiche une coche verte.
       plus. Remède possible : que l'audit connaisse la colonne, ce qui suppose de la ranger
       ailleurs que dans le suffixe du hash (`meta_json` du document). À ne coder que quand le bruit
       se constate, pas avant
+- [x] **L'aperçu d'import affichait le balisage en toutes lettres** — trouvé le 27 août en
+      interrogeant le **binaire empaqueté** après reconstruction, pas les sources : la première
+      unité d'un bitexte en tableau sort en `<hi rend="bold">Texte 1</hi>`, et l'écran la
+      rendait telle quelle. Le défaut aurait fait échouer un point de la passe de QA à peine
+      écrite. Dépouillé par `stripHiTags` — l'aperçu répond « ce qui sera importé et où ça
+      coupe », pas « à quoi ça ressemble » — ce qui corrige du même coup la troncature à 120
+      caractères, qui comptait les balises et montrait donc moins de texte sur une ligne stylée
+      que sur les autres. **C'est le premier item du `Reste` de `RICH-01`** : le correctif y est
+      décrit et l'approche y était déjà tranchée ; sa fiche appartient à une autre session, je ne
+      la modifie pas
 - [x] **Passe adverse du 27 août — trois défauts dans le geste que je venais d'écrire.**
       (1) Le `catch` de l'aperçu ne remettait ni la forme ni la note : prévisualiser un
       fichier à tableau puis un fichier illisible laissait à l'écran la forme du **premier**,

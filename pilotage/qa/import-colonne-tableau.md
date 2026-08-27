@@ -80,6 +80,7 @@ tableau, cliquer « Un document par colonne », régler mode et langue sur chaqu
 
 - [ ] La ligne « — col. 1 » en mode **Paragraphes** annonce **48 unités**, colonne Type entièrement **`line`**, ID numérotés **1 → 48**
 - [ ] Sa première ligne de texte est **« Texte 1 »**, la deuxième commence par **« The Observer view on the vaccine dispute »**
+- [ ] Ce « Texte 1 » s'affiche **sans balise** — il est en gras dans la source, et l'aperçu montrait jusqu'ici `<hi rend="bold">Texte 1</hi>` en toutes lettres
 - [ ] La ligne « — col. 2 » annonce **48 unités**, également toutes `line`, et sa deuxième ligne commence par **« Vaccins »** — c'est bien l'autre langue
 - [ ] La même ligne passée en mode **Lignes numérotées** annonce toujours **48 unités**, mais colonne Type entièrement **`structure`** et ID entièrement en tirets : c'est le piège que le mode paragraphes évite
 - [ ] Changer la valeur du champ colonne (2 → 1) **rafraîchit** l'aperçu au lieu de laisser la précédente à l'écran

@@ -38,6 +38,7 @@ import { detectFamilyGroups, type FamilyGroup } from "../lib/familyDetect.ts";
 import { buildFamilyDetectionBannerHtml } from "../lib/importFamilyDetectionTemplate.ts";
 import { importStatusLabel } from "../lib/importStatusLabel.ts";
 import { normalizeImportPath, parseConlluPreview } from "../lib/importConllu.ts";
+import { stripHiTags } from "../lib/richTextModel.ts";
 
 
 // Détection format/langue d'import (extension → mode, nom → langue) extraite dans
@@ -817,7 +818,12 @@ export class ImportScreen {
         tdType.textContent = unit.unit_type ?? "—";
         const tdText = document.createElement("td");
         tdText.className = "imp-text-preview-cell";
-        const raw = unit.text_raw ?? "";
+        // Le balisage `<hi>` était affiché en toutes lettres — la première unité d'un
+        // bitexte en tableau sort en `<hi rend="bold">Texte 1</hi>`. L'aperçu répond
+        // « ce qui sera importé et où ça coupe », pas « à quoi ça ressemble » :
+        // dépouiller suffit, et la troncature à 120 cesse de compter les balises, qui
+        // faisaient voir moins de texte sur les lignes stylées que sur les autres.
+        const raw = stripHiTags(unit.text_raw ?? "");
         tdText.textContent = raw.length > 120 ? raw.slice(0, 120) + "…" : raw;
         tdText.title = raw;
         tr.append(tdId, tdType, tdText);
