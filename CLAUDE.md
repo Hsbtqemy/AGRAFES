@@ -109,10 +109,13 @@ IMPORTANT — respecter exactement `## Reste`, `## QA`, et les H3 de zone :
 l'outil ne lit que ces sections.
 
 - Fin de session : mettre à jour le `Reste` du chantier travaillé.
-- `statut:` se prend dans `à venir` · `interrompu` · `différé` · `clos` · `livré`,
-  et rien d'autre — le contrôleur refuse le reste. `différé` = mis en attente exprès
-  (autre chose doit aboutir d'abord), à distinguer d'`interrompu` = arrêté en plein
-  travail.
+- `statut:` se prend dans `à venir` · `interrompu` · `différé` · `clos` · `livré` ·
+  `abandonné`, et rien d'autre — le contrôleur refuse le reste. `différé` = mis en
+  attente exprès (autre chose doit aboutir d'abord), à distinguer d'`interrompu` =
+  arrêté en plein travail. `abandonné` = décidé de ne pas le faire : fermé mais **pas
+  fait**, et la fiche garde son `Reste` ouvert exprès, comme trace de ce qu'on a
+  renoncé à faire. `livré` = intégré, et l'outil le **mesure** : une fiche `livré`
+  dont le dernier commit ne vit sur aucune ref d'intégration est démentie.
 - Avant de clore une session : `npm run verifier` (code de retour non nul =
   l'outil lira mal le dossier ; `-- --strict` rend les avertissements bloquants).
 - QA visuelle : écrire une passe dans `pilotage/qa/`, jamais dans le fil de

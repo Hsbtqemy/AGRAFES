@@ -15,9 +15,11 @@ statut: interrompu
       dépôt**. Décider s'ils déménagent dans le `pilotage/` de Pilote ou restent ici
       comme besoins d'AGRAFES formulés côté client. Les laisser à cheval garantit qu'ils
       seront lus deux fois et traités zéro
-- [ ] L'item « `livré` contre le front » existe **en double** : ici et dans le `P-4` de
-      Pilote, écrit indépendamment. C'est la première collision entre les deux dossiers,
-      et un avant-goût de ce que le point précédent coûte si on ne tranche pas
+- [x] L'item « `livré` contre le front » existait **en double**, ici et dans le `P-4` de
+      Pilote — **résolu en amont** : `P-4` est clos le 2026-08-26, `livré` a gagné son
+      démenti mécanique et `abandonné` est entré au vocabulaire. La collision s'est donc
+      réglée du côté de l'outil, sans que ce dossier-ci ait à trancher. C'est un argument
+      pour le point précédent : les besoins d'outil traités ici arrivent après coup
 
 ### Ce qui manque à l'outil
 
@@ -30,7 +32,7 @@ statut: interrompu
 ### Décisions en attente
 
 - [ ] **Treize** des quatorze findings `QA-01`…`QA-14` de la passe shell du 16 août n'ont ni fiche ni item — seul `QA-06` est suivi, dans le `Reste` de R6. Décider s'ils méritent des fiches ou un seul chantier de correction
-- [ ] Le front d'intégration contredit le vocabulaire de `statut:` : R6 affiche « livré » et « absent de origin/main, dev ». Décider si `livré` suppose un front, ou si les deux axes restent indépendants
+- [x] Le front d'intégration contredisait le vocabulaire de `statut:` — **plus le cas, mesuré le 2026-08-27** : R6 est `livré` et son front dit `dev`, intégré. La question de fond a été tranchée en amont (`P-4`, 2026-08-26) dans le sens fort : `livré` **suppose** un front, et une fiche qui l'affiche sans intégration est désormais démentie mécaniquement. Aucune fiche d'AGRAFES n'est dans ce cas aujourd'hui
 - [ ] La nappe `.cible::after` couvre la carte : le texte d'une carte n'est plus sélectionnable à la souris — compromis connu du motif, à trancher si la sélection sert
 
 ### Le dossier à tenir
