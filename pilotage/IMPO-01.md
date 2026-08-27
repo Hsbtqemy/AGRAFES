@@ -5,11 +5,22 @@ statut: interrompu
 
 # IMPO-01 — la page d'import : elle écrit sans jamais se relire
 
-**Arrêté sur** — l'**aperçu comparatif est construit** (27 août 2026), après le bitexte en
-tableau livré et validé le même jour (passe `qa/import-colonne-tableau.md`, close 45/45). Il
-reste à le **voir tourner** : le contrat a bougé à 1.6.80, donc le sidecar doit être rebâti.
-Sa passe `qa/import-apercu-comparatif.md` est écrite **avant** que le lot soit déclaré fini —
-application directe de la leçon du matin.
+**Arrêté sur** — l'écran **déduit le mode de chaque fichier et affiche son verdict sur sa
+ligne** (27 août 2026, `5ceb1be`). Le profil de lot ne décide plus le mode ; il ne porte plus
+que la langue. Deux passes de QA restent à jouer : `qa/import-apercu-comparatif.md` (sidecar
+≥ 1.6.80, rebâti et vérifié le 27 août — l'exe empaqueté répond bien `api_version 1.6.80`) et
+`qa/import-deduction-mode.md`, écrite avant que ce lot soit déclaré fini.
+
+**Ce que la journée a mesuré, et qu'il ne faut pas re-dériver.** Sur les **273** `.docx`/`.odt`
+des deux dossiers de corpus (`00-Hugo-Corpus Multilingues` et `GRAFE-Lit-Aligne`) : le défaut
+`[n]` du profil de lot **perd sur 149** fichiers, gagne sur 82, laisse 15 égalités trompeuses
+et 26 fichiers que ni l'un ni l'autre ne lit (les bitextes en tableau). Le **signal des
+marqueurs** tranche juste sur **272/273**. Sur 514 fichiers tous formats, **292** portent `[n]`
+et **48** portent `1.` (45 `.txt`, 3 `.docx`). Cadence réelle d'import, lue sur les 58 documents
+de la base de travail : **11 rafales** d'avril à août, tailles 33, 14, 2, 2 puis sept fois 1 —
+la **médiane est 1 fichier**, mais **47 documents sur 58** sont entrés dans les deux grosses.
+Les gestes sont unitaires, les documents arrivent en masse : ni l'un ni l'autre ne peut être
+sacrifié, et la base compte 58 documents pour 514 fichiers sur le disque — le gros est devant.
 
 **La passe n'a rien trouvé, et c'est trompeur.** Tout ce qu'elle aurait dû trouver l'a été
 **avant** qu'elle soit jouée — trois fois j'ai écrit « livré » une couche trop tôt (moteur fait,
@@ -83,7 +94,62 @@ l'écran affiche une coche verte.
       (`sidecar.py:10341`) ne **refusent** sur `gate_status: "blocking"`, ils le rapportent, et
       `_ok(...)` sort en 0. Le rapport devient véridique, personne n'est arrêté. À trancher :
       est-ce voulu (un rapport, pas une porte) ou est-ce le troisième angle mort ?
-- [ ] Afficher `units_line` / `units_structure` à la fin de **chaque** import : les deux champs sont déjà dans la réponse et ne sont journalisés que si `tables_processed > 0` (extraction par colonne), donc jamais pour un import ordinaire
+- [x] **Le mode ne se décrète plus par lot, il se déduit du fichier** — 27 août, `5ceb1be`.
+      Le sélecteur « Format par défaut » du profil de lot est retiré ; le profil ne porte plus
+      que la **langue**. À l'ajout, chaque fichier reçoit un aperçu en mode paragraphes — celui
+      qui ne retire rien, donc le seul où les marqueurs sont encore visibles — dont on lit la
+      numérotation (`detectNumbering`), puis son mode et son motif (`planImport`). **Un seul
+      appel par fichier** : il répond du même coup à la question de sûreté, puisque des
+      marqueurs `[n]` garantissent que le mode numéroté rendra des unités, et qu'en leur absence
+      le `units_line` de cet appel *est* le compte du mode paragraphes. En série, pas en
+      parallèle : 32 à 251 ms par DOCX, donc quelques secondes pour la plus grosse rafale réelle
+      (33 fichiers), chaque ligne se mettant à jour dès que la sienne tombe
+- [x] **Le comptage d'unités abandonné comme critère de mode** — 27 août. `pickBestMode` ne
+      répond plus qu'à la seule question où il ne peut pas se tromper (« quelque chose lit-il ce
+      document ? ») et `recommendedMode` fait suivre au tableau comparatif le mode que la
+      déduction a posé, sinon l'écran se contredirait — la carte posant un mode et le tableau
+      juste en dessous en recommandant un autre
+- [x] **Seuil tiré de la distribution, pas du raisonnement** — mesuré le 27 août dans la
+      fenêtre de 50 unités de l'aperçu : pour `[n]`, **149 fichiers à exactement 0** et **98
+      au-dessus de 0,95** ; pour `1.`, 243 à 0 et 3 au-dessus de 0,95. **Zéro fichier entre 0,2
+      et 0,95** — n'importe quel seuil de cet intervalle trie à l'identique, 0,5 laisse la plus
+      grande marge. Et le premier marqueur vit à l'unité **#0** sur les 101 fichiers numérotés,
+      donc la fenêtre de l'aperçu suffit très largement
+- [x] **Le verdict voyage avec le fichier** — 27 août. Mode déduit, **motif**, et combien
+      d'unités seront trouvables, sur la ligne même. Le motif compte autant que le mode : sans
+      lui la déduction est un oracle qu'on ne peut pas contredire. La file annonce avant
+      d'importer combien de fichiers n'auraient rien de trouvable, attendent une colonne, ou
+      perdraient leur numérotation comme ancre. Rendu pur dans `importVerdictTemplate.ts`
+      (17 tests). Le compte n'est affiché que lorsqu'il est **exact** — sur un document numéroté
+      l'analyse sait *qu'il* sera trouvable sans savoir combien, et un chiffre pris à l'autre
+      mode serait faux
+- [x] Afficher `units_line` / `units_structure` à la fin de **chaque** import — 27 août. Les
+      deux champs étaient dans la réponse depuis toujours mais n'étaient journalisés que si
+      `tables_processed > 0`, donc jamais pour un import ordinaire. Un import à zéro unité
+      trouvable sort désormais en ligne d'**erreur**, avec « ⚠ AUCUNE unité trouvable à la
+      recherche »
+- [x] **Passe adverse du lot — trois défauts dans ce que je venais d'écrire.** (1) L'éclatement
+      par colonne recopiait le verdict du fichier **entier**, où rien n'est lisible hors tableau :
+      chaque colonne issue du découpage réclamait donc la colonne qu'on venait de lui donner.
+      (2) Choisir l'autre mode dans le tableau comparatif affichait ce mode-là **avec le motif de
+      celui qu'on écartait** — « Paragraphes · marqueurs [n] détectés », qui justifie exactement
+      le choix contraire ; `verdictForChoice` dit maintenant « choisi à la main » et retire le
+      compte, mesuré sur l'autre mode. (3) Une chute du sidecar en cours d'analyse faisait
+      **boucler la file à l'infini** : `_analyzeFile` rendait la main sans poser de verdict et le
+      même fichier ressortait à chaque tour
+- [x] **Éprouvé sur les charges utiles réelles du binaire empaqueté**, pas seulement sur des cas
+      écrits à la main : sept fichiers capturés depuis l'exe, dont le blob à 833 marqueurs dans
+      une **unique** unité (qui piégeait la première sonde de mesure, laquelle comptait par unité
+      et non par ligne), l'ODT dont la numérotation est calculée au rendu, et le bitexte en
+      tableau avec et sans colonne. Les sept rendent le verdict attendu
+- [ ] **ShareDocs garde le défaut qu'on vient de retirer en local.** `#prep-sd-profile`
+      (`shareDocsImportTemplate.ts:77`) propose toujours `WP_DEFAULT_NUMBERED` en `selected`, et
+      `shareDocs.ts:242` en dérive le mode. Les deux écrans sont donc désormais en désaccord sur
+      ce qu'est un DOCX par défaut, ce qui est pire que l'un ou l'autre choix seul. La déduction
+      complète y est possible — `remote/ingest.py:175` télécharge chaque fichier dans un
+      temporaire avant de l'importer — mais **après** téléchargement, donc c'est une décision
+      d'écran, pas un simple portage. Palier immédiat sans coût : basculer son défaut sur
+      paragraphes, qui ne produit jamais un document 100 % `structure`
 - [x] **Capacité manquante — livrée le 27 août.** `column_index` vaut désormais pour
       `docx_paragraphs`, et le parcours de table vit dans `importers/docx_columns.py`, partagé
       par les deux importeurs DOCX plutôt que recopié. Vérifié sur le vrai fichier
@@ -205,20 +271,41 @@ l'écran affiche une coche verte.
       donc atteignable que par l'import **local** de l'application. Trois lignes d'`add_argument`
       côté CLI ; côté ShareDocs c'est une décision d'écran, un fichier distant en tableau devant
       alors se voir proposer la colonne comme en local
-- [ ] **Un `.txt` numéroté « 1. » n'a lui non plus aucun mode qui le lise** — c'est le cas du
-      `doc_id` 426, et c'est la **cinquième forme**, jumelle du bitexte en tableau. `IMPORT_MODES`
-      ne connaît que `txt_numbered_lines` pour le `.txt` : pas de `txt_paragraphs`. L'aperçu
-      comparatif y affichera donc une seule ligne, à 0 indexable, sans rien à proposer. À trancher
-      avec la tranche 3 : ouvrir un mode paragraphes au `.txt`, ou assumer que l'écran dise
-      « aucun mode ne lit ce document »
+- [ ] **La numérotation « 1. » n'a aucun mode qui la consomme — 48 fichiers, mesurés.**
+      45 `.txt` et 3 `.docx`, tous de la famille `CI-2021_Aligné`, où les paires `OrEn`/`TrFr` de
+      même indice sont appariées **par la numérotation** : la perdre n'est pas cosmétique. Les 45
+      `.txt` sortent à **0 unité trouvable** (tout en `structure`), et c'est structurel :
+      `txt_numbered_lines` est le **seul** mode TXT (`dispatch.py:85`), donc un `.txt` non
+      numéroté `[n]` n'a aucune porte d'entrée. Les 3 `.docx` passent en paragraphes et rendent
+      46 unités trouvables, mais avec `1. Texte 11` **collé dans le texte** et un `external_id`
+      positionnel. L'écran le **dit** désormais (verdict `no_mode` / `numbering_lost`) au lieu de
+      l'importer en silence — reste à décider s'il doit aussi savoir le **lire**. Le motif `[n]`
+      est recopié à l'identique dans **trois** importeurs (`docx_numbered_lines.py:42`,
+      `odt_numbered_lines.py:23`, `txt.py:30`) : il faut le centraliser avant d'y toucher. Et
+      **ne pas élargir `[n]` à `1.`** — une prose contenant une liste numérotée se ferait
+      déchiqueter, le numéro avalé en `external_id` ; ce doit être un mode distinct, choisi par
+      la détection. C'est un **amendement à ADR-001**, donc une décision, pas seulement du code
 - [ ] Élucider les 5 fichiers en zone grise du sondage (ratio ~0,66 de lignes marquées, famille Beigbeder / cullioli) — non localisés au moment du sondage, la forme reste inconnue
 - [ ] Renommer ou étoffer le « précontrôle » de l'écran d'import : `_updatePrecheck` ne compte que les fichiers par statut (total / en attente / importés / en erreur), il ne vérifie aucun contenu — le mot promet ce que la fonction ne fait pas
-- [ ] Décider du sort de l'aperçu : il reste **volontaire** et n'affiche qu'un fichier à la fois (curseur `_textPreviewCursor`), donc il ne protège que l'utilisateur qui sait déjà quoi regarder
+- [x] **Le sort de l'aperçu — dissous le 27 août, pas tranché.** Il reste volontaire et un
+      fichier à la fois, mais ce n'est plus lui qui protège : le verdict vit désormais sur la
+      ligne de chaque fichier, où il est vu sans qu'on l'ait cherché. L'aperçu comparatif devient
+      le **recours** — « pourquoi ce mode ? » — ce qui rend la déduction contestable sans la
+      rendre obligatoire
+- [ ] **Un mode TXT sans numérotation n'existe pas** — conséquence mesurée du point ci-dessus,
+      mais plus large que cette fiche : `dispatch.py` ne connaît que `txt_numbered_lines`, donc
+      un `.txt` de prose ordinaire est **inimportable** en l'état. Capacité manquante, pas défaut
+      de la page d'import ; à traiter ailleurs
+- [ ] **Le geste d'import par fichier n'est pas offert** — le bouton Importer reste global sur
+      les fichiers en attente. La cadence réelle (médiane 1 fichier, mais 47 documents sur 58
+      entrés en deux rafales de 33 et 14) demande que les deux tiennent : un bouton par carte
+      pour le geste unitaire, sans retirer l'import du lot en attente
 
 ## QA
 
 - qa/import-colonne-tableau.md — close 45/45 le 27 août 2026
 - qa/import-apercu-comparatif.md — à jouer (sidecar ≥ contrat 1.6.80 requis)
+- qa/import-deduction-mode.md — à jouer (écrite avant la fin du lot, 27 août)
 
 ## Contexte
 

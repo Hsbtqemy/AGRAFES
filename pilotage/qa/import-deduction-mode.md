@@ -1,0 +1,100 @@
+---
+passe: Import — le mode déduit du fichier
+chantier: IMPO-01
+duree: 30 min
+derniere: 2026-08-27
+---
+
+# QA — l'écran décide du mode et dit pourquoi
+
+Passe écrite le 27 août, **avant** de déclarer le lot fini. Elle valide le remplacement du
+profil de lot par une déduction fichier par fichier : le mode posé, son **motif**, le compte
+d'unités trouvables, et ce que la file annonce avant qu'on appuie sur Importer.
+
+**Le sidecar doit porter le contrat 1.6.80** (vérifié sur l'exe empaqueté le 27 août). Sans
+lui la déduction ne peut pas lire `units_line` et chaque ligne resterait sur « analyse… ».
+
+**Où ça se passe.** Écran **Importer**. Le verdict s'affiche **sur la ligne de chaque fichier**,
+sous son nom, dès qu'il est analysé — rien à déplier. La carte de droite ne s'appelle plus
+« Profil de lot » mais **« Langue par défaut »**, et son sélecteur de format a disparu.
+
+**Rien n'est à importer**, sauf à la dernière zone, qui le demande explicitement.
+
+**Les sept cas, mesurés le 27 août sur les charges utiles réelles du binaire empaqueté.**
+Chaque ligne dit ce que la ligne du fichier doit afficher.
+
+| fichier | mode posé | motif attendu | compte |
+|---|---|---|---|
+| `testparagraphesAgrafes.docx` | Paragraphes | aucun marqueur | **17 trouvables** |
+| `2021_Texte1…Tableau.docx` *sans colonne* | Paragraphes | tableau de 2 colonnes | **rien de trouvable** |
+| `2021_Texte1…Tableau.docx` *colonne 1* | Paragraphes | aucun marqueur | **48 trouvables** |
+| `Coe-House-AL_FR.docx` | Lignes numérotées [n] | marqueurs [n] détectés | *aucun* |
+| `Houellebecq-Plateforme_FR.docx` | Lignes numérotées [n] | marqueurs [n] détectés | *aucun* |
+| `Asimov-Foundation_FR_réaligné.odt` | Paragraphes | aucun marqueur | **1141 trouvables** |
+| `9_CI-TrFr-2021_Aligné_UTF8.txt` | TXT lignes [n] | seul mode TXT | **rien de trouvable** |
+
+**Pourquoi certaines lignes n'affichent aucun compte.** L'analyse ne lit le fichier **qu'une
+fois**, en mode paragraphes. Quand elle en déduit le mode *numéroté*, elle sait que le document
+sera trouvable — les marqueurs sont là — sans connaître le compte de ce mode-là. Afficher un
+nombre pris à l'autre mode serait un chiffre faux : on n'en donne aucun. C'est voulu, ce n'est
+pas un trou.
+
+**Les deux cas qui portent la passe.** `Houellebecq-Plateforme_FR.docx` est le piège : les deux
+modes y rendent **1133 unités chacun**, et 1133 sur 1133 sont **différentes** — le mode numéroté
+consomme `[4] ` et en fait l'ancre, le mode paragraphes le laisse collé au texte. Aucun compte
+ne montre cette différence, seul le signal des marqueurs la voit. Et `testparagraphesAgrafes.docx`
+est le cas de l'ancien défaut : importé en « Lignes numérotées [n] », il produisait 17 unités,
+**0 indexée**, et l'application répondait `ok` sans un mot.
+
+**Emplacement des fichiers.** `testparagraphesAgrafes.docx` est dans `Downloads`. Le bitexte en
+tableau et le `.txt` sont sous `Downloads\OneDrive_2026-06-29\00-Hugo-Corpus Multilingues\CI-2021`
+(dossiers `…-Tableau` et `…-Aligné`). `Coe-House` et `Houellebecq` sont sous
+`Downloads\GRAFE-Lit-Aligne\…\Bitextes anglais-francais` et `…\Bitextes français-roumain` ;
+l'`.odt` sous `…\GRAFE-Lit-EnFr-REAligné-DOCX`.
+
+### Le verdict sur la ligne
+
+- [ ] Ajouter `testparagraphesAgrafes.docx` : sa ligne affiche brièvement **« analyse… »**, puis le verdict
+- [ ] Le verdict lu est **Paragraphes · 17 trouvables · aucun marqueur — un paragraphe par unité**
+- [ ] Le sélecteur de mode de la ligne montre bien **Paragraphes**, pas « Lignes numérotées [n] »
+- [ ] Ajouter `Coe-House-AL_FR.docx` : le mode posé est **Lignes numérotées [n]**, motif **marqueurs [n] détectés**
+- [ ] Cette ligne-là n'affiche **aucun compte** — et c'est voulu, voir le préambule
+- [ ] Ajouter `Houellebecq-Plateforme_FR.docx` : même verdict, **Lignes numérotées [n]** — c'est le fichier où les deux modes rendent le même nombre d'unités
+- [ ] Ajouter `Asimov-Foundation_FR_réaligné.odt` : **Paragraphes · 1141 trouvables**, alors que le mode numéroté en annoncerait autant d'unités et 0 trouvable
+
+### Ce que l'écran refuse de deviner
+
+- [ ] Ajouter `2021_Texte1…Tableau.docx` **sans colonne** : le verdict est orange et dit **« le texte est dans un tableau de 2 colonnes — indiquez la colonne à extraire »**
+- [ ] Il dit aussi **« rien de trouvable »** — les deux informations coexistent, la seconde étant la conséquence de la première
+- [ ] Saisir **1** dans le champ « col » de cette ligne : le verdict redevient vert, **48 trouvables**, et la mention de colonne disparaît
+- [ ] Effacer la colonne : le verdict redemande la colonne — il ne reste pas sur l'ancien état
+- [ ] Ajouter `9_CI-TrFr-2021_Aligné_UTF8.txt` : verdict **rouge**, **« rien de trouvable »**, motif disant que c'est le **seul mode TXT**
+- [ ] Aucun de ces fichiers n'est passé en statut « erreur » : ils restent **en attente**, importables si on insiste
+
+### Ce que la file annonce avant d'importer
+
+- [ ] Avec le `.txt` et le tableau sans colonne dans la liste, un bandeau **au-dessus** des lignes compte ce qui cloche
+- [ ] Il nomme **séparément** les fichiers sans unité trouvable et ceux qui attendent une colonne
+- [ ] Le bandeau est **rouge** dès qu'un fichier n'aurait rien de trouvable, **orange** s'il n'y a que des colonnes en attente
+- [ ] Retirer le `.txt` : le bandeau se met à jour, et disparaît quand plus rien ne cloche
+
+### Le choix reste possible, et il se voit
+
+- [ ] Sur `Coe-House-AL_FR.docx`, changer le mode à la main pour **Paragraphes** dans le sélecteur de la ligne
+- [ ] Le verdict ne dit **plus** « marqueurs [n] détectés » — ce motif justifiait le mode qu'on vient d'écarter — mais **« choisi à la main — la lecture du fichier proposait « Lignes numérotées [n] » »**
+- [ ] Il n'affiche plus de compte non plus : celui qu'on avait était mesuré sur l'autre mode
+- [ ] Déplier **« Aperçu texte »** sur ce fichier : le tableau comparatif marque **recommandé** sur **Lignes numérotées [n]**, et le ✓ sur Paragraphes — l'écran montre le désaccord au lieu de le masquer
+- [ ] Cliquer **Lignes numérotées [n]** dans le tableau : la ligne suit, et le verdict retrouve son motif d'origine
+
+### Le profil de lot n'impose plus de format
+
+- [ ] La carte de droite s'intitule **« Langue par défaut »** et ne contient **aucun** sélecteur de format
+- [ ] Son texte d'aide dit que le mode d'import « ne se décide plus par lot » et qu'il est déduit fichier par fichier
+- [ ] Changer la langue par défaut puis **« Appliquer aux fichiers en attente »** change la **langue** de chaque ligne et **laisse les modes intacts**
+- [ ] Ajouter plusieurs fichiers d'un coup (une dizaine) : chaque ligne passe par « analyse… » puis reçoit son verdict, l'une après l'autre, sans figer l'écran
+
+### Après l'import
+
+- [ ] Importer `testparagraphesAgrafes.docx` tel que l'écran le propose : le journal dit **« ✓ … · 17 unité(s) trouvable(s) · réindexez pour la recherche. »**
+- [ ] Forcer le mode **Lignes numérotées [n]** sur un second exemplaire du même fichier, puis importer : le journal sort une ligne d'**erreur** disant **« ⚠ AUCUNE unité trouvable à la recherche »**
+- [ ] Ce second import n'est pas refusé — il est **dit**. Vérifier que le document est bien en base, et que la recherche ne le trouve pas
