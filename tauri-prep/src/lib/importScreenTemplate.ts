@@ -146,7 +146,7 @@ export function importScreenTemplate(): string {
 
               <p id="imp-detail-summary" class="hint imp-conllu-summary"></p>
 
-              <div class="imp-conllu-table-wrap" id="imp-text-wrap">
+              <div class="imp-conllu-table-wrap imp-units-wrap" id="imp-text-wrap">
                 <table class="imp-conllu-table" aria-label="Aperçu unités texte">
                   <thead>
                     <tr><th>ID</th><th>Type</th><th>Texte (extrait)</th></tr>
@@ -157,7 +157,7 @@ export function importScreenTemplate(): string {
                 </table>
               </div>
 
-              <div class="imp-conllu-table-wrap" id="imp-conllu-wrap" hidden>
+              <div class="imp-conllu-table-wrap imp-tokens-wrap" id="imp-conllu-wrap" hidden>
                 <table class="imp-conllu-table" aria-label="Aperçu tokens CoNLL-U">
                   <thead>
                     <tr><th>Phrase</th><th>ID</th><th>Forme</th><th>Lemme</th><th>UPOS</th></tr>

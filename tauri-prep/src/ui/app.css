@@ -647,7 +647,20 @@ summary:focus-visible,
   width: 100%;
   border-collapse: collapse;
   font-size: 0.86rem;
+  /* FIXE, et c'est le point. En `auto`, la largeur des colonnes se calcule sur leur
+     contenu : l'extrait de la première unité, qui va d'« Afghanistan. » à une phrase
+     entière, redistribuait alors TOUTES les colonnes — « Unités » se retrouvait 65 px
+     plus loin d'un fichier à l'autre. Les comptes doivent tomber au même endroit quel
+     que soit le document, sinon on ne peut pas les comparer d'un coup d'œil. */
+  table-layout: fixed;
 }
+/* Les quatre premières colonnes sont posées ; la cinquième prend ce qui reste et
+   abrège. Le libellé « Trouvables à la recherche » passe sur deux lignes : c'est
+   voulu, une largeur stable vaut mieux qu'un en-tête d'un seul tenant. */
+.prep-import-screen .imp-cmp-table th:nth-child(1) { width: 17rem; }
+.prep-import-screen .imp-cmp-table th:nth-child(2) { width: 5rem; }
+.prep-import-screen .imp-cmp-table th:nth-child(3) { width: 10rem; }
+.prep-import-screen .imp-cmp-table th:nth-child(4) { width: 7rem; }
 .prep-import-screen .imp-cmp-table th,
 .prep-import-screen .imp-cmp-table td {
   padding: 3px 6px;
@@ -5900,7 +5913,6 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   margin-bottom: var(--prep-sp-2, 8px);
 }
 .prep-import-screen .imp-cmp-sample {
-  max-width: 16rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5932,3 +5944,18 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 .prep-import-screen .imp-file-main { min-width: 0; }
 .prep-import-screen .imp-files-card { min-width: 0; overflow: hidden; }
 .prep-import-screen .imp-file-verdict { overflow-wrap: anywhere; }
+
+/* Les deux tables du panneau partagent une classe mais pas leurs colonnes : celle des
+   unités en fait trois, celle des tokens CoNLL-U cinq. Toutes deux sont figées pour la
+   même raison que la table comparative — en `auto`, la longueur du texte décale les
+   colonnes d'un fichier à l'autre, et l'œil perd ses repères. */
+.prep-import-screen .imp-units-wrap .imp-conllu-table,
+.prep-import-screen .imp-tokens-wrap .imp-conllu-table { table-layout: fixed; }
+.prep-import-screen .imp-units-wrap .imp-conllu-table th:nth-child(1) { width: 4rem; }
+.prep-import-screen .imp-units-wrap .imp-conllu-table th:nth-child(2) { width: 6rem; }
+.prep-import-screen .imp-tokens-wrap .imp-conllu-table th:nth-child(1),
+.prep-import-screen .imp-tokens-wrap .imp-conllu-table th:nth-child(2) { width: 5rem; }
+.prep-import-screen .imp-tokens-wrap .imp-conllu-table th:nth-child(5) { width: 6rem; }
+/* Sous `table-layout: fixed`, la cellule tient sa largeur de sa colonne : le plafond
+   en pixels ne sert plus, l'abrègement si. */
+.prep-import-screen .imp-units-wrap .imp-text-preview-cell { max-width: none; }
