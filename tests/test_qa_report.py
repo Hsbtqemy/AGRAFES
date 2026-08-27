@@ -512,3 +512,86 @@ def test_anchor_consistency_in_report_and_strict_gate(db_conn: sqlite3.Connectio
     strict = generate_qa_report(db_conn, policy="strict")
     assert strict["gates"]["status"] == "blocking"
     assert any("anchor drift" in b for b in strict["gates"]["blocking"])
+
+
+# ── IMPO-01 : les deux angles morts du contrôle d'import ──────────────────────
+#
+# `_check_import_integrity` ne regarde que les unités `line`. Un document dont
+# AUCUNE unité n'est indexable ne lui offre donc rien à examiner — ni trou, ni
+# doublon, ni unité vide — et il conclut `ok` tout en renvoyant
+# `line_unit_count: 0` dans la même charge utile. Et les unités longues, qui sont
+# le signal du blob, étaient listées sans jamais relever de sévérité.
+
+def _insert_structure_unit(
+    conn: sqlite3.Connection, doc_id: int, n: int, text: str = "Chapitre premier"
+) -> int:
+    conn.execute(
+        "INSERT INTO units (doc_id, n, unit_type, external_id, text_raw, text_norm)"
+        " VALUES (?,?,?,NULL,?,?)",
+        (doc_id, n, "structure", text, text),
+    )
+    conn.commit()
+    return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def test_import_integrity_zero_indexable_units_is_an_error(db_conn: sqlite3.Connection) -> None:
+    """Un document 100 % `structure` est introuvable à la recherche — c'est une erreur.
+
+    Forme réelle : doc 426 du corpus de travail, un .txt numéroté « 1. » importé en
+    mode `[n]`, 48 unités toutes `structure`. Le rapport le déclarait `ok`.
+    """
+    from multicorpus_engine.qa_report import _check_import_integrity
+
+    doc_id = _populate_doc(db_conn, "Numérotation non reconnue")
+    for i in range(1, 4):
+        _insert_structure_unit(db_conn, doc_id, i, f"{i}. Une ligne que rien n'indexe.")
+
+    result = _check_import_integrity(db_conn, doc_id)
+    assert result["line_unit_count"] == 0
+    assert result["severity"] == "error"
+
+
+def test_zero_indexable_units_blocks_the_export_gate(db_conn: sqlite3.Connection) -> None:
+    """Et cette erreur bloque la porte d'export, dès la politique permissive."""
+    from multicorpus_engine.qa_report import generate_qa_report
+
+    doc_id = _populate_doc(db_conn, "Numérotation non reconnue")
+    _insert_structure_unit(db_conn, doc_id, 1)
+
+    report = generate_qa_report(db_conn, policy="lenient")
+    assert report["summary"]["import_error"] == 1
+    assert report["gates"]["status"] == "blocking"
+
+
+def test_a_document_with_no_unit_at_all_is_an_error_too(db_conn: sqlite3.Connection) -> None:
+    """Le garde d'IMP-02 empêche d'en créer, mais le corpus peut en porter d'anciens."""
+    from multicorpus_engine.qa_report import _check_import_integrity
+
+    doc_id = _populate_doc(db_conn, "Document vide")
+    assert _check_import_integrity(db_conn, doc_id)["severity"] == "error"
+
+
+def test_import_integrity_long_units_raise_a_warning(db_conn: sqlite3.Connection) -> None:
+    """Une unité anormalement longue est le signal du blob — elle doit se voir."""
+    from multicorpus_engine.qa_report import LONG_LINE_THRESHOLD, _check_import_integrity
+
+    doc_id = _populate_doc(db_conn, "Blob")
+    _insert_unit(db_conn, doc_id, 1, 1, "Une phrase de taille normale.")
+    _insert_unit(db_conn, doc_id, 2, 2, "x" * (LONG_LINE_THRESHOLD + 1))
+
+    result = _check_import_integrity(db_conn, doc_id)
+    assert result["long_unit_ext_ids"] == [2]
+    assert result["severity"] == "warning"
+
+
+def test_a_long_unit_never_downgrades_a_hole_error(db_conn: sqlite3.Connection) -> None:
+    """L'ordre de l'échelle : l'avertissement ne doit pas écraser l'erreur."""
+    from multicorpus_engine.qa_report import LONG_LINE_THRESHOLD, _check_import_integrity
+
+    doc_id = _populate_doc(db_conn, "Troué et long")
+    _insert_unit(db_conn, doc_id, 1, 1, "x" * (LONG_LINE_THRESHOLD + 1))
+    _insert_unit(db_conn, doc_id, 2, 50, "Une phrase.")  # 48 trous pour 2 unités
+
+    result = _check_import_integrity(db_conn, doc_id)
+    assert result["long_unit_ext_ids"] == [1]
+    assert result["severity"] == "error"

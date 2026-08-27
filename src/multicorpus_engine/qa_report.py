@@ -54,9 +54,20 @@ def _check_import_integrity(conn: sqlite3.Connection, doc_id: int) -> dict:
     suspicious = [r[0] for r in rows if SUSPICIOUS_UNICODE_PATTERN.search(r[1] or "")]
 
     severity = "ok"
-    if duplicates or empty_units:
+    # IMPO-01 — les unités longues étaient collectées sans jamais être lues. Elles sont
+    # le signal du blob : un document dont l'import a pris un paragraphe entier pour une
+    # ligne. Avertissement seulement, la longueur restant un indice et non une preuve.
+    if duplicates or empty_units or long_units:
         severity = "warning"
     if hole_count > len(external_ids) * 0.2 and hole_count:  # >20% holes → error
+        severity = "error"
+    # IMPO-01 — l'angle mort du filtre `unit_type='line'` : sur un document dont aucune
+    # unité n'est indexable, les quatre relevés ci-dessus n'ont rien à examiner et
+    # concluaient `ok`, alors que `line_unit_count: 0` figurait dans la même charge utile.
+    # Zéro unité indexable n'est jamais un import voulu — le document est introuvable à la
+    # recherche, quel que soit le mode ou le format. Posé EN DERNIER : c'est le verdict le
+    # plus grave, il ne doit être écrasé par aucun des précédents.
+    if not rows:
         severity = "error"
 
     return {
@@ -398,9 +409,11 @@ def generate_qa_report(
     warnings_gate: list[str] = []
 
     _apply_policy("import_error", docs_error, policy, blocking, warnings_gate,
-                  f"{docs_error} document(s) with import integrity errors")
+                  f"{docs_error} document(s) with import integrity errors "
+                  f"(holes, or no searchable unit at all)")
     _apply_policy("import_warning", docs_warning, policy, blocking, warnings_gate,
-                  f"{docs_warning} document(s) with import warnings (holes/duplicates)")
+                  f"{docs_warning} document(s) with import warnings "
+                  f"(holes/duplicates/empty or over-long units)")
     _apply_policy("meta_error", meta_error, policy, blocking, warnings_gate,
                   f"{meta_error} document(s) missing required metadata (title/language)")
     _apply_policy("meta_warning", meta_warning, policy, blocking, warnings_gate,
