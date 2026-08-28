@@ -102,8 +102,8 @@ défaut (si non détectée) » reste, lui.
 
 ### Le mode déduit est bien celui qui est employé
 
-- [ ] Importer un `.docx` **sans marqueur [n]** dont le verdict annonçait « Paragraphes ». Vérifier dans **Métadonnées** que le document a des unités, et dans le **concordancier** (après réindexation) qu'on le trouve. Avant ce lot, il serait entré en 100 % `structure` et resterait introuvable
-- [ ] Vérifier la **provenance** du document importé : son chemin source est l'**URL distante**, pas un chemin temporaire
+- [x] Importer un `.docx` **sans marqueur [n]** dont le verdict annonçait « Paragraphes ». Vérifier dans **Métadonnées** que le document a des unités, et dans le **concordancier** (après réindexation) qu'on le trouve. Avant ce lot, il serait entré en 100 % `structure` et resterait introuvable
+- [ ] Ouvrir ce document dans **Métadonnées** : le pied du panneau d'édition porte une ligne **« Provenance: ShareDocs (WebDAV) — <URL> »**, l'URL **décodée** donc lisible (ni `%C3%A9` ni `%20`), et surtout pas un chemin temporaire. L'infobulle de l'URL donne la valeur exacte telle qu'elle est en base
 
 ### Quand la sonde échoue
 
