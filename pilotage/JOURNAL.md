@@ -1,6 +1,6 @@
 ---
 chantier: JOURNAL
-statut: interrompu
+statut: clos
 ---
 
 # JOURNAL — journal de bord local
@@ -8,13 +8,26 @@ statut: interrompu
 **Arrêté sur** — l'outil quitte ce dépôt : pris en dépendance depuis
 [`Hsbtqemy/pilote`](https://github.com/Hsbtqemy/pilote), commit `34bc6e0`, 25 août 2026.
 
+**Clos le 2026-08-27.** Le sujet de ce chantier a quitté le dépôt, et ses items l'ont
+suivi : quatre coupes volontaires vers `P-7` de Pilote, la question des constats de QA
+vers `QAS-01`, la couverture des exceptions de curation vers `R5`. Un cinquième item de
+la liste des manques n'est parti nulle part parce qu'il était **fait** depuis le 24 août
+sans que la fiche le sache — l'indicateur de collision entre chantiers, que quatorze
+fiches d'ici portent aujourd'hui.
+
+`clos` et non `abandonné` : l'outil a été conçu, écrit, utilisé quotidiennement, puis
+extrait dans son propre dépôt. Rien n'a été renoncé. Ce qui se ferme ici est le fait de
+l'héberger.
+
 ## Reste
 
 ### Ce que la sortie de l'outil laisse à trancher
-- [ ] Les items « Ce qui manque à l'outil » ci-dessous décrivent maintenant un **autre
-      dépôt**. Décider s'ils déménagent dans le `pilotage/` de Pilote ou restent ici
-      comme besoins d'AGRAFES formulés côté client. Les laisser à cheval garantit qu'ils
-      seront lus deux fois et traités zéro
+- [x] Les items « Ce qui manque à l'outil » décrivaient un **autre dépôt** — **tranché le
+      2026-08-27 : ils déménagent**, et la fiche se ferme avec eux. Quatre coupes
+      volontaires partent dans `P-7` de Pilote, où elles n'avaient aucun équivalent ;
+      une cinquième ne part pas parce qu'elle est **faite** — l'indicateur de collision
+      entre chantiers, écrit ici « retenu à la conception, jamais codé », l'est depuis le
+      24 août et quatorze fiches en portent
 - [x] L'item « `livré` contre le front » existait **en double**, ici et dans le `P-4` de
       Pilote — **résolu en amont** : `P-4` est clos le 2026-08-26, `livré` a gagné son
       démenti mécanique et `abandonné` est entré au vocabulaire. La collision s'est donc
@@ -23,21 +36,21 @@ statut: interrompu
 
 ### Ce qui manque à l'outil
 
-- [ ] Indicateur de collision entre chantiers — retenu à la conception, jamais codé ; les données existent (`git log --name-only` par code), c'est la brique la plus proche du besoin d'origine
-- [ ] Seuil de dormance sur le silence d'un chantier (dormant ≥ 10 jours actifs) — coupé à la relecture de la maquette, à reposer si le tri seul ne suffit pas. La moitié « fossile ≥ 25 » est morte : elle visait la dormance des **fichiers**, axe mesuré cassé le 19 août (voir `Contexte`)
-- [ ] L'onglet masses ne jalonne que les **retraits** : les plus gros ajouts sont tous des commits de bootstrap de mars (jusqu'à +146 951 lignes), inexploitables. À rouvrir quand février-mars sortira de toute fenêtre utile
-- [ ] Le front n'est calculé que pour les fiches — ni le fil ni les passes ne le portent. Coupe volontaire, à rouvrir seulement si le fil devient illisible une fois plusieurs branches vivantes
+- [x] Indicateur de collision entre chantiers — **fait** le 24 août, dans l'outil. Mesuré le 2026-08-27 : le champ `collisions` est servi et 14 fiches d'ici en portent
+- [x] Seuil de dormance sur le silence d'un chantier — **parti dans `P-7` de Pilote** le 2026-08-27
+- [x] L'onglet masses ne jalonne que les retraits — **parti dans `P-7` de Pilote** le 2026-08-27
+- [x] Le front n'est calculé que pour les fiches — **parti dans `P-7` de Pilote** le 2026-08-27, avec sa vérification : `front` est bien absent des passes et des commits du fil dans la charge utile
 - [x] Signaler mécaniquement l'écart entre le commit cité dans `Arrêté sur` et le dernier commit réel — fait le 24 août dans le journal et non dans le contrôleur, qui n'ouvre pas git : lui donner ce contrôle imposait d'y dupliquer tout l'appariement commit↔chantier
 
 ### Décisions en attente
 
-- [ ] **Treize** des quatorze findings `QA-01`…`QA-14` de la passe shell du 16 août n'ont ni fiche ni item — seul `QA-06` est suivi, dans le `Reste` de R6. Décider s'ils méritent des fiches ou un seul chantier de correction
+- [x] **Treize** des quatorze findings `QA-01`…`QA-14` n'ont ni fiche ni item — **parti dans `QAS-01`** le 2026-08-27, avec deux choses que cet item ne disait pas : `QA-06` n'est plus dans `R6` mais dans `R2` depuis ce matin, et au moins un des treize semble déjà corrigé sans que rien ne le dise. Le compte de treize est un compte de suivi, pas de travail
 - [x] Le front d'intégration contredisait le vocabulaire de `statut:` — **plus le cas, mesuré le 2026-08-27** : R6 est `livré` et son front dit `dev`, intégré. La question de fond a été tranchée en amont (`P-4`, 2026-08-26) dans le sens fort : `livré` **suppose** un front, et une fiche qui l'affiche sans intégration est désormais démentie mécaniquement. Aucune fiche d'AGRAFES n'est dans ce cas aujourd'hui
-- [ ] La nappe `.cible::after` couvre la carte : le texte d'une carte n'est plus sélectionnable à la souris — compromis connu du motif, à trancher si la sélection sert
+- [x] La nappe `.cible::after` couvre la carte — **partie dans `P-7` de Pilote** le 2026-08-27
 
 ### Le dossier à tenir
 
-- [ ] Les exceptions de curation du canvas (R6.5-B Lot A, livrées) ne sont couvertes par **aucune passe** — vérifié le 22 août : le mot « exception » n'apparaît dans aucun fichier de `pilotage/qa/`. Trouvé en retirant les 5 points legacy de `smoke-u02`, qui masquaient le trou en le nommant sur un écran supprimé
+- [x] Les exceptions de curation du canvas ne sont couvertes par aucune passe — **parti dans `R5`** le 2026-08-27, même surface que R5.3
 
 ### Soldés
 
