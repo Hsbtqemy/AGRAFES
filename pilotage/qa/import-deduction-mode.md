@@ -122,6 +122,8 @@ pris le dossier français.
 - [ ] Changer le mode à la main d'un fichier **sans numérotation** (`testparagraphesAgrafes.docx`) : sa ligne passe à l'orange « choisi à la main », mais le bandeau **ne le compte pas** — il rapporte ce que l'application a trouvé, pas ce que vous avez décidé, et surtout il ne prétend pas qu'un fichier sans numérotation perdrait la sienne
 - [ ] Le bandeau est **rouge** dès qu'un fichier n'aurait rien d’indexable, **orange** s'il n'y a que des colonnes en attente
 - [ ] Retirer le `.txt` : le bandeau se met à jour, et disparaît quand plus rien ne cloche
+- [ ] **Vider** la liste : le bandeau de la file **et** celui des familles détectées disparaissent tous les deux — aucun ne doit survivre à la liste qu'il décrit
+- [ ] Retirer un fichier d'une paire détectée : le bandeau des familles se recalcule au lieu de rester sur l'ancienne paire
 
 ### Le choix reste possible, et il se voit
 

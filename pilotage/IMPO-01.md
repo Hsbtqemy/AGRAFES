@@ -230,6 +230,13 @@ l'écran affiche une coche verte.
       document qu'elle ne peut pas traiter (aucune unité `line` à lire), sans un mot. Même
       famille que le défaut de la fiche : une opération qui se déclare réussie en n'ayant
       rien fait. À vérifier aussi côté sidecar (`POST /segment`) avant de trancher le remède
+- [ ] **Le bandeau des familles propose un choix sans effet.** Trouvé le 28 août en jouant
+      la passe. Son `<select>` « Original : » (`prep-imp-family-pivot-sel`,
+      `importFamilyDetectionTemplate.ts:37`) n'existe **que** dans le gabarit : aucun
+      gestionnaire, aucune lecture, nulle part dans les fronts. La note du bandeau dit
+      elle-même que la décision se prend « dans la dialog post-import de chaque fichier
+      enfant » — le sélecteur invite donc à un choix qui sera ignoré. Appartient au lot
+      familles (P6), pas à IMPO-01 : signalé, pas corrigé
 - [ ] **ShareDocs garde le défaut qu'on vient de retirer en local.** `#prep-sd-profile`
       (`shareDocsImportTemplate.ts:77`) propose toujours `WP_DEFAULT_NUMBERED` en `selected`, et
       `shareDocs.ts:242` en dérive le mode. Les deux écrans sont donc désormais en désaccord sur

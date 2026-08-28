@@ -144,6 +144,8 @@ export class ImportScreen {
 
   // Sprint 8 — family dialog
   private _skipFamilyDialog = false;
+  /** Signature des groupes actuellement affichés — cf. `_renderFamilyDetectionBanner`. */
+  private _familyBannerKey: string | null = null;
   private _corpusDocs: DocumentRecord[] = [];
   private _familyDialogQueue: Array<{ docId: number; title: string; lang: string }> = [];
   private _familyDialogActive = false;
@@ -224,7 +226,6 @@ export class ImportScreen {
         if (added > 0) {
           this._renderList();
           this._updateButtons();
-          this._detectAndShowFamilyBanner();
         }
         if (skippedDup > 0) {
           this._showToast?.(
@@ -391,7 +392,6 @@ export class ImportScreen {
     if (added > 0) {
       this._renderList();
       this._updateButtons();
-      this._detectAndShowFamilyBanner();
     }
     if (skippedDup > 0) {
       this._showToast?.(
@@ -454,6 +454,7 @@ export class ImportScreen {
       this._selectedPath = null;
       this._renderQueueWarning();
       this._updatePrecheck();
+      this._detectAndShowFamilyBanner();
       void this._refreshDetail();
       return;
     }
@@ -519,6 +520,11 @@ export class ImportScreen {
     this._renderQueueWarning();
 
     this._updatePrecheck();
+    // Le bandeau des familles est une pure fonction des fichiers en attente : il se
+    // recalcule ici, avec tout le reste, plutôt qu'aux seuls points d'ajout — sinon
+    // vider la liste, retirer un fichier ou terminer un import le laissait décrire
+    // des fichiers qui n'y sont plus.
+    this._detectAndShowFamilyBanner();
     void this._refreshDetail();
     void this._analyzePending();
   }
@@ -1587,9 +1593,19 @@ export class ImportScreen {
   // La détection de familles (radical + token de langue) vit désormais dans le module
   // pur partagé `lib/familyDetect.ts` (réutilisé par ShareDocs — Phase 6). Cf. DESIGN §12.
 
-  /** Render the family-proposal banner inside the screen root when groups are detected. */
+  /**
+   * Render the family-proposal banner inside the screen root when groups are detected.
+   *
+   * **Idempotent** : le DOM n'est retouché que si les groupes ont changé. Sans cette
+   * garde, brancher le bandeau sur `_renderList` le recréerait à chaque passage — donc
+   * une fois par fichier pendant l'analyse, soit 33 fois sur la plus grosse rafale
+   * réelle, avec le scintillement que ça suppose.
+   */
   private _renderFamilyDetectionBanner(groups: FamilyGroup[]): void {
     const existing = this._root?.querySelector("#imp-family-detect-banner");
+    const cle = groups.length === 0 ? "" : JSON.stringify(groups);
+    if (existing && cle === this._familyBannerKey) return;
+    this._familyBannerKey = cle;
     if (existing) existing.remove();
     if (groups.length === 0) return;
 
