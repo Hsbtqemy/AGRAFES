@@ -78,7 +78,7 @@ du dossier voisin, qui porte le même nom.
 ### Le verdict sur la ligne
 
 - [x] Ajouter `testparagraphesAgrafes.docx` : sa ligne affiche brièvement **« analyse… »**, puis le verdict
-- [ ] Le panneau de droite **bascule tout seul** sur ce fichier — un ajout unique se sélectionne, parce qu'ajouter un fichier c'est demander ce que l'application en fait
+- [x] Le panneau de droite **bascule tout seul** sur ce fichier — un ajout unique se sélectionne, parce qu'ajouter un fichier c'est demander ce que l'application en fait
 - [x] Le verdict lu est **Paragraphes · 17 indexables · aucun marqueur — un paragraphe par unité**
 - [x] Le sélecteur de mode de la ligne montre bien **Paragraphes**, pas « Lignes numérotées [n] »
 - [x] Ajouter `Coe-House-AL_FR.docx` : le mode posé est **Lignes numérotées [n]**, motif **marqueurs [n] détectés**
@@ -95,7 +95,9 @@ du dossier voisin, qui porte le même nom.
 - [x] Saisir **1** dans le champ **Colonne** du panneau : le verdict de la ligne redevient vert, **48 indexables**, et la mention de colonne disparaît
 - [x] Effacer la colonne : le verdict redemande la colonne — il ne reste pas sur l'ancien état
 - [x] Ajouter `9_CI-TrFr-2021_Aligné_UTF8.txt` : verdict **rouge**, **« rien d’indexable »**, motif disant que c'est le **seul mode TXT**
-- [ ] Ajouter `Asimov-Foundation_EN.txt` : verdict **vert**, **1683 indexables**, motif **marqueurs [n] détectés** — alors que son aperçu n'en montre aucun, le mode les ayant consommés
+- [ ] Ajouter `Asimov-Foundation_EN.txt` : verdict **vert**, **1683 indexables**, motif **marqueurs [n] détectés**
+- [ ] Son aperçu est **plein** — c'est normal — mais **aucun `[n]` n'y figure** : le mode les a consommés. La colonne *ID* commence à **4** (puis 5, 6, 7) et la colonne texte démarre directement sur « Isaac Asimov, Foundation and Earth… », sans préfixe
+- [ ] C'est tout le piège du couple : ce fichier et le `.txt` en « 1. » montrent tous deux un texte sans marqueur. Seul le **compte** les sépare — 1683 d'un côté, rien de l'autre
 - [ ] Les deux `.txt` sont côte à côte dans la liste et portent des verdicts **opposés** : c'est ce contraste qui protège du défaut trouvé le 27 août
 - [ ] Aucun de ces fichiers n'est passé en statut « erreur » : ils restent **en attente**, importables si on insiste
 
