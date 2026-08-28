@@ -133,3 +133,27 @@ describe("JobCenter — les jobs terminés ne squattent pas l'écran", () => {
     expect(el.style.display).toBe("none");
   });
 });
+
+describe("JobCenter — un job terminé ne doit être rendu qu'une fois", () => {
+  it("ne rappelle pas onDone quand deux passes de sondage se chevauchent", async () => {
+    vi.useFakeTimers();
+    // 1er appel (trackJob) : le job tourne encore → il entre dans _active.
+    vi.mocked(getJob).mockImplementationOnce(
+      () => new Promise((r) => setTimeout(() => r(job({ status: "running" })), 0)),
+    );
+    // Sondages suivants : LENTS (800 ms) et terminaux. Le tick de 500 ms relance donc
+    // _poll pendant que la passe précédente attend encore sa réponse.
+    vi.mocked(getJob).mockImplementation(
+      () => new Promise((r) => setTimeout(() => r(job()), 800)),
+    );
+
+    const jc = new JobCenter();
+    jc.render();
+    jc.setConn({} as Conn);
+    let rendus = 0;
+    jc.trackJob("j1", "Sonde — corpus", () => { rendus += 1; });
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(rendus).toBe(1);
+  });
+});

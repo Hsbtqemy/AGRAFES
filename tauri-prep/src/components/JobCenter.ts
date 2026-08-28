@@ -77,6 +77,7 @@ export class JobCenter {
   private _active: Map<string, TrackedJob> = new Map();
   private _recent: RecentJob[] = [];
   private _pollTimer: number | null = null;
+  private _polling = false;
   private _retireTimer: number | null = null;
   private _panelEl!: HTMLElement;
 
@@ -168,28 +169,42 @@ export class JobCenter {
   }
 
   private async _poll(): Promise<void> {
-    if (!this._conn || this._active.size === 0) {
-      this._stopPolling();
-      this._updatePanel();
-      return;
-    }
-    for (const [jobId, entry] of [...this._active.entries()]) {
-      try {
-        const job = await getJob(this._conn, jobId);
-        entry.job = job;
-        if (job.status === "done" || job.status === "error" || job.status === "canceled") {
-          this._active.delete(jobId);
-          this._pushRecent(job, entry.label);
-          entry.onDone(job);
-        }
-      } catch {
-        // network hiccup — ignore
+    // **Garde de réentrance.** `setInterval` relance `_poll` toutes les 500 ms sans
+    // attendre que la passe précédente ait fini, et la sortie d'`_active` a lieu APRÈS
+    // un `await`. Deux passes qui se chevauchent voyaient donc le même job terminé et
+    // appelaient `onDone` chacune. Un lot de 8 imports ShareDocs a ainsi produit un
+    // rapport de 21 lignes pour 8 documents (mesuré le 28 août : 8 runs moteur, 8
+    // `doc_id`), les jobs finis le plus tôt étant vus par le plus de passes. Le
+    // chevauchement est la règle et non l'exception dès que le lot est gros : les
+    // `getJob` sont **séquentiels**, donc une passe coûte N allers-retours.
+    if (this._polling) return;
+    this._polling = true;
+    try {
+      if (!this._conn || this._active.size === 0) {
+        this._stopPolling();
+        this._updatePanel();
+        return;
       }
-    }
-    this._updatePanel();
-    if (this._active.size === 0) {
-      this._stopPolling();
-      this._scheduleRetire();
+      for (const [jobId, entry] of [...this._active.entries()]) {
+        try {
+          const job = await getJob(this._conn, jobId);
+          entry.job = job;
+          if (job.status === "done" || job.status === "error" || job.status === "canceled") {
+            this._active.delete(jobId);
+            this._pushRecent(job, entry.label);
+            entry.onDone(job);
+          }
+        } catch {
+          // network hiccup — ignore
+        }
+      }
+      this._updatePanel();
+      if (this._active.size === 0) {
+        this._stopPolling();
+        this._scheduleRetire();
+      }
+    } finally {
+      this._polling = false;
     }
   }
 
