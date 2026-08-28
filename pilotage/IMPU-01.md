@@ -13,11 +13,26 @@ fiche ne cite est ce qui dérive le plus vite ici.
 
 ## Reste
 
-- [ ] **Voir tourner ce qui vient d'être livré, avant toute fusion.** C'est la condition
-      du report, pas une formalité : refactoriser 3 100 lignes de deux écrans par-dessus
-      du code jamais exécuté ferait perdre la capacité de distinguer un bug du refactor
-      d'un bug préexistant. Le lot SD-01 (sonde distante, modes par fichier, retrait du
-      profil de lot) est vérifié par les tests et les builds, **jamais par l'écran**
+- [x] **Voir tourner ce qui vient d'être livré, avant toute fusion** — fait le 28 août,
+      condition **levée**. Ce n'était pas une formalité : refactoriser 3 100 lignes de deux
+      écrans par-dessus du code jamais exécuté ferait perdre la capacité de distinguer un
+      bug du refactor d'un bug préexistant. L'écran a tourné sur un serveur réel, et
+      l'exécution a trouvé ce que les passes écrites n'avaient pas vu — dont un bandeau de
+      jobs invisible depuis son commit d'origine, dont le double rappel pouvait faire
+      sauter en silence la barrière qui câble les familles.
+- [ ] **Le repli « c'est aussi sur le disque » est un accident de corpus** — soulevé le
+      28 août au soir, et c'est ce qui remet la fusion en tête de liste. Le report de la
+      colonne distante (item de `SD-01`) s'appuie sur le fait que les 26 bitextes en
+      tableau existent **aussi** localement. C'est vrai du dossier d'entraînement, qui a
+      été téléchargé ; ce n'est pas une propriété du produit. Sur un poste où les documents
+      ne vivent que sur ShareDocs il n'y a **aucun** chemin : `FileItem.path` est un chemin
+      de système de fichiers, donc un fichier distant n'entre pas dans l'écran local, et
+      l'écran distant n'a pas de champ colonne. Le « 26 sur 514 » n'est donc pas un taux du
+      produit — la mise en tableau étant une convention d'alignement répandue, un corpus
+      peut y être à 100 %. Ajouter `column_index` aux deux routes distantes reste possible,
+      mais ce serait la **troisième** capacité portée à la main d'un écran vers l'autre
+      après la déduction de mode et le verdict, et le portage précédent a coûté huit
+      défauts.
 - [ ] **Trancher les cinq points du § 5 de la note** — le flux de familles (avant/lot
       comme ShareDocs, ou après/par document comme en local : décision couplée à
       `FAM-01`) ; l'annulation de lot, qui n'existe qu'à distance ; le devenir du panier ;

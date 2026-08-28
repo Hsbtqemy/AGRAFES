@@ -126,18 +126,28 @@ a besoin.
 
 ## 6. Recommandation
 
-**Oui, mais pas tout de suite.**
+**Oui. La raison d'attendre est tombée le soir même.**
 
 La direction est juste et l'argument est mesuré : la duplication produit des défauts, et
 elle coûte des capacités réelles (26 fichiers). Chaque semaine où ShareDocs gagne une
 fonctionnalité séparément augmente ce qu'il faudra fusionner ensuite.
 
-Mais **rien de ce qui vient d'être livré n'a été vu tourner**. Refactoriser deux écrans de
-1759 et 1350 lignes par-dessus du code jamais exécuté, c'est perdre la capacité de
-distinguer un bug du refactor d'un bug préexistant. L'ordre qui coûte le moins :
+**Et le « 26 sur 514 » sous-estime le coût.** Ce report s'appuyait sur un repli — ces
+fichiers sont aussi sur le disque, l'import local sait les traiter. Le repli n'existe
+que parce que *ce* corpus a été téléchargé. Là où les documents ne vivent que sur
+ShareDocs, il n'y a aucun chemin : `FileItem.path` est un chemin de système de
+fichiers, donc un fichier distant n'entre pas dans l'écran local, et l'écran distant
+n'a pas de champ colonne. Le 5 % est un taux de ce dossier, pas du produit — la mise
+en tableau étant une convention d'alignement répandue, un corpus peut y être à 100 %.
 
-1. voir tourner ShareDocs tel qu'il est — c'est ce qui a trouvé, deux fois le 28 août, ce
-   que les passes écrites n'avaient pas vu ;
+Le report tenait à une chose : **rien de ce qui venait d'être livré n'avait été vu
+tourner**, et refactoriser 3 100 lignes par-dessus du code jamais exécuté fait perdre
+la capacité de distinguer un bug du refactor d'un bug préexistant. Cette condition est
+levée. L'ordre qui reste :
+
+1. ~~voir tourner ShareDocs tel qu'il est~~ — **fait le 28 août au soir, condition
+   levée**. L'exécution a trouvé ce que les passes écrites n'avaient pas vu ;
+
 2. trancher les cinq points du § 5 ;
 3. fusionner, en une tranche qui commence par l'origine dans `FileItem` et l'aiguillage de
    l'analyse — le reste en découle.
