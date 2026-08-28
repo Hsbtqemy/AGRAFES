@@ -46,6 +46,7 @@ import {
   isImportRemoteReport,
   isRemoteProbeReport,
   keyringAccount,
+  probeKeysToKeep,
   mergeReports,
   normalizeFolderUrl,
   resolveFamilyRelations,
@@ -171,6 +172,11 @@ export class ShareDocsImportScreen {
   private _probeByHref = new Map<string, RemoteProbeFile>();
   /** Une sonde est en vol : les lignes affichent « analyse… » au lieu de rien. */
   private _probing = false;
+  /**
+   * Dossiers déjà sondés dans cette session d'écran — pour ne pas relancer une sonde à
+   * chaque fois qu'on décoche puis recoche le même dossier.
+   */
+  private _probedFolders = new Set<string>();
   private _report: ImportRemoteReport | null = null;
   private _busy = false;
   /** Accumulative selection cart (P4C), keyed by href, persistent across navigation. */
@@ -432,8 +438,9 @@ export class ShareDocsImportScreen {
       // l'utilisateur venait d'en lire le verdict avant de le cocher. On élague donc au
       // lieu de vider — ce qui borne aussi la mémoire, contrairement à un cache qui
       // grossirait à chaque dossier visité.
+      const aGarder = probeKeysToKeep(this._probeByHref.keys(), this._selected.values());
       for (const href of [...this._probeByHref.keys()]) {
-        if (!this._selected.has(href)) this._probeByHref.delete(href);
+        if (!aGarder.has(href)) this._probeByHref.delete(href);
       }
       this._renderEntries();
       this._log(`✓ ${entries.length} élément(s) — ${safeDecodeUrl(url)}`);
@@ -463,8 +470,15 @@ export class ShareDocsImportScreen {
   private async _probeFolder(url: string): Promise<void> {
     const conn = this._conn;
     if (!conn) return;
-    this._probing = true;
-    this._renderEntries();
+    // **Stocker est inconditionnel, peindre ne l'est pas.** Un dossier coché est sondé
+    // sans être affiché : ses résultats doivent entrer dans `_probeByHref` — ils
+    // serviront à son expansion à l'import — mais rien ne doit toucher au listing d'un
+    // autre dossier.
+    const affiche = this._currentUrl === url;
+    if (affiche) {
+      this._probing = true;
+      this._renderEntries();
+    }
     try {
       const job = await webdavProbe(conn, { url, auth: this._auth });
       if (!this._jobCenter) {
@@ -473,10 +487,24 @@ export class ShareDocsImportScreen {
         // où chaque fichier retombe sur la dérivation par extension.
         this._probing = false;
         this._log("⚠ Sonde lancée sans suivi de job — verdicts indisponibles.", true);
-        this._renderEntries();
+        if (affiche) this._renderEntries();
         return;
       }
       this._jobCenter.trackJob(job.job_id, `Sonde — ${folderLabel(url)}`, (done) => {
+        if (done.status === "done" && isRemoteProbeReport(done.result)) {
+          const r = done.result;
+          for (const f of r.files) this._probeByHref.set(f.source_url, f);
+          this._log(
+            `✓ Sonde ${folderLabel(url)} — ${r.probed} lu(s), `
+            + `${r.skipped_no_probe} sans déduction, ${r.skipped_unsupported} non importable(s)`
+            + (r.errors ? `, ${r.errors} erreur(s)` : ""),
+          );
+        } else {
+          this._log(`⚠ Sonde indisponible — ${done.error ?? done.status}`, true);
+        }
+        // Le panier peut contenir des fichiers de ce dossier même s'il n'est pas
+        // affiché : son détail se rafraîchit dans tous les cas.
+        this._updateSelectionUi();
         // Le dossier a pu changer pendant la sonde : ne peindre que si c'est encore lui,
         // sans quoi les verdicts d'un dossier se poseraient sur les lignes d'un autre.
         //
@@ -486,26 +514,15 @@ export class ShareDocsImportScreen {
         // jusqu'à la fin de SA sonde.
         if (this._currentUrl !== url) return;
         this._probing = false;
-        if (done.status === "done" && isRemoteProbeReport(done.result)) {
-          for (const f of done.result.files) this._probeByHref.set(f.source_url, f);
-          const r = done.result;
-          this._log(
-            `✓ Sonde — ${r.probed} lu(s), ${r.skipped_no_probe} sans déduction, `
-            + `${r.skipped_unsupported} non importable(s)`
-            + (r.errors ? `, ${r.errors} erreur(s)` : ""),
-          );
-        } else {
-          this._log(`⚠ Sonde indisponible — ${done.error ?? done.status}`, true);
-        }
         this._renderEntries();
       });
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._log(`⚠ Sonde impossible (${folderLabel(url)}) : ${msg}`, true);
       // Même garde qu'au retour du job : l'échec d'une sonde qu'on a quittée ne dit rien
       // du dossier affiché maintenant.
       if (this._currentUrl !== url) return;
       this._probing = false;
-      const msg = err instanceof Error ? err.message : String(err);
-      this._log(`⚠ Sonde impossible : ${msg}`, true);
       this._renderEntries();
     }
   }
@@ -539,8 +556,24 @@ export class ShareDocsImportScreen {
         parentUrl: this._currentUrl,
         is_dir: entry.is_dir,
       });
+      // Cocher un DOSSIER le fait sonder tout de suite. Il est développé par un PROPFIND
+      // au moment d'importer, et sans ça ses fichiers — jamais vus par la sonde —
+      // retomberaient sur le repli : la déduction s'annulerait précisément là où l'écran
+      // invite le plus à cocher.
+      //
+      // Ici et non à l'expansion : attendre une sonde au lancement de l'import
+      // bloquerait le geste, et `trackJob` peut ne jamais rappeler si le Job Center n'a
+      // pas de connexion — un import suspendu pour une information accessoire.
+      if (entry.is_dir && !this._probedFolders.has(entry.href)) {
+        this._probedFolders.add(entry.href);
+        void this._probeFolder(entry.href);
+      }
     } else {
       this._selected.delete(entry.href);
+      // Sans ça, décocher puis recocher un dossier après avoir navigué ne le resonderait
+      // pas — l'élagage ayant entre-temps jeté ses fichiers — et ses modes seraient
+      // perdus pour de bon.
+      this._probedFolders.delete(entry.href);
     }
     this._updateSelectionUi();
   }
@@ -976,6 +1009,7 @@ export class ShareDocsImportScreen {
     folders: SelectedRemoteItem[],
     form: { profile: string; defaultLanguage: string },
   ): Promise<{ files: DetectedImportFile[]; ignored: number; subfolders: number; failed: string[] }> {
+    const modesDeduits = this._deducedModes();
     const files: DetectedImportFile[] = [];
     let ignored = 0;
     let subfolders = 0;
@@ -984,7 +1018,12 @@ export class ShareDocsImportScreen {
       try {
         const entries = await webdavList(conn, { url: folder.href, auth: this._auth });
         // Non-récursif : les sous-dossiers sont comptés puis ignorés (routeEntriesToImport).
-        const routed = routeEntriesToImport(entries, folder.href, form.profile, form.defaultLanguage);
+        // Les modes que la sonde a déduits au moment où ce dossier a été coché. Une
+        // sonde qui aurait échoué laisse la carte vide : chaque fichier retombe alors
+        // sur la dérivation par extension, comme avant.
+        const routed = routeEntriesToImport(
+          entries, folder.href, form.profile, form.defaultLanguage, modesDeduits,
+        );
         files.push(...routed.files);
         ignored += routed.ignored;
         subfolders += routed.subfolders;

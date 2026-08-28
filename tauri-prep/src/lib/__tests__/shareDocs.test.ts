@@ -653,6 +653,7 @@ import {
   verdictForRemoteFile,
   deducedModesFrom,
   isRemoteProbeReport,
+  probeKeysToKeep,
 } from "../shareDocs.ts";
 import type { RemoteProbeFile } from "../sidecarClient.ts";
 
@@ -777,5 +778,41 @@ describe("isRemoteProbeReport", () => {
     expect(isRemoteProbeReport({ total: 1, imported: 1, files: [] })).toBe(false);
     expect(isRemoteProbeReport(null)).toBe(false);
     expect(isRemoteProbeReport("x")).toBe(false);
+  });
+});
+
+
+describe("probeKeysToKeep", () => {
+  const F = "https://dav.example/A/";
+  const G = "https://dav.example/B/";
+
+  it("garde les fichiers cochés, jette le reste du dossier quitté", () => {
+    const garde = probeKeysToKeep(
+      [`${F}a.docx`, `${F}b.docx`, `${F}c.docx`],
+      [{ href: `${F}b.docx`, is_dir: false }],
+    );
+    expect([...garde]).toEqual([`${F}b.docx`]);
+  });
+
+  it("garde le CONTENU d'un dossier coché, qui sera développé à l'import", () => {
+    // Le dossier est dans le panier, pas ses fichiers : sans cette règle leur sonde
+    // serait jetée à la première navigation et l'expansion retomberait sur le repli.
+    const garde = probeKeysToKeep(
+      [`${F}a.docx`, `${F}sous/b.docx`, `${G}x.docx`],
+      [{ href: F, is_dir: true }],
+    );
+    expect([...garde].sort()).toEqual([`${F}a.docx`, `${F}sous/b.docx`]);
+  });
+
+  it("ne garde rien quand le panier est vide", () => {
+    expect([...probeKeysToKeep([`${F}a.docx`], [])]).toEqual([]);
+  });
+
+  it("cumule les deux règles sans doublon", () => {
+    const garde = probeKeysToKeep(
+      [`${F}a.docx`, `${G}x.docx`, `${G}y.docx`],
+      [{ href: F, is_dir: true }, { href: `${G}x.docx`, is_dir: false }],
+    );
+    expect([...garde].sort()).toEqual([`${F}a.docx`, `${G}x.docx`]);
   });
 });

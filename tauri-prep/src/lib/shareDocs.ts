@@ -527,6 +527,35 @@ export function verdictForRemoteFile(f: RemoteProbeFile): FileVerdict | null {
   };
 }
 
+/**
+ * Les résultats de sonde à **garder** quand on quitte un dossier (SD-01).
+ *
+ * Le panier traverse les dossiers — c'est sa raison d'être — donc tout jeter ferait
+ * retomber sur le repli un fichier coché ailleurs, dont l'utilisateur venait pourtant de
+ * lire le verdict. On garde donc :
+ *
+ * - les fichiers **cochés** eux-mêmes ;
+ * - les fichiers **contenus dans un dossier coché** (leur href a le sien pour préfixe) :
+ *   c'est cette sonde-là qui leur donnera leur mode quand le dossier sera développé au
+ *   lancement de l'import.
+ *
+ * Tout le reste part : garder sans élaguer ferait grossir le cache à chaque dossier
+ * visité, sans borne.
+ */
+export function probeKeysToKeep(
+  probeHrefs: Iterable<string>,
+  selected: Iterable<{ href: string; is_dir: boolean }>,
+): Set<string> {
+  const items = [...selected];
+  const coches = new Set(items.map((it) => it.href));
+  const dossiers = items.filter((it) => it.is_dir).map((it) => it.href);
+  const garde = new Set<string>();
+  for (const href of probeHrefs) {
+    if (coches.has(href) || dossiers.some((d) => href.startsWith(d))) garde.add(href);
+  }
+  return garde;
+}
+
 export function isRemoteProbeReport(x: unknown): x is RemoteProbeReport {
   if (!x || typeof x !== "object") return false;
   const r = x as Record<string, unknown>;
