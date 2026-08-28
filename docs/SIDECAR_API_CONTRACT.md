@@ -112,7 +112,7 @@ Three **independent** version fields surface in sidecar responses — do not con
   - `POST /models/download`
   - `POST /models/remove`
   - `POST /shutdown`
-- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/token_collocates`, `/webdav/list`, `/models`, `/openapi.json`) do not require token.
+- Read endpoints (`/health`, `/query`, `/token_query`, `/token_stats`, `/token_collocates`, `/webdav/list`, `/webdav/probe`, `/models`, `/openapi.json`) do not require token.
 - Threat model and operational policy: `docs/SIDECAR_SECURITY_POSTURE.md`.
 
 ## Required endpoints (persistent UX baseline)
@@ -253,13 +253,22 @@ Three **independent** version fields surface in sidecar responses — do not con
   - response: `{ entries: [{ name, href, is_dir, size, modified, content_type }] }` (the folder's own self entry is excluded)
   - errors: `401` WebDAV auth failed · `404` folder not found · `502` upstream network/protocol error
   - **credentials are loopback-only and never persisted** (not in DB / runs.params / logs / telemetry)
+- `POST /webdav/probe` — read a WebDAV folder **without writing anything** (import probe, SD-01)
+  - **no token**, dispatched **lock-free** (no DB access at all — never blocks DB writes); async job → `{job}` (202), poll `/jobs/<id>`
+  - body: `{ url, hrefs?, include?, auth?, max_file_mb? (default 200), limit? (default 50, max 500) }` — **neither `mode` nor `language`**: the probe exists to discover the former and never imports
+  - per file: download to a temp file, parse with the **same** code as `/import/preview`, delete the temp. Report: `{ url, total, probed, skipped_no_probe, skipped_oversize, errors, files: […] }`
+  - each probed file carries the `/import/preview` shape — `units`, `units_total`, `units_line`, `units_structure`, `truncated`, `tables` — plus `status`, `mode` (the **read** mode used), `ext`
+  - `status`: `probed` · `skipped-no-probe` (TEI/CoNLL-U — self-describing, **never downloaded**) · `skipped-oversize` · `error` (per-file, never aborts the batch)
+  - `hrefs` is intersected with the folder PROPFIND listing — an unlisted href is ignored, never fetched
+  - **credentials are loopback-only and never persisted**, and never placed in the job params
 - `POST /import-remote` (token required) — batch-ingest a WebDAV folder (ShareDocs ingestion, Phase 2)
   - **asynchronous**: enqueues a `JobManager` job and returns `{ job }` (202); poll `GET /jobs/<id>` for per-file progress + the final batch report
-  - body: `{ url, mode, language?, include?, hrefs?, auth?, doc_role?, resource_type?, max_file_mb? }` (`mode` = same values as `/import`)
-  - `language` is **required for every mode except `tei`** (rejected with `400` otherwise — mirrors the CLI `import-remote` guard); `max_file_mb` null/absent → default 200 MiB cap
+  - body: `{ url, mode, modes?, language?, include?, hrefs?, auth?, doc_role?, resource_type?, max_file_mb? }` (`mode` = same values as `/import`)
+  - `modes?` (object, SD-01, since 1.6.82) — **per-file** import mode keyed by href, typically what `POST /webdav/probe` deduced for each document. Overrides `mode` for the files it names, which then also **bypass the batch extension filter** (their mode was chosen for them); files absent from the map fall back to `mode`, so a caller that ignores SD-01 behaves exactly as before. Must be a **non-empty** object of href → supported mode (else `400`).
+  - `language` is **required for every mode except `tei`** (rejected with `400` otherwise — mirrors the CLI `import-remote` guard), and the guard covers **every mode in play**: a `tei` batch carrying one DOCX in `modes` still needs a language. `max_file_mb` null/absent → default 200 MiB cap
   - `hrefs?` (array, P4C, since 1.6.29) — explicit file selection: the batch is restricted to these hrefs, **intersected with the folder PROPFIND listing** (an unlisted href is ignored, never fetched) and **bypasses the `include` glob**. When provided it must be a **non-empty** array of strings (else `400`). Omit to import the whole folder.
   - per file the *download* runs outside the write-lock; only the DB section (dedup + import + provenance) is serialized under it
-  - batch report per file: `status ∈ {imported, skipped-duplicate, skipped-filtered, skipped-oversize, error}`, `source_url`, `doc_id`, `run_id`, `source_hash`, counts
+  - batch report per file: `status ∈ {imported, skipped-duplicate, skipped-filtered, skipped-oversize, error}`, `source_url`, `mode` (the mode **actually used** for that document — since 1.6.82), `doc_id`, `run_id`, `source_hash`, counts
   - **credentials (`auth`) are NEVER placed in the job params** (which `/jobs/<id>` exposes) nor persisted anywhere — captured in the runner closure, memory only
   - returns `401` if token is active and header is missing/invalid
 - spaCy model management (on-demand download, Phase 2)

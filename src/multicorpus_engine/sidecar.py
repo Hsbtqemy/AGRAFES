@@ -26,6 +26,8 @@ GET  /runs           → list persisted runs (SQLite ``runs`` table)
 POST /jobs           → enqueue async job {kind, params?}
 GET  /jobs/{job_id}  → async job status/result
 POST /webdav/list    → browse a WebDAV folder (PROPFIND); body: {url, auth?}
+POST /webdav/probe   → read a WebDAV folder WITHOUT writing (async job); body:
+                        {url, hrefs?, include?, auth?, max_file_mb?, limit?} → {job}
 POST /import-remote  → batch-ingest a WebDAV folder (async job); body:
                         {url, mode, language?, include?, auth?, doc_role?,
                         resource_type?, max_file_mb?} → {job}
@@ -1088,6 +1090,14 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             # so browsing a remote folder never blocks db writes (P2 §D4).
             if path == "/webdav/list":
                 self._handle_webdav_list(body)
+                return
+            # /webdav/probe ne touche NI la base NI le disque du corpus : elle lit des
+            # fichiers distants dans un temporaire qu'elle supprime (SD-01). Hors verrou
+            # pour la même raison que /webdav/list — sonder un dossier ne doit jamais
+            # bloquer une écriture — et le job qu'elle soumet n'écrit rien non plus,
+            # `JobManager` étant purement en mémoire.
+            if path == "/webdav/probe":
+                self._handle_webdav_probe(body)
                 return
             # /models/* touch only the filesystem models dir (+ network for the
             # download job) → keep them lock-free so a multi-minute model download
@@ -2747,12 +2757,49 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             )
             return
 
+        # Modes PAR FICHIER (SD-01) : ce que la sonde /webdav/probe a deduit de chaque
+        # document. `mode` reste requis et sert de repli pour les fichiers absents de la
+        # carte, si bien qu'un appelant qui ignore SD-01 est inchange.
+        modes = body.get("modes")
+        if modes is not None:
+            if not isinstance(modes, dict) or not modes:
+                self._send_error(
+                    "modes, when provided, must be a non-empty object mapping href -> mode",
+                    code=ERR_VALIDATION,
+                    http_status=400,
+                )
+                return
+            normalises: dict[str, str] = {}
+            for href, valeur in modes.items():
+                if not isinstance(href, str) or not href.strip():
+                    self._send_error("modes keys must be non-empty hrefs", code=ERR_VALIDATION, http_status=400)
+                    return
+                if not isinstance(valeur, str) or not valeur.strip():
+                    self._send_error(
+                        f"modes[{href!r}] must be an import mode", code=ERR_VALIDATION, http_status=400
+                    )
+                    return
+                norm = normalize_import_mode(valeur)
+                if norm not in IMPORT_MODES:
+                    self._send_error(
+                        f"Unsupported import mode: {valeur!r}",
+                        code=ERR_VALIDATION,
+                        http_status=400,
+                        details={"supported_modes": list(IMPORT_MODES)},
+                    )
+                    return
+                normalises[href] = norm
+            modes = normalises
+
         # Language is required for every mode except TEI (which carries its own
         # xml:lang) — mirrors the CLI `import-remote` guard. Without it every file
         # fails per-file on the documents.language NOT NULL constraint (cryptic),
-        # so reject up front with a clear message.
+        # so reject up front with a clear message. Avec des modes par fichier, la garde
+        # porte sur TOUS les modes en jeu : un lot en TEI qui contient un seul DOCX a
+        # besoin d'une langue, sans quoi ce fichier-la echouerait seul et cryptiquement.
         language = body.get("language")
-        if norm_mode != "tei" and not (isinstance(language, str) and language.strip()):
+        besoin_langue = norm_mode != "tei" or any(m != "tei" for m in (modes or {}).values())
+        if besoin_langue and not (isinstance(language, str) and language.strip()):
             self._send_error(
                 "language is required for this import mode (only TEI may omit it)",
                 code=ERR_VALIDATION,
@@ -2805,6 +2852,8 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             "language": body.get("language"),
             "include": body.get("include"),
             "hrefs": hrefs,
+            # hrefs + modes sont non secrets : exposables dans les params du job.
+            "modes": modes,
             "doc_role": body.get("doc_role", "standalone"),
             "resource_type": body.get("resource_type"),
             "max_file_mb": max_file_mb,
@@ -2831,6 +2880,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 language=job_params.get("language"),
                 include=job_params.get("include"),
                 only_hrefs=set(job_params["hrefs"]) if job_params.get("hrefs") else None,
+                modes=job_params.get("modes") or None,
                 doc_role=job_params.get("doc_role", "standalone"),
                 resource_type=job_params.get("resource_type"),
                 auth_header=auth_header,
@@ -2842,6 +2892,106 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return report
 
         job = self._jobs().submit(kind="import-remote", params=params, runner=runner)
+        self._send_json(success_payload({"job": job.to_dict()}, status="accepted"), status=202)
+
+    def _handle_webdav_probe(self, body: dict) -> None:
+        """POST /webdav/probe — lit un dossier WebDAV sans rien écrire (job async).
+
+        La sonde d'import (SD-01) : pour chaque fichier sondable, téléchargement dans
+        un temporaire, parse par ``preview_text_units`` — la même fonction que
+        ``/import/preview`` — puis suppression. L'écran rejoue dessus sa déduction de
+        mode, exactement comme pour un fichier local. Retourne ``{job}`` (202) ;
+        l'interface interroge ``/jobs/<id>`` pour la progression et le rapport.
+
+        **Aucun accès base** → dispatché hors verrou, comme ``/webdav/list`` : sonder
+        un dossier distant ne doit jamais bloquer une écriture. `JobManager` est
+        purement en mémoire, le job n'écrit donc rien lui non plus.
+
+        **Isolation des identifiants** : ``/jobs/<id>`` expose ``params`` tel quel,
+        donc ``auth`` n'y figure **jamais** — l'en-tête est construit ici et capturé
+        dans la fermeture du runner (mémoire seule), même règle que ``/import-remote``.
+
+        Ni ``mode`` ni ``language`` ne sont requis : la sonde sert précisément à
+        découvrir le premier, et n'écrivant aucun document elle n'a que faire du second.
+        """
+        from .remote import probe, webdav
+
+        url = body.get("url")
+        try:
+            webdav.validate_remote_url(url)  # http/https uniquement — refus avant enqueue
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
+            return
+
+        try:
+            auth_header = self._build_webdav_auth_header(body.get("auth"))
+        except ValueError as exc:
+            self._send_error(str(exc), code=ERR_VALIDATION, http_status=400)
+            return
+
+        # Un `null` explicite vaut clé absente → le plafond par défaut, pour qu'un client
+        # ne puisse jamais désactiver silencieusement la garde de taille par fichier.
+        max_file_mb = body.get("max_file_mb")
+        if max_file_mb is None:
+            max_file_mb = 200.0
+        try:
+            max_file_mb = float(max_file_mb)
+        except (TypeError, ValueError):
+            self._send_error("max_file_mb must be a number", code=ERR_VALIDATION, http_status=400)
+            return
+        if max_file_mb <= 0:
+            self._send_error("max_file_mb must be > 0", code=ERR_VALIDATION, http_status=400)
+            return
+
+        hrefs = body.get("hrefs")
+        if hrefs is not None and (
+            not isinstance(hrefs, list)
+            or not hrefs
+            or not all(isinstance(h, str) and h.strip() for h in hrefs)
+        ):
+            self._send_error(
+                "hrefs, when provided, must be a non-empty array of strings",
+                code=ERR_VALIDATION,
+                http_status=400,
+            )
+            return
+
+        limit = _int_param(body.get("limit"), probe.DEFAULT_LIMIT)
+        if limit < 1 or limit > 500:
+            self._send_error("limit must be between 1 and 500", code=ERR_VALIDATION, http_status=400)
+            return
+
+        # Exposés verbatim par /jobs/<id> → jamais d'auth ici.
+        params = {
+            "url": url,
+            "include": body.get("include"),
+            "hrefs": hrefs,
+            "max_file_mb": max_file_mb,
+            "limit": limit,
+        }
+
+        def runner(job_id, kind, job_params, progress_cb):
+            # auth_header vient de la fermeture — jamais relu depuis params.
+            def _progress(info: dict) -> None:
+                total = info.get("total") or 1
+                idx = info.get("index", 0)
+                pct = 5 + int(90 * idx / total)
+                progress_cb(pct, f"{info.get('name')}: {info.get('status')} ({idx}/{total})")
+
+            progress_cb(2, "Listing remote folder")
+            report = probe.probe_remote_folder(
+                url=job_params["url"],
+                auth_header=auth_header,
+                only_hrefs=set(job_params["hrefs"]) if job_params.get("hrefs") else None,
+                include=job_params.get("include"),
+                max_file_mb=job_params.get("max_file_mb"),
+                limit=job_params.get("limit", probe.DEFAULT_LIMIT),
+                progress=_progress,
+            )
+            progress_cb(100, "Probe completed")
+            return report
+
+        job = self._jobs().submit(kind="webdav-probe", params=params, runner=runner)
         self._send_json(success_payload({"job": job.to_dict()}, status="accepted"), status=202)
 
     # ── spaCy model management (Phase 2; logic in services/models_service) ─────

@@ -115,5 +115,6 @@
   "POST /units/update_text",
   "POST /validate-meta",
   "POST /webdav/list",
+  "POST /webdav/probe",
   "PUT /conventions/{name}"
 ]

@@ -68,6 +68,7 @@ def ingest_remote_folder(
     language: Optional[str] = None,
     include: Optional[str] = None,
     only_hrefs: Optional[set[str]] = None,
+    modes: Optional[dict[str, str]] = None,
     doc_role: str = "standalone",
     resource_type: Optional[str] = None,
     auth_header: dict,
@@ -86,6 +87,13 @@ def ingest_remote_folder(
     given file hrefs, **intersected with the PROPFIND listing** — an href the
     server did not list is ignored (never fetched). The glob/extension filter is
     bypassed for the selection (the user picked these files deliberately).
+
+    *modes* (optional, SD-01) maps a file href to the mode to use **for that file**,
+    overriding *mode* — ce que la sonde ``/webdav/probe`` a déduit de chaque document.
+    Un fichier qui y figure contourne le filtre d'extension au même titre qu'une
+    sélection explicite : son mode a été choisi pour lui, pas dérivé du lot. Les
+    fichiers absents de la carte retombent sur *mode*, si bien qu'un appelant qui ne
+    connaît pas SD-01 se comporte exactement comme avant.
 
     *progress* (optional) is invoked once per file with ``{index, total, name,
     status}`` so a caller (the sidecar job runner) can surface live per-file
@@ -116,13 +124,17 @@ def ingest_remote_folder(
     tmpdir = Path(tempfile.mkdtemp(prefix="agrafes_webdav_"))
     try:
         for index, entry in enumerate(files, start=1):
+            # Mode **effectif** : celui que la sonde a déduit pour ce fichier, à défaut
+            # celui du lot. Un mode choisi pour un fichier vaut choix explicite — le
+            # filtre d'extension du lot n'a plus à en décider.
+            mode_fichier = (modes or {}).get(entry.href, mode)
             res = _process_one(
                 conn, db_path, entry,
-                mode=mode, language=language, include=include,
+                mode=mode_fichier, language=language, include=include,
                 doc_role=doc_role, resource_type=resource_type,
                 auth_header=auth_header, max_bytes=max_bytes, tmpdir=tmpdir,
                 critical_section=critical_section,
-                explicit=explicit,
+                explicit=explicit or (modes is not None and entry.href in modes),
             )
             results.append(res)
             # SID-15: free this file's downloaded temp immediately so the working-set
@@ -158,7 +170,10 @@ def _process_one(
     critical_section: Optional[AbstractContextManager] = None,
     explicit: bool = False,
 ) -> dict:
-    base = {"source_url": entry.href, "name": entry.name, "doc_id": None}
+    # `mode` est celui de CE fichier (cf. `modes` côté appelant) : le rapport le porte
+    # pour que l'interface puisse dire dans quel mode chaque document est entré, plutôt
+    # que de le déduire d'un réglage de lot qui n'existe plus.
+    base = {"source_url": entry.href, "name": entry.name, "doc_id": None, "mode": mode}
 
     # 1. Extension / glob filter — skipped for an explicit P4C selection (the user
     #    chose this file; a mode-incompatible file errors per-file at import below).

@@ -424,3 +424,72 @@ def test_temp_freed_per_file_so_disk_does_not_grow(db):
 
     assert report["imported"] == 3
     assert counts == [1, 1, 1]
+
+
+# ── Modes par fichier (SD-01) ───────────────────────────────────────────────
+#
+# Ce que la sonde /webdav/probe a deduit de chaque document doit se rendre jusqu'a
+# l'import, sans quoi elle ne servirait qu'a afficher un verdict qu'on n'applique pas.
+
+
+def test_modes_par_fichier_priment_sur_le_mode_du_lot(db):
+    """Chaque fichier entre dans SON mode ; les absents retombent sur celui du lot."""
+    conn, db_path = db
+    # Numerote : le mode du lot (docx_numbered_lines) le lit correctement.
+    a = _make_docx_bytes(["[1] Bonjour.", "[2] Monde."])
+    # SANS marqueur : le mode du lot en ferait un document 100 % `structure`, donc hors
+    # index. C'est exactement le defaut que SD-01 corrige.
+    b = _make_docx_bytes(["Un paragraphe.", "Un autre."])
+    entries = [_entry("a.docx", len(a)), _entry("b.docx", len(b))]
+    payloads = {_BASE + "a.docx": a, _BASE + "b.docx": b}
+
+    report = _run(conn, db_path, entries, payloads,
+                  modes={_BASE + "b.docx": "docx_paragraphs"})
+
+    par_nom = {f["name"]: f for f in report["files"]}
+    assert par_nom["a.docx"]["mode"] == "docx_numbered_lines"   # repli sur le lot
+    assert par_nom["b.docx"]["mode"] == "docx_paragraphs"       # choisi pour lui
+    assert report["imported"] == 2
+
+    # Et le mode choisi a bien produit des unites indexables la ou celui du lot n'en
+    # aurait produit aucune : c'est la seule mesure qui prouve que ca a servi.
+    assert par_nom["b.docx"]["units_line"] == 2
+
+
+def test_un_fichier_nomme_dans_modes_contourne_le_filtre_du_lot(db):
+    """Son mode a ete choisi pour lui : le filtre d'extension du lot n'a plus a decider.
+
+    Sans cette regle, un lot dont le mode par defaut est TXT jetterait tout DOCX en
+    `skipped-filtered`, y compris ceux que la sonde a lus et pour lesquels l'utilisateur
+    a explicitement retenu un mode.
+    """
+    conn, db_path = db
+    a = _make_docx_bytes(["Un paragraphe."])
+    entries = [_entry("a.docx", len(a))]
+    payloads = {_BASE + "a.docx": a}
+
+    with mock.patch.object(ingest.webdav, "propfind", return_value=entries), \
+         mock.patch.object(ingest.webdav, "download", _download_from(payloads)):
+        report = ingest.ingest_remote_folder(
+            conn, db_path, url=_BASE,
+            mode="txt_numbered_lines",     # le lot ne prendrait que des .txt
+            language="fr", auth_header={},
+            modes={_BASE + "a.docx": "docx_paragraphs"},
+        )
+
+    assert report["imported"] == 1, report
+    assert report["skipped_filtered"] == 0
+
+
+def test_sans_modes_le_comportement_est_inchange(db):
+    """Un appelant qui ignore SD-01 doit se comporter exactement comme avant."""
+    conn, db_path = db
+    a = _make_docx_bytes(["[1] Bonjour."])
+    entries = [_entry("a.docx", len(a)), _entry("note.pdf", 10)]
+    payloads = {_BASE + "a.docx": a}
+
+    report = _run(conn, db_path, entries, payloads, modes=None)
+
+    assert report["imported"] == 1
+    assert report["skipped_filtered"] == 1
+    assert report["files"][0]["mode"] == "docx_numbered_lines"

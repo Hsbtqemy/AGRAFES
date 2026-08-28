@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.80"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.82"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -245,6 +245,35 @@ API_VERSION = CONTRACT_VERSION
 #         duplicate (pivot,target) link is refused. Logic in
 #         services/align_links_service.set_pivot. Additive enum+field → no new route →
 #         snapshot unchanged; openapi moves (version); .md action list updated.
+# 1.6.82: modes PAR FICHIER a l'import distant (SD-01). POST /import-remote accepte
+#         `modes` (objet href -> mode), qui prime sur `mode` pour les fichiers qu'il
+#         nomme : c'est ainsi que ce que la sonde /webdav/probe a deduit de chaque
+#         document se rend jusqu'a l'import. `mode` reste requis et sert de repli, donc
+#         un appelant qui ignore SD-01 est inchange. Un fichier nomme dans `modes`
+#         contourne le filtre d'extension du lot, au meme titre qu'une selection
+#         explicite par `hrefs` — son mode a ete choisi pour lui. La garde de langue
+#         porte desormais sur TOUS les modes en jeu : un lot en TEI contenant un seul
+#         DOCX exige une langue, sans quoi ce fichier echouerait seul et cryptiquement.
+#         Chaque ligne du rapport de lot gagne `mode`, le mode reellement utilise pour
+#         ce document — le reglage de lot ne le dit plus. Champ optionnel + champ additif
+#         sur route existante -> pas de nouvelle route -> snapshot inchange ; openapi bouge.
+# 1.6.81: sonde d'import distant (SD-01). POST /webdav/probe lit un dossier WebDAV
+#         SANS RIEN ECRIRE et rend, par fichier, la forme de /import/preview (units,
+#         units_total, units_line, units_structure, truncated, tables) : de quoi que
+#         l'ecran deduise le mode de CHAQUE fichier distant, comme il le fait deja en
+#         local. ShareDocs imposait jusqu'ici un mode unique a tout un lot, presetectionne
+#         sur « lignes numerotees », defaut mesure faux sur 149 des 273 fichiers reels.
+#         Ni `mode` ni `language` requis — la sonde sert a decouvrir le premier et n'ecrit
+#         aucun document. Job async ({job}, 202) comme /import-remote, mais dispatche HORS
+#         VERROU comme /webdav/list : aucun acces base (JobManager est purement en
+#         memoire), donc sonder ne bloque jamais une ecriture. Le double telechargement
+#         est paye d'avance — un dossier du corpus pese 3 Mo au pire (mesure 28/08/2026
+#         sur 514 fichiers) — ce qui garde la regle de deduction en UN exemplaire, cote
+#         front. TEI/CoNLL-U ne sont pas telecharges : ces formats se decrivent eux-memes.
+#         Logique dans remote/probe.py, qui appelle le MEME preview_text_units que
+#         /import/preview (extrait de sidecar.py vers services/import_service). Route
+#         NOUVELLE -> snapshot des chemins ET openapi bougent, et SIDECAR_API_CONTRACT.md
+#         doit la nommer (test_contract_docs_sync).
 # 1.6.80: comptes par type a l'apercu (IMPO-01). POST /import/preview renvoie
 #         `units_line` / `units_structure`, comptes sur TOUTES les unites et non sur les
 #         `limit` rapatriees. C'est la seule mesure qui separe deux modes rendant le meme
@@ -2771,6 +2800,30 @@ def openapi_spec() -> dict[str, Any]:
                     },
                 }
             },
+            "/webdav/probe": {
+                "post": {
+                    "summary": "Probe a WebDAV folder without writing anything (async job)",
+                    "description": (
+                        "Reads each probeable file of the collection — download to a temp "
+                        "file, parse with the SAME preview code as /import/preview, delete "
+                        "the temp — and returns per file what that preview returns, so the "
+                        "UI can deduce the import mode of every REMOTE file exactly as it "
+                        "does for local ones. Writes nothing: no document, no unit, no run, "
+                        "no DB access at all (dispatched lock-free like /webdav/list). "
+                        "Neither `mode` nor `language` is required — the probe exists to "
+                        "discover the former and never imports. TEI/CoNLL-U are not "
+                        "downloaded (self-describing formats, nothing to deduce): they come "
+                        "back as `skipped-no-probe`. Returns {job}; poll /jobs/<id> for "
+                        "per-file progress and the report. Credentials (auth) are NEVER "
+                        "placed in the job params and are not persisted anywhere."
+                    ),
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebdavProbeRequest"}}}},
+                    "responses": {
+                        "202": {"description": "Probe job accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobAcceptedResponse"}}}},
+                        "400": {"description": "Bad request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+                    },
+                }
+            },
             "/import-remote": {
                 "post": {
                     "summary": "Batch-ingest a WebDAV folder as an async job (token required)",
@@ -4266,6 +4319,32 @@ def openapi_spec() -> dict[str, Any]:
                         },
                     ]
                 },
+                "WebdavProbeRequest": {
+                    "type": "object",
+                    "required": ["url"],
+                    "properties": {
+                        "url": {"type": "string", "description": "WebDAV folder (collection) URL"},
+                        "hrefs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "nullable": True,
+                            "description": "Explicit file hrefs to probe. Intersected with the folder listing (an unlisted href is ignored, never fetched), bypasses the include glob. Omit to probe the whole folder.",
+                        },
+                        "include": {
+                            "type": "string",
+                            "description": "Optional glob (e.g. '*.docx') restricting which files are probed.",
+                        },
+                        "auth": {"$ref": "#/components/schemas/WebdavAuth"},
+                        "max_file_mb": {
+                            "type": "number",
+                            "description": "Per-file size cap in MB (default 200). Oversize files are reported, never downloaded.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Units returned per file (default 50, max 500). The counts (units_total / units_line / units_structure) always cover the WHOLE file.",
+                        },
+                    },
+                },
                 "ImportRemoteRequest": {
                     "type": "object",
                     "required": ["url", "mode"],
@@ -4293,6 +4372,12 @@ def openapi_spec() -> dict[str, Any]:
                             "items": {"type": "string"},
                             "nullable": True,
                             "description": "Explicit file hrefs to import (P4C). Intersected with the folder listing (an unlisted href is ignored), bypasses the include glob. Omit to import the whole folder.",
+                        },
+                        "modes": {
+                            "type": "object",
+                            "nullable": True,
+                            "additionalProperties": {"type": "string"},
+                            "description": "Per-file import mode (SD-01), keyed by href — typically what POST /webdav/probe deduced for each document. Overrides `mode` for the files it names, which then also bypass the batch extension filter; files absent from the map fall back to `mode`. Each value must be a supported import mode.",
                         },
                         "auth": {"$ref": "#/components/schemas/WebdavAuth"},
                         "doc_role": {"type": "string"},

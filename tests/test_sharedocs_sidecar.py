@@ -384,3 +384,218 @@ def test_import_remote_rejects_empty_hrefs(tmp_path: Path) -> None:
         assert status == 400, payload
     finally:
         server.shutdown()
+
+
+# --- /webdav/probe (SD-01) -----------------------------------------------------
+#
+# La sonde d'import : lire un dossier distant sans rien ecrire, pour que l'ecran
+# deduise le mode de CHAQUE fichier au lieu d'en imposer un a tout un lot.
+
+
+def test_webdav_probe_enqueues_job_and_writes_nothing(tmp_path: Path) -> None:
+    """Le rapport porte la forme de /import/preview — et la base reste vide."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    a = _make_docx_bytes(["Bonjour.", "Le monde."])
+    entries = [_entry("a.docx", len(a)), _entry("roman.xml", 10)]
+    payloads = {_BASE + "a.docx": a}
+
+    try:
+        with mock.patch.object(webdav, "propfind", return_value=entries), \
+             mock.patch.object(webdav, "download", _download_from(payloads)):
+            status, payload = _post(base, "/webdav/probe", {"url": _BASE})
+            assert status == 202, payload
+            job = _poll_job(base, payload["job"]["job_id"])
+
+        assert job["status"] == "done", job
+        report = job["result"]
+        assert report["probed"] == 1
+        assert report["skipped_no_probe"] == 1  # le .xml, jamais telecharge
+
+        fichier = next(f for f in report["files"] if f["name"] == "a.docx")
+        assert fichier["mode"] == "docx_paragraphs"
+        assert fichier["units_line"] == 2
+        assert fichier["units_structure"] == 0
+        assert fichier["truncated"] is False
+
+        # Rien n'a ete ecrit : ni document, ni unite, ni run.
+        for table in ("documents", "units", "runs"):
+            n = server._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            assert n == 0, f"{table} devrait etre vide"
+    finally:
+        server.shutdown()
+
+
+def test_webdav_probe_requires_no_token(tmp_path: Path) -> None:
+    """Elle n'ecrit rien : exiger le jeton d'ecriture serait mentir sur sa nature."""
+    from multicorpus_engine.sidecar import _post_requires_write_token
+
+    assert _post_requires_write_token("/webdav/probe") is False
+    assert _post_requires_write_token("/import-remote") is True
+
+
+def test_webdav_probe_needs_neither_mode_nor_language(tmp_path: Path) -> None:
+    """Elle sert a decouvrir le mode ; le lui demander serait circulaire."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        with mock.patch.object(webdav, "propfind", return_value=[]):
+            status, payload = _post(base, "/webdav/probe", {"url": _BASE})
+        assert status == 202, payload
+    finally:
+        server.shutdown()
+
+
+def test_webdav_probe_never_leaks_credentials(tmp_path: Path) -> None:
+    """`auth` ne doit jamais atteindre les params exposes par /jobs/<id>."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        with mock.patch.object(webdav, "propfind", return_value=[]):
+            status, payload = _post(base, "/webdav/probe", {
+                "url": _BASE,
+                "auth": {"mode": "basic", "user": _SECRET_USER, "password": _SECRET_PASSWORD},
+            })
+            assert status == 202, payload
+            job_id = payload["job"]["job_id"]
+            _poll_job(base, job_id)
+        _status, job_payload = _get(base, f"/jobs/{job_id}")
+        brut = json.dumps(job_payload)
+        assert _SECRET_PASSWORD not in brut
+        assert _SECRET_USER not in brut
+    finally:
+        server.shutdown()
+
+
+def test_webdav_probe_rejects_non_http_scheme(tmp_path: Path) -> None:
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        status, payload = _post(base, "/webdav/probe", {"url": "file:///etc/passwd"})
+        assert status == 400, payload
+    finally:
+        server.shutdown()
+
+
+def test_webdav_probe_rejects_empty_hrefs_and_bad_limit(tmp_path: Path) -> None:
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        status, payload = _post(base, "/webdav/probe", {"url": _BASE, "hrefs": []})
+        assert status == 400, payload
+        status, payload = _post(base, "/webdav/probe", {"url": _BASE, "limit": 0})
+        assert status == 400, payload
+        status, payload = _post(base, "/webdav/probe", {"url": _BASE, "limit": 5000})
+        assert status == 400, payload
+        status, payload = _post(base, "/webdav/probe", {"url": _BASE, "max_file_mb": 0})
+        assert status == 400, payload
+    finally:
+        server.shutdown()
+
+
+# --- /import-remote : modes par fichier (SD-01) --------------------------------
+
+
+def test_import_remote_accepte_des_modes_par_fichier(tmp_path: Path) -> None:
+    """Deux fichiers, deux modes — ce que la sonde a deduit se rend jusqu'a l'import."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    a = _make_docx_bytes(["[1] Bonjour.", "[2] Monde."])
+    b = _make_docx_bytes(["Un paragraphe.", "Un autre."])
+    entries = [_entry("a.docx", len(a)), _entry("b.docx", len(b))]
+    payloads = {_BASE + "a.docx": a, _BASE + "b.docx": b}
+
+    try:
+        with mock.patch.object(webdav, "propfind", return_value=entries), \
+             mock.patch.object(webdav, "download", _download_from(payloads)):
+            status, payload = _post(base, "/import-remote", {
+                "url": _BASE,
+                "mode": "docx_numbered_lines",
+                "language": "fr",
+                "modes": {_BASE + "b.docx": "docx_paragraphs"},
+            })
+            assert status == 202, payload
+            job = _poll_job(base, payload["job"]["job_id"])
+
+        assert job["status"] == "done", job
+        par_nom = {f["name"]: f for f in job["result"]["files"]}
+        assert par_nom["a.docx"]["mode"] == "docx_numbered_lines"
+        assert par_nom["b.docx"]["mode"] == "docx_paragraphs"
+        # Le document sans marqueur est indexable parce qu'il est entre en paragraphes ;
+        # le mode du lot en aurait fait 100 % de `structure`.
+        assert par_nom["b.docx"]["units_line"] == 2
+    finally:
+        server.shutdown()
+
+
+def test_import_remote_refuse_un_mode_par_fichier_inconnu(tmp_path: Path) -> None:
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        status, payload = _post(base, "/import-remote", {
+            "url": _BASE, "mode": "docx_numbered_lines", "language": "fr",
+            "modes": {_BASE + "a.docx": "mode_inexistant"},
+        })
+        assert status == 400, payload
+        assert "supported_modes" in json.dumps(payload)
+    finally:
+        server.shutdown()
+
+
+def test_import_remote_refuse_un_modes_vide_ou_malforme(tmp_path: Path) -> None:
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    corps = {"url": _BASE, "mode": "docx_numbered_lines", "language": "fr"}
+    try:
+        for mauvais in ({}, [], "docx_paragraphs", {"": "docx_paragraphs"}, {_BASE + "a.docx": 3}):
+            status, payload = _post(base, "/import-remote", {**corps, "modes": mauvais})
+            assert status == 400, (mauvais, payload)
+    finally:
+        server.shutdown()
+
+
+def test_import_remote_exige_une_langue_des_qu_un_mode_en_jeu_n_est_pas_tei(tmp_path: Path) -> None:
+    """Un lot TEI portant un seul DOCX a besoin d'une langue.
+
+    Sans cette extension de la garde, ce fichier-la echouerait seul, en plein lot, sur
+    la contrainte NOT NULL de `documents.language` — un message que personne ne relie
+    a l'absence de langue.
+    """
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        # TEI seul : la langue reste facultative, comportement inchange.
+        with mock.patch.object(webdav, "propfind", return_value=[]):
+            status, payload = _post(base, "/import-remote", {"url": _BASE, "mode": "tei"})
+            assert status == 202, payload
+        # TEI + un DOCX par fichier : la langue redevient obligatoire.
+        status, payload = _post(base, "/import-remote", {
+            "url": _BASE, "mode": "tei",
+            "modes": {_BASE + "a.docx": "docx_paragraphs"},
+        })
+        assert status == 400, payload
+    finally:
+        server.shutdown()
+
+
+def test_import_remote_modes_ne_fuient_pas_les_identifiants(tmp_path: Path) -> None:
+    """`modes` est expose dans les params du job ; `auth` ne doit toujours pas l'etre."""
+    server = _server(tmp_path)
+    base = f"http://127.0.0.1:{server.actual_port}"
+    try:
+        with mock.patch.object(webdav, "propfind", return_value=[]):
+            status, payload = _post(base, "/import-remote", {
+                "url": _BASE, "mode": "docx_numbered_lines", "language": "fr",
+                "modes": {_BASE + "a.docx": "docx_paragraphs"},
+                "auth": {"mode": "basic", "user": _SECRET_USER, "password": _SECRET_PASSWORD},
+            })
+            assert status == 202, payload
+            job_id = payload["job"]["job_id"]
+            _poll_job(base, job_id)
+        _status, job_payload = _get(base, f"/jobs/{job_id}")
+        brut = json.dumps(job_payload)
+        assert "docx_paragraphs" in brut          # les modes, eux, sont exposes
+        assert _SECRET_PASSWORD not in brut
+        assert _SECRET_USER not in brut
+    finally:
+        server.shutdown()

@@ -2360,6 +2360,14 @@
             ],
             "type": "string"
           },
+          "modes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Per-file import mode (SD-01), keyed by href — typically what POST /webdav/probe deduced for each document. Overrides `mode` for the files it names, which then also bypass the batch extension filter; files absent from the map fall back to `mode`. Each value must be a supported import mode.",
+            "nullable": true,
+            "type": "object"
+          },
           "resource_type": {
             "type": "string"
           },
@@ -4485,6 +4493,41 @@
             "type": "object"
           }
         ]
+      },
+      "WebdavProbeRequest": {
+        "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/WebdavAuth"
+          },
+          "hrefs": {
+            "description": "Explicit file hrefs to probe. Intersected with the folder listing (an unlisted href is ignored, never fetched), bypasses the include glob. Omit to probe the whole folder.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "include": {
+            "description": "Optional glob (e.g. '*.docx') restricting which files are probed.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Units returned per file (default 50, max 500). The counts (units_total / units_line / units_structure) always cover the WHOLE file.",
+            "type": "integer"
+          },
+          "max_file_mb": {
+            "description": "Per-file size cap in MB (default 200). Oversize files are reported, never downloaded.",
+            "type": "number"
+          },
+          "url": {
+            "description": "WebDAV folder (collection) URL",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4499,8 +4542,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.80",
-    "x-contract-version": "1.6.80"
+    "version": "1.6.82",
+    "x-contract-version": "1.6.82"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -10172,6 +10215,44 @@
           }
         },
         "summary": "Browse a WebDAV collection (PROPFIND, Depth:1) — read-only, no token"
+      }
+    },
+    "/webdav/probe": {
+      "post": {
+        "description": "Reads each probeable file of the collection — download to a temp file, parse with the SAME preview code as /import/preview, delete the temp — and returns per file what that preview returns, so the UI can deduce the import mode of every REMOTE file exactly as it does for local ones. Writes nothing: no document, no unit, no run, no DB access at all (dispatched lock-free like /webdav/list). Neither `mode` nor `language` is required — the probe exists to discover the former and never imports. TEI/CoNLL-U are not downloaded (self-describing formats, nothing to deduce): they come back as `skipped-no-probe`. Returns {job}; poll /jobs/<id> for per-file progress and the report. Credentials (auth) are NEVER placed in the job params and are not persisted anywhere.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebdavProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAcceptedResponse"
+                }
+              }
+            },
+            "description": "Probe job accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          }
+        },
+        "summary": "Probe a WebDAV folder without writing anything (async job)"
       }
     }
   },
