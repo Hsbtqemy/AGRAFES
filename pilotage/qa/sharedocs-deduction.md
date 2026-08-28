@@ -17,6 +17,14 @@ injouable et il n'y a pas de contournement : la sonde télécharge vraiment les 
 Les blocs « Le verdict dit la même chose que l'import local » et « Après l'import » sont
 les plus utiles ; commencer par eux si le temps manque.
 
+**Le sidecar embarqué doit être postérieur au 28 août 2026** (contrat 1.6.83). Vite
+recompile le TypeScript à chaque lancement, mais le sidecar est un binaire prébuilt de
+224 Mo : `POST /webdav/probe` n'existe pas dans un binaire plus ancien, l'appel répond 404,
+et **la colonne reste vide sans autre signe** qu'une ligne `⚠ Sonde impossible` dans le
+journal. C'est exactement ce qui est arrivé le jour où la passe a été écrite. En cas de
+doute : `python scripts/build_sidecar.py --preset shell --format onefile`, application
+fermée, puis `python scripts/smoke_sidecar.py tauri-shell/src-tauri/binaries/sidecar-manifest.json --timeout 150`.
+
 **La mesure de référence est comparative, et c'est délibéré.** Aucun item n'annonce un
 compte absolu : je n'ai pas accès au serveur, donc je ne peux pas mesurer ce qu'il porte.
 Mais la thèse du lot est précisément que **les deux écrans disent la même chose du même
