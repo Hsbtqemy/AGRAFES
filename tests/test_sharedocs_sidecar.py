@@ -426,7 +426,7 @@ def test_webdav_probe_enqueues_job_and_writes_nothing(tmp_path: Path) -> None:
         server.shutdown()
 
 
-def test_webdav_probe_requires_no_token(tmp_path: Path) -> None:
+def test_webdav_probe_requires_no_token() -> None:
     """Elle n'ecrit rien : exiger le jeton d'ecriture serait mentir sur sa nature."""
     from multicorpus_engine.sidecar import _post_requires_write_token
 

@@ -4542,8 +4542,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.82",
-    "x-contract-version": "1.6.82"
+    "version": "1.6.83",
+    "x-contract-version": "1.6.83"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -10219,7 +10219,7 @@
     },
     "/webdav/probe": {
       "post": {
-        "description": "Reads each probeable file of the collection — download to a temp file, parse with the SAME preview code as /import/preview, delete the temp — and returns per file what that preview returns, so the UI can deduce the import mode of every REMOTE file exactly as it does for local ones. Writes nothing: no document, no unit, no run, no DB access at all (dispatched lock-free like /webdav/list). Neither `mode` nor `language` is required — the probe exists to discover the former and never imports. TEI/CoNLL-U are not downloaded (self-describing formats, nothing to deduce): they come back as `skipped-no-probe`. Returns {job}; poll /jobs/<id> for per-file progress and the report. Credentials (auth) are NEVER placed in the job params and are not persisted anywhere.",
+        "description": "Reads each probeable file of the collection — download to a temp file, parse with the SAME preview code as /import/preview, delete the temp — and returns per file what that preview returns, so the UI can deduce the import mode of every REMOTE file exactly as it does for local ones. Writes nothing: no document, no unit, no run, no DB access at all (dispatched lock-free like /webdav/list). Neither `mode` nor `language` is required — the probe exists to discover the former and never imports. Nothing is downloaded for a file that is not probed, and the two reasons are kept apart: `skipped-no-probe` = self-describing but importable (TEI/CoNLL-U — nothing to deduce), `skipped-unsupported` = no import route at all (.pdf, .jpg…). Returns {job}; poll /jobs/<id> for per-file progress and the report. Credentials (auth) are NEVER placed in the job params and are not persisted anywhere.",
         "requestBody": {
           "content": {
             "application/json": {

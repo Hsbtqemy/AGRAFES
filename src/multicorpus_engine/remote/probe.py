@@ -47,6 +47,17 @@ PROBE_MODES = {
     ".txt": "txt_numbered_lines",
 }
 
+#: Extensions qu'un import sait router, sondables ou non. Sert à séparer **deux
+#: situations que rien ne doit confondre** : un `.tei` n'a rien à déduire mais s'importe
+#: très bien, un `.pdf` ne s'importe pas du tout. Les rendre sous un statut unique
+#: obligerait l'écran à refaire le tri — ou, plus probablement, à proposer un PDF à
+#: l'import.
+#:
+#: Miroir de ``KNOWN_IMPORT_EXTS`` (``lib/importDetect.ts``), qui fait autorité côté
+#: front, et sur-ensemble des extensions de ``ingest._MODE_EXTENSIONS`` : celui-ci ignore
+#: les alias ``.tei`` et ``.conll``, que le front accepte. Cette divergence lui préexiste.
+IMPORTABLE_EXTS = frozenset({".docx", ".odt", ".txt", ".conllu", ".conll", ".xml", ".tei"})
+
 #: Unités rapatriées par fichier. La déduction n'a besoin que des premières — elle
 #: compte les lignes portant un marqueur — tandis que ``units_line`` porte sur le
 #: fichier **entier** (cf. :func:`preview_text_units`).
@@ -67,9 +78,12 @@ def _probe_one(
 
     mode = PROBE_MODES.get(ext)
     if mode is None:
-        # Rien à déduire : le format se décrit lui-même, ou il n'a aucun mode d'import.
-        # Pas de téléchargement — c'est la moitié de l'économie du lot.
-        return {**base, "status": "skipped-no-probe", "mode": None}
+        # Aucun téléchargement dans les deux cas — c'est la moitié de l'économie du lot —
+        # mais **deux statuts distincts**, parce que la suite n'est pas la même : un
+        # format auto-descriptif s'importe (l'écran doit le proposer, simplement sans
+        # verdict à afficher), une extension inconnue ne s'importe pas du tout.
+        statut = "skipped-no-probe" if ext in IMPORTABLE_EXTS else "skipped-unsupported"
+        return {**base, "status": statut, "mode": None}
 
     if max_bytes is not None and entry.size is not None and entry.size > max_bytes:
         return {**base, "status": "skipped-oversize", "mode": mode, "size": entry.size}
@@ -165,6 +179,7 @@ def probe_remote_folder(
         "total": total,
         "probed": counts.get("probed", 0),
         "skipped_no_probe": counts.get("skipped-no-probe", 0),
+        "skipped_unsupported": counts.get("skipped-unsupported", 0),
         "skipped_oversize": counts.get("skipped-oversize", 0),
         "errors": counts.get("error", 0),
         "files": results,

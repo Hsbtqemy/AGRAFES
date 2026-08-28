@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.82"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.83"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -245,6 +245,15 @@ API_VERSION = CONTRACT_VERSION
 #         duplicate (pivot,target) link is refused. Logic in
 #         services/align_links_service.set_pivot. Additive enum+field → no new route →
 #         snapshot unchanged; openapi moves (version); .md action list updated.
+# 1.6.83: /webdav/probe distingue deux refus que 1.6.81 confondait (SD-01). Un fichier
+#         non sonde rendait `skipped-no-probe`, que le format se decrive lui-meme (TEI,
+#         CoNLL-U : rien a deduire, mais le document s'importe tres bien) ou que son
+#         extension n'ait aucune porte d'entree (.pdf, .jpg : il ne s'importe pas du
+#         tout). Sous un statut unique, l'ecran aurait du refaire le tri — ou, plus
+#         probablement, propose un PDF a l'import. `skipped-unsupported` separe le second
+#         cas, et le rapport gagne `skipped_unsupported`. Trouve en passe adverse avant
+#         qu'aucun client ne consomme 1.6.81. Statut + compteur additifs sur route
+#         existante -> snapshot inchange ; openapi bouge.
 # 1.6.82: modes PAR FICHIER a l'import distant (SD-01). POST /import-remote accepte
 #         `modes` (objet href -> mode), qui prime sur `mode` pour les fichiers qu'il
 #         nomme : c'est ainsi que ce que la sonde /webdav/probe a deduit de chaque
@@ -2811,9 +2820,11 @@ def openapi_spec() -> dict[str, Any]:
                         "does for local ones. Writes nothing: no document, no unit, no run, "
                         "no DB access at all (dispatched lock-free like /webdav/list). "
                         "Neither `mode` nor `language` is required — the probe exists to "
-                        "discover the former and never imports. TEI/CoNLL-U are not "
-                        "downloaded (self-describing formats, nothing to deduce): they come "
-                        "back as `skipped-no-probe`. Returns {job}; poll /jobs/<id> for "
+                        "discover the former and never imports. Nothing is downloaded for a "
+                        "file that is not probed, and the two reasons are kept apart: "
+                        "`skipped-no-probe` = self-describing but importable (TEI/CoNLL-U — "
+                        "nothing to deduce), `skipped-unsupported` = no import route at all "
+                        "(.pdf, .jpg…). Returns {job}; poll /jobs/<id> for "
                         "per-file progress and the report. Credentials (auth) are NEVER "
                         "placed in the job params and are not persisted anywhere."
                     ),

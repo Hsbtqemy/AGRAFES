@@ -256,9 +256,10 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /webdav/probe` — read a WebDAV folder **without writing anything** (import probe, SD-01)
   - **no token**, dispatched **lock-free** (no DB access at all — never blocks DB writes); async job → `{job}` (202), poll `/jobs/<id>`
   - body: `{ url, hrefs?, include?, auth?, max_file_mb? (default 200), limit? (default 50, max 500) }` — **neither `mode` nor `language`**: the probe exists to discover the former and never imports
-  - per file: download to a temp file, parse with the **same** code as `/import/preview`, delete the temp. Report: `{ url, total, probed, skipped_no_probe, skipped_oversize, errors, files: […] }`
+  - per file: download to a temp file, parse with the **same** code as `/import/preview`, delete the temp. Report: `{ url, total, probed, skipped_no_probe, skipped_unsupported, skipped_oversize, errors, files: […] }`
   - each probed file carries the `/import/preview` shape — `units`, `units_total`, `units_line`, `units_structure`, `truncated`, `tables` — plus `status`, `mode` (the **read** mode used), `ext`
-  - `status`: `probed` · `skipped-no-probe` (TEI/CoNLL-U — self-describing, **never downloaded**) · `skipped-oversize` · `error` (per-file, never aborts the batch)
+  - `status`: `probed` · `skipped-no-probe` (TEI/CoNLL-U — self-describing, nothing to deduce, but **importable**) · `skipped-unsupported` (no import route at all — `.pdf`, `.jpg`…) · `skipped-oversize` · `error` (per-file, never aborts the batch)
+  - the two `skipped-*` reasons above are kept apart **on purpose** (since 1.6.83): under one status the UI would have to redo the sort — or offer a PDF for import. Neither is downloaded.
   - `hrefs` is intersected with the folder PROPFIND listing — an unlisted href is ignored, never fetched
   - **credentials are loopback-only and never persisted**, and never placed in the job params
 - `POST /import-remote` (token required) — batch-ingest a WebDAV folder (ShareDocs ingestion, Phase 2)

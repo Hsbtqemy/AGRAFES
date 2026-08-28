@@ -81,6 +81,36 @@ def test_chaque_extension_est_lue_dans_son_mode_de_sonde() -> None:
     assert rapport["errors"] == 0
 
 
+def test_un_format_importable_et_un_format_inconnu_ne_se_confondent_pas() -> None:
+    """Deux refus, deux statuts — c'est ce que la passe adverse a trouve.
+
+    Ni l'un ni l'autre n'est telecharge, mais la suite n'est pas la meme : un `.tei`
+    s'importe (l'ecran doit le proposer, simplement sans verdict), un `.pdf` ne
+    s'importe pas du tout. Sous un statut unique, l'ecran aurait du refaire le tri —
+    ou, plus probablement, propose un PDF a l'import.
+    """
+    telecharges: list[str] = []
+    rapport = _run(
+        [_entry("roman.xml"), _entry("corpus.conllu"), _entry("scan.pdf"), _entry("photo.jpg")],
+        {}, telecharges=telecharges,
+    )
+
+    assert telecharges == []
+    par_nom = {f["name"]: f["status"] for f in rapport["files"]}
+    assert par_nom["roman.xml"] == "skipped-no-probe"
+    assert par_nom["corpus.conllu"] == "skipped-no-probe"
+    assert par_nom["scan.pdf"] == "skipped-unsupported"
+    assert par_nom["photo.jpg"] == "skipped-unsupported"
+    assert rapport["skipped_no_probe"] == 2
+    assert rapport["skipped_unsupported"] == 2
+
+
+def test_un_fichier_sans_extension_est_inconnu_pas_auto_descriptif() -> None:
+    rapport = _run([_entry("LISEZMOI")], {})
+    assert rapport["files"][0]["status"] == "skipped-unsupported"
+    assert rapport["files"][0]["ext"] == ""
+
+
 def test_tei_et_conllu_ne_sont_jamais_telecharges() -> None:
     """Ces formats se décrivent eux-mêmes : rien à déduire, donc rien à rapatrier.
 

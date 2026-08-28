@@ -2986,6 +2986,11 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 include=job_params.get("include"),
                 max_file_mb=job_params.get("max_file_mb"),
                 limit=job_params.get("limit", probe.DEFAULT_LIMIT),
+                # Sans lui, le parametre `logger` de la sonde restait decoratif : rien
+                # ne tracait ce qu'un lot avait lu ni pourquoi un fichier avait ete
+                # ecarte. Il n'y a pas de run ici (aucune ecriture), donc pas de journal
+                # de run ou aller chercher.
+                logger=logger,
                 progress=_progress,
             )
             progress_cb(100, "Probe completed")
