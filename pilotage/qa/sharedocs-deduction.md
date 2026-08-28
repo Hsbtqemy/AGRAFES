@@ -41,10 +41,11 @@ défaut (si non détectée) » reste, lui.
 
 ### La colonne de verdicts apparaît
 
-- [ ] Se connecter et ouvrir un dossier contenant des `.docx` ou des `.txt` : la table du dossier a bien **cinq** colonnes, la dernière intitulée **« Ce que l'import en ferait »**
-- [ ] Pendant que la sonde travaille, les lignes de fichiers portent **« analyse… »** en italique gris ; elles se remplissent ensuite, d'un coup, quand le job rend son rapport
-- [ ] Le **journal** (📋 Journal, barre du haut) porte une ligne `✓ Sonde <dossier> — N lu(s), N sans déduction, N non importable(s)`
-- [ ] Le **Job Center** montre un job nommé « Sonde — <dossier> » distinct des jobs d'import
+- [x] Se connecter et ouvrir un dossier contenant des `.docx` ou des `.txt` : la table du dossier a bien **cinq** colonnes, la dernière intitulée **« Ce que l'import en ferait »**
+- [x] Pendant que la sonde travaille, les lignes de fichiers portent **« analyse… »** en italique gris ; elles se remplissent ensuite, d'un coup, quand le job rend son rapport
+- [x] Le **journal** (📋 Journal, barre du haut) porte une ligne `✓ Sonde <dossier> — N lu(s), N sans déduction, N non importable(s)`
+- [ ] Un **bandeau bleu pâle** se déplie en haut de la zone de contenu, titré **« Jobs actifs »** — il est invisible quand rien ne tourne. Il porte une ligne **« Sonde — <dossier> »**, de type **`webdav-probe`**, avec sa barre de progression et un bouton « Annuler »
+- [ ] Ce type `webdav-probe` la distingue des jobs d'import, qui sont de type `import-remote`. Une fois finie, la sonde passe sous **« Récents (5) »**
 - [ ] Les lignes de **dossiers** (📁) n'ont **aucun** verdict : la colonne reste vide pour elles
 - [ ] Un fichier lisible affiche un verdict de la même forme qu'à l'import local : le **mode en gras**, puis son compte d'indexables, puis le **motif** (« marqueurs [n] détectés », « aucun marqueur — un paragraphe par unité »…)
 
