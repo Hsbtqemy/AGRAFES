@@ -5848,7 +5848,8 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   background: var(--color-link-bg, #eff6ff);
 }
 .prep-import-screen .imp-file-main { align-items: center; margin-bottom: 4px; }
-.prep-import-screen .imp-file-item .imp-remove-btn { flex-shrink: 0; }
+.prep-import-screen .imp-file-item .imp-remove-btn,
+.prep-import-screen .imp-file-item .imp-reset-btn { flex-shrink: 0; }
 
 /* Compteurs : une bande, plus une carte. « Pré-vérification » promettait un
    contrôle de contenu que la fonction ne fait pas — elle ne compte que des statuts. */

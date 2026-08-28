@@ -520,10 +520,27 @@ export class ImportScreen {
       // titre — vivent dans le panneau du fichier sélectionné, où elles tiennent
       // à l'aise et voisinent l'évidence qui les justifie.
       const verdict = f.status === "pending" ? buildVerdictHtml(this._verdictOf(f)) : "";
+      // Une ligne déjà jouée — importée ou en erreur — était définitivement inerte : le
+      // bouton Importer ne regarde que les `pending`, et rien ne rendait un fichier à
+      // cet état. Il fallait retirer la ligne puis repasser par le sélecteur de
+      // fichiers, `_tryAddSingle` dédupliquant par chemin quel que soit le statut.
+      //
+      // Le bouton s'affiche **sans condition** : vérifier d'abord que le document a bien
+      // disparu du corpus coûterait un appel réseau par rendu (donc un par fichier
+      // pendant l'analyse), et le mettre en cache le rendrait faux dans le seul cas qui
+      // motive le geste — une suppression faite à l'instant depuis Métadonnées. Le
+      // contrôle qui fait autorité existe déjà et il est frais au bon moment :
+      // `_importPending` reconstruit `corpusByPath` à chaque lancement et répond
+      // « Déjà dans le corpus (doc_id N) ».
+      const rejouable = f.status === "done" || f.status === "error";
+      const boutonRejouer = rejouable
+        ? `<button class="btn btn-sm imp-reset-btn" data-i="${i}" aria-label="Remettre ce fichier en attente d&rsquo;import" title="Remettre en attente : le fichier redevient importable et son analyse est refaite">↺</button>`
+        : "";
       setHtml(row, raw(`
         <div class="imp-file-main">
           <span class="imp-file-name" title="${_escHtml(f.path)}">${_escHtml(f.title)}</span>
-          <span class="chip${chipCls ? " " + chipCls : ""}">${_escHtml(importStatusLabel(f))}</span>
+          <span class="chip${chipCls ? " " + chipCls : ""}" title="${_escHtml(importStatusLabel(f))}">${_escHtml(importStatusLabel(f))}</span>
+          ${boutonRejouer}
           <button class="btn btn-sm imp-remove-btn" data-i="${i}" aria-label="Retirer ce fichier de la liste" title="Retirer ce fichier de la liste">✕</button>
         </div>
         ${verdict ? `<div class="imp-file-verdict">${verdict}</div>` : ""}
@@ -533,15 +550,36 @@ export class ImportScreen {
 
     this._listEl.querySelectorAll<HTMLElement>(".imp-file-item").forEach((el) => {
       const pick = (e: Event) => {
-        // Le ✕ vit dans la ligne : sans ça, retirer un fichier le sélectionnerait
-        // d'abord, et le panneau afficherait un fichier qui n'existe plus.
-        if ((e.target as HTMLElement).closest(".imp-remove-btn")) return;
+        // Les boutons vivent dans la ligne : sans ça, retirer un fichier le
+        // sélectionnerait d'abord, et le panneau afficherait un fichier qui n'existe plus.
+        if ((e.target as HTMLElement).closest(".imp-remove-btn, .imp-reset-btn")) return;
         const i = parseInt(el.dataset.index!, 10);
         this._selectFile(this._files[i]);
       };
       el.addEventListener("click", pick);
       el.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(e); }
+      });
+    });
+    this._listEl.querySelectorAll(".imp-reset-btn").forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const i = parseInt((e.currentTarget as HTMLElement).dataset.i!, 10);
+        const f = this._files[i];
+        if (!f) return;
+        f.status = "pending";
+        f.message = "";
+        // `plan === undefined` est **ce qui** remet le fichier dans la file d'analyse
+        // (`_analyzePending`, qui cherche exactement `pending` + `plan === undefined`) :
+        // le verdict est recalculé comme à l'ajout, sur le fichier tel qu'il est
+        // aujourd'hui sur le disque. `modeLocked` n'est PAS touché : un mode choisi à la
+        // main reste un choix, la déduction ne le réécrira pas davantage qu'avant.
+        f.plan = undefined;
+        f.searchable = undefined;
+        f.importedLine = undefined;
+        this._selectedPath = f.path;
+        this._log(`↺ « ${f.title} » remis en attente.`);
+        this._renderList();
       });
     });
     this._listEl.querySelectorAll(".imp-remove-btn").forEach(el => {

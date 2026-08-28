@@ -396,8 +396,8 @@ l'écran affiche une coche verte.
       clic. Correctif : `pointer-events:none`, un toast n'ayant aucun gestionnaire à
       déclencher. Vérifié unique — le bandeau d'astuce du shell
       (`explorerModule.ts:294`) le faisait déjà, et c'était le seul autre site
-- [ ] **Une ligne importée ne peut plus rien faire, et l'écran conseille un geste qui
-      n'existe pas.** Trouvé le 28 août : l'utilisateur importe, supprime le document
+- [x] **Une ligne importée ne pouvait plus rien faire, et l'écran conseillait un geste
+      qui n'existait pas.** Corrigé le 28 août. Trouvé le 28 août : l'utilisateur importe, supprime le document
       depuis Métadonnées, et veut réimporter. Impossible sans retirer la ligne.
       `_updateButtons` (l. 311) n'active le bouton que sur `status === "pending"`, et
       **aucun chemin ne repasse une ligne de `done` — ou d'`error` — à `pending`** :
@@ -410,7 +410,15 @@ l'écran affiche une coche verte.
       — le geste qu'elle nomme n'a jamais existé. Un bouton « ↺ Remettre en attente » sur
       les lignes `done`/`error` règle les deux : front pur, il rend la ligne à `pending` et
       relance son analyse, le garde-fou restant le contrôle de doublon côté corpus, qui se
-      reconstruit à chaque import depuis `listDocuments` (l. 1175)
+      reconstruit à chaque import depuis `listDocuments`. **C'est ce qui a été fait**, et
+      le bouton s'affiche **sans condition** : subordonner son apparition à la disparition
+      réelle du document coûterait un appel réseau par rendu — donc un par fichier pendant
+      l'analyse, `_renderList` tournant une fois par fichier — et le mettre en cache le
+      rendrait faux dans le seul cas qui motive le geste : une suppression faite à
+      l'instant depuis Métadonnées. Le prix d'un clic pour rien est une phrase juste
+      (« Déjà dans le corpus (doc_id N) »), pas une perte. `plan = undefined` remet le
+      fichier dans la file d'analyse ; `modeLocked` survit, un mode choisi à la main
+      restant un choix
 - [x] **Ce que l'import a enfin à dire, il le disait dans un tiroir fermé — et l'écran
       disait le contraire.** Corrigé le 28 août : la bulle porte le compte et **passe en
       erreur** quand il est nul, la pastille de la ligne vire à l'orange, et le libellé de
