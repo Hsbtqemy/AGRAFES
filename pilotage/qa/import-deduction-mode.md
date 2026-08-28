@@ -72,8 +72,13 @@ tableau et le `.txt` sont sous `Downloads\OneDrive_2026-06-29\00-Hugo-Corpus Mul
 (dossiers `…-Tableau` et `…-Aligné`). `Coe-House` et `Houellebecq` sont sous
 `Downloads\GRAFE-Lit-Aligne\…\Bitextes anglais-francais` et `…\Bitextes français-roumain` ;
 l'`.odt` sous `…\GRAFE-Lit-EnFr-REAligné-DOCX`, et `Asimov-Foundation_EN.txt` sous
-`…\Bitextes anglais-espagnol\GRAFE-Lit-EnEs-Aligné-TXT-utf8` — **pas** la variante `-ansi`
-du dossier voisin, qui porte le même nom.
+`…\Bitextes anglais-espagnol\GRAFE-Lit-EnEs-Aligné-TXT-utf8`.
+
+**⚠ Quatre fichiers portent le nom `Asimov-Foundation_EN.txt`.** Mesuré le 28 août : les deux
+du dossier **anglais-espagnol** rendent **1683** unités, les deux du dossier
+**anglais-français** en rendent **1304**. C'est cet axe-là qui compte — `-utf8` et `-ansi`
+donnent le même compte, l'encodage étant détecté à la lecture. Si vous lisez 1304, vous avez
+pris le dossier français.
 
 ### Le verdict sur la ligne
 
