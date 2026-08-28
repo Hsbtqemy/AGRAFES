@@ -655,6 +655,7 @@ import {
   isRemoteProbeReport,
   probeKeysToKeep,
   connectionSummary,
+  errorDetailForFile,
 } from "../shareDocs.ts";
 import type { RemoteProbeFile } from "../sidecarClient.ts";
 
@@ -849,5 +850,46 @@ describe("connectionSummary", () => {
   it("dit quand l'identifiant est vide plutôt que de laisser un blanc", () => {
     expect(connectionSummary("https://dav.example/", { mode: "basic", user: "  ", password: "x" }))
       .toBe("dav.example · identifiant vide");
+  });
+});
+
+describe("errorDetailForFile", () => {
+  const enErreur = (over = {}) => ({
+    source_url: "https://dav.example/f/t.docx",
+    name: "t.docx",
+    status: "error" as const,
+    doc_id: null,
+    error: "No units to import — the file is empty, or the import mode/parameters do not match",
+    ...over,
+  });
+
+  it("rappelle le motif du verdict quand la sonde avait diagnostique le fichier", () => {
+    // Bitexte en tableau : zero unite lisible en paragraphes, une table a 2 colonnes.
+    const probes = new Map([[
+      "https://dav.example/f/t.docx",
+      sonde({ source_url: "https://dav.example/f/t.docx", name: "t.docx", ext: "docx",
+              mode: "docx_paragraphs", units: [], units_line: 0,
+              tables: [{ columns: 2, rows: 40 }] }),
+    ]]);
+    const texte = errorDetailForFile(enErreur(), probes);
+    expect(texte).toContain("tableau de 2 colonnes");
+    expect(texte).toContain("localement");
+    expect(texte).not.toContain("No units to import");
+  });
+
+  it("garde le message du moteur pour un echec imprevu", () => {
+    // Aucune sonde connue : seul le moteur sait ce qui s'est passe.
+    const texte = errorDetailForFile(enErreur(), new Map());
+    expect(texte).toContain("No units to import");
+  });
+
+  it("garde le message du moteur quand la sonde ne voyait rien d'anormal", () => {
+    const probes = new Map([[
+      "https://dav.example/f/t.docx",
+      sonde({ source_url: "https://dav.example/f/t.docx", name: "t.docx", ext: "docx",
+              mode: "docx_paragraphs", units: [{ n: 1, external_id: null, unit_type: "line", text_raw: "Du texte." }], units_line: 12,
+              tables: [] }),
+    ]]);
+    expect(errorDetailForFile(enErreur(), probes)).toContain("No units to import");
   });
 });

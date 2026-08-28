@@ -27,6 +27,7 @@ import {
 import type { ImportPlan } from "./importDetect.ts";
 import { modeOptionsForExt } from "./importDetect.ts";
 import type { FileVerdict } from "./importVerdictTemplate.ts";
+import { verdictNeedsAttention } from "./importVerdictTemplate.ts";
 import type { RemoteProbeFile, RemoteProbeReport } from "./sidecarClient.ts";
 import { stripHiTags } from "./richTextModel.ts";
 
@@ -501,6 +502,31 @@ export function mergeReports(
     errors: a.errors + b.errors,
     files: [...a.files, ...b.files],
   };
+}
+
+/**
+ * Ce qu'une ligne du rapport doit dire d'un fichier **en erreur**.
+ *
+ * Le moteur ne connaît aucune interface : son message est en anglais et générique
+ * — « the import mode/parameters do not match its content (e.g. a wrong column index,
+ * a TEI unit element with no match, or a blank document) ». Or pour un fichier que la
+ * sonde avait diagnostiqué, l'écran dispose déjà de mieux : le motif du verdict, en
+ * français, qui nomme la cause **et** le remède (« le texte est dans un tableau de 2
+ * colonnes … importez ce fichier localement »). Sans ce rappel, un échec **prévu** se
+ * présente comme une panne inexpliquée, et l'écran contredit ce qu'il annonçait une
+ * colonne plus tôt.
+ *
+ * La substitution n'a lieu que si la sonde avait vu un problème : une erreur imprévue
+ * — réseau, fichier corrompu — garde le message du moteur, seul à la connaître.
+ */
+export function errorDetailForFile(
+  f: RemoteFileResult,
+  probes: ReadonlyMap<string, RemoteProbeFile>,
+): string {
+  const sonde = probes.get(f.source_url);
+  const plan = sonde ? planForRemoteFile(sonde) : null;
+  if (plan && verdictNeedsAttention(plan.verdict)) return plan.reason;
+  return f.error ?? "";
 }
 
 /** Folders first, then files, each alphabetical (locale-aware, case-insensitive). */

@@ -43,6 +43,7 @@ import {
   formatRemoteSize,
   groupDetectedFiles,
   deducedModesFrom,
+  errorDetailForFile,
   isImportRemoteReport,
   isRemoteProbeReport,
   connectionSummary,
@@ -1264,7 +1265,7 @@ export class ShareDocsImportScreen {
             : ` · ${f.units_line} indexable${f.units_line > 1 ? "s" : ""}`;
       const detail =
         f.status === "error"
-          ? (f.error ?? "")
+          ? errorDetailForFile(f, this._probeByHref)
           : f.doc_id != null
             ? `doc #${f.doc_id}${compte}`
             : "";
