@@ -43,14 +43,22 @@ sera indexable — les marqueurs sont là — sans connaître le compte de ce mo
 nombre pris à l'autre mode serait un chiffre faux : on n'en donne aucun. C'est voulu, ce n'est
 pas un trou.
 
-**Les deux `.txt` sont un couple, et c'est délibéré.** La sonde d'un `.txt` est
-`txt_numbered_lines`, le seul mode TXT — et ce mode **consomme** le marqueur, qui devient
-l'`external_id` et disparaît du texte. Un `.txt` correctement numéroté n'affiche donc **aucun
-marqueur** à la lecture, exactement comme un `.txt` qui n'en a jamais eu. Seul le compte les
-sépare. C'est le défaut qu'une seconde passe adverse a trouvé : `Asimov-Foundation_EN.txt`
-était déclaré « rien ne serait indexable » alors qu'il rend 1683 unités toutes indexables, et
-195 autres `.txt` du disque étaient dans le même cas. Les deux lignes doivent donc être jouées
-ensemble, sinon le trou se rouvre sans qu'on le voie.
+**Les deux `.txt` sont un couple, et c'est délibéré.** Ils sont là parce que dans les deux
+cas **le seul signal des marqueurs induirait en erreur**, en sens inverse l'un de l'autre.
+
+Sur `Asimov-Foundation_EN.txt`, les marqueurs existent mais **ont été mangés** : la sonde d'un
+`.txt` est `txt_numbered_lines`, le seul mode TXT, et ce mode consomme le `[n]` pour en faire
+l'`external_id`. Le détecteur ne voit donc **aucun** marqueur sur un fichier qui en porte 1683 —
+et c'est exactement ce qui l'a fait déclarer « rien ne serait indexable » avant le correctif du
+27 août, lui et 195 autres `.txt` du disque. Ce qui le sauve est le **compte** d'unités `line`,
+seule preuve restante que les marqueurs existaient.
+
+Sur `9_CI-TrFr-2021_Aligné_UTF8.txt`, c'est l'inverse : le marqueur est **bien visible**
+(« 1. Texte 9 »), mais aucun mode ne sait le consommer, donc tout entre en `structure` et rien
+n'est indexable. Un marqueur présent n'est pas un marqueur utile.
+
+Les deux lignes doivent donc être jouées ensemble : c'est leur contraste qui prouve que le
+verdict suit le compte et non l'apparence du texte.
 
 **⚠ Trois fichiers portent le nom `Houellebecq-Plateforme_FR.docx`, et ils diffèrent.**
 Mesuré le 28 août — `GRAFE-Lit-FrRo-Aligné-DOCX` rend **1133 / 1133**, `GRAFE-Lit-FrEn-Aligné-DOCX`
@@ -100,9 +108,9 @@ pris le dossier français.
 - [x] Saisir **1** dans le champ **Colonne** du panneau : le verdict de la ligne redevient vert, **48 indexables**, et la mention de colonne disparaît
 - [x] Effacer la colonne : le verdict redemande la colonne — il ne reste pas sur l'ancien état
 - [x] Ajouter `9_CI-TrFr-2021_Aligné_UTF8.txt` : verdict **rouge**, **« rien d’indexable »**, motif disant que c'est le **seul mode TXT**
-- [ ] Ajouter `Asimov-Foundation_EN.txt` : verdict **vert**, **1683 indexables**, motif **marqueurs [n] détectés**
-- [ ] Son aperçu est **plein** — c'est normal — mais **aucun `[n]` n'y figure** : le mode les a consommés. La colonne *ID* commence à **4** (puis 5, 6, 7) et la colonne texte démarre directement sur « Isaac Asimov, Foundation and Earth… », sans préfixe
-- [ ] C'est tout le piège du couple : ce fichier et le `.txt` en « 1. » montrent tous deux un texte sans marqueur. Seul le **compte** les sépare — 1683 d'un côté, rien de l'autre
+- [x] Ajouter `Asimov-Foundation_EN.txt` : verdict **vert**, **1683 indexables**, motif **marqueurs [n] détectés**
+- [x] Son aperçu est **plein** — c'est normal — mais **aucun `[n]` n'y figure** : le mode les a consommés. La colonne *ID* commence à **4** (puis 5, 6, 7) et la colonne texte démarre directement sur « Isaac Asimov, Foundation and Earth… », sans préfixe
+- [ ] Comparer les deux `.txt` ligne à ligne dans leur aperçu : sur Asimov la colonne *ID* est remplie (4, 5, 6…), le *Type* est `line`, et le texte n'a pas de marqueur ; sur `9_CI-TrFr` l'*ID* est **—**, le *Type* est `structure`, et le marqueur « 1. » est **bien visible** dans le texte. Deux aperçus qui ne se ressemblent pas, pour deux verdicts opposés
 - [ ] Les deux `.txt` sont côte à côte dans la liste et portent des verdicts **opposés** : c'est ce contraste qui protège du défaut trouvé le 27 août
 - [ ] Aucun de ces fichiers n'est passé en statut « erreur » : ils restent **en attente**, importables si on insiste
 
