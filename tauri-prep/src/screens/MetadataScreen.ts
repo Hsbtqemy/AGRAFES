@@ -68,6 +68,7 @@ import {
 } from "../lib/metaTemplates.ts";
 import { metadataScreenTemplate } from "../lib/metadataScreenTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
+import { documentProvenance } from "../lib/documentProvenance.ts";
 import { WORKFLOW_STATUS, type WorkflowStatus, normalizeWorkflowStatus, workflowLabel } from "../lib/workflowStatus.ts";
 
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
@@ -711,6 +712,19 @@ export class MetadataScreen {
         </div>`
       : "";
 
+    // Provenance : lecture seule, elle se pose à l'import et ne s'édite pas. Elle vit
+    // donc en pied de panneau, en note, et non comme un champ de formulaire.
+    const prov = documentProvenance(doc.source_path);
+    const provenanceHtml = prov
+      ? `<div class="prep-form-row" style="margin-top:-0.35rem">
+          <div class="hint" style="margin:0;min-width:0">
+            Provenance: ${this._esc(prov.origine)} —
+            <span title="${this._esc(prov.brut)}"
+                  style="font-family:monospace;font-size:0.72rem;word-break:break-all">${this._esc(prov.texte)}</span>
+          </div>
+        </div>`
+      : "";
+
     const propagateHtml = childDocIds.length > 0
       ? `<button id="propagate-author-btn" class="btn btn-secondary btn-sm"
             title="Appliquer auteur et titre de l'œuvre à toutes les traductions/extraits"
@@ -800,6 +814,7 @@ export class MetadataScreen {
           ${doc.validated_at ? `Dernière validation: ${this._esc(new Date(doc.validated_at).toLocaleString())}` : "Dernière validation: —"}
         </div>
       </div>
+      ${provenanceHtml}
       <div class="prep-btn-row" style="margin-bottom:1rem">
         <button id="save-doc-btn" class="btn btn-primary btn-sm">Enregistrer</button>
         <button id="mark-review-btn" class="btn btn-secondary btn-sm">Marquer à revoir</button>
