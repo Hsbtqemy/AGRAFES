@@ -1016,9 +1016,22 @@ export class ShareDocsImportScreen {
 
     const r = this._report;
     const rows = (r.files ?? []).map((f) => {
-      const kind = statusBadgeKind(f.status);
+      const kind = statusBadgeKind(f);
+      // Ce que l'import a écrit, dit sur la ligne : le compte est dans la réponse depuis
+      // toujours et n'était rendu nulle part. « Réindexez » n'est pas répété par ligne —
+      // le résumé le porte une fois pour le lot.
+      const compte =
+        f.units_line == null
+          ? ""
+          : f.units_line === 0
+            ? " · ⚠ rien d’indexable"
+            : ` · ${f.units_line} indexable${f.units_line > 1 ? "s" : ""}`;
       const detail =
-        f.status === "error" ? (f.error ?? "") : f.doc_id != null ? `doc #${f.doc_id}` : "";
+        f.status === "error"
+          ? (f.error ?? "")
+          : f.doc_id != null
+            ? `doc #${f.doc_id}${compte}`
+            : "";
       return safeHtml`<tr>
         <td><span class="prep-sd-badge prep-sd-badge--${kind}">${statusLabel(f.status)}</span></td>
         <td class="prep-sd-name">${f.name}</td>

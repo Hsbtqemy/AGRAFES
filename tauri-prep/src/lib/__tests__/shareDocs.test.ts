@@ -21,8 +21,22 @@ import {
   statusLabel,
   summarizeReport,
   urlHasPath,
+  filesWithoutIndexable,
 } from "../shareDocs.ts";
-import type { ImportRemoteReport, RemoteEntry } from "../sidecarClient.ts";
+import type { ImportRemoteReport, RemoteEntry, RemoteFileResult } from "../sidecarClient.ts";
+
+/** Une ligne de rapport de lot, reduite a ce que les helpers en lisent. */
+const fichier = (
+  name: string,
+  status: RemoteFileResult["status"],
+  units_line?: number | null,
+): RemoteFileResult => ({
+  source_url: `https://dav.example/folder/${name}`,
+  name,
+  status,
+  doc_id: status === "imported" ? 1 : null,
+  units_line,
+});
 
 const entry = (name: string, is_dir: boolean, size: number | null = null): RemoteEntry => ({
   name,
@@ -174,16 +188,45 @@ describe("isImportRemoteReport", () => {
 
 describe("status helpers", () => {
   it("maps each status to a badge kind", () => {
-    expect(statusBadgeKind("imported")).toBe("ok");
-    expect(statusBadgeKind("error")).toBe("error");
-    expect(statusBadgeKind("skipped-duplicate")).toBe("muted");
-    expect(statusBadgeKind("skipped-filtered")).toBe("warn");
-    expect(statusBadgeKind("skipped-oversize")).toBe("warn");
+    expect(statusBadgeKind({ status: "imported" })).toBe("ok");
+    expect(statusBadgeKind({ status: "error" })).toBe("error");
+    expect(statusBadgeKind({ status: "skipped-duplicate" })).toBe("muted");
+    expect(statusBadgeKind({ status: "skipped-filtered" })).toBe("warn");
+    expect(statusBadgeKind({ status: "skipped-oversize" })).toBe("warn");
+  });
+
+  it("un import sans unite indexable n'est pas un succes ordinaire", () => {
+    expect(statusBadgeKind({ status: "imported", units_line: 0 })).toBe("warn");
+    expect(statusBadgeKind({ status: "imported", units_line: 17 })).toBe("ok");
+    // Compte absent = rien d'affirme : le badge reste celui du statut.
+    expect(statusBadgeKind({ status: "imported", units_line: null })).toBe("ok");
+    expect(statusBadgeKind({ status: "imported" })).toBe("ok");
   });
   it("provides a French label for each status", () => {
     expect(statusLabel("imported")).toBe("Importé");
     expect(statusLabel("skipped-oversize")).toBe("Trop volumineux");
     expect(statusLabel("error")).toBe("Erreur");
+  });
+});
+
+describe("filesWithoutIndexable", () => {
+  const base: ImportRemoteReport = {
+    url: "https://x/", mode: "docx_numbered_lines", total: 0, imported: 0,
+    skipped_duplicate: 0, skipped_filtered: 0, skipped_oversize: 0, errors: 0, files: [],
+  };
+
+  it("ne retient que les fichiers IMPORTES dont le compte vaut zero", () => {
+    const r = { ...base, total: 4, imported: 3, files: [
+      fichier("a.docx", "imported", 0),
+      fichier("b.docx", "imported", 17),
+      fichier("c.docx", "imported"),          // compte absent : rien n'est affirme
+      fichier("d.docx", "skipped-duplicate", 0), // pas importe : hors sujet
+    ] };
+    expect(filesWithoutIndexable(r).map((f) => f.name)).toEqual(["a.docx"]);
+  });
+
+  it("rend une liste vide quand le rapport n'a pas de fichiers", () => {
+    expect(filesWithoutIndexable(base)).toEqual([]);
   });
 });
 
@@ -212,6 +255,22 @@ describe("summarizeReport", () => {
     expect(summarizeReport({ ...base, total: 2, skipped_filtered: 2 })).toBe(
       "2 fichiers : 0 importé, 2 filtrés",
     );
+  });
+
+  it("dit en queue de resume ce que l'import n'a pas rendu indexable", () => {
+    const r = { ...base, total: 3, imported: 3, files: [
+      fichier("a.docx", "imported", 0),
+      fichier("b.docx", "imported", 0),
+      fichier("c.docx", "imported", 12),
+    ] };
+    expect(summarizeReport(r)).toBe("3 fichiers : 3 importés — ⚠ 2 sans unité indexable");
+  });
+
+  it("se tait quand tout est indexable, ou quand le compte est absent", () => {
+    const plein = { ...base, total: 1, imported: 1, files: [fichier("a.docx", "imported", 5)] };
+    expect(summarizeReport(plein)).toBe("1 fichier : 1 importé");
+    const muet = { ...base, total: 1, imported: 1, files: [fichier("a.docx", "imported")] };
+    expect(summarizeReport(muet)).toBe("1 fichier : 1 importé");
   });
 });
 

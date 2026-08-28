@@ -230,7 +230,9 @@ l'écran affiche une coche verte.
       document qu'elle ne peut pas traiter (aucune unité `line` à lire), sans un mot. Même
       famille que le défaut de la fiche : une opération qui se déclare réussie en n'ayant
       rien fait. À vérifier aussi côté sidecar (`POST /segment`) avant de trancher le remède
-- [ ] **ShareDocs garde le défaut qu'on vient de retirer en local.** `#prep-sd-profile`
+- [ ] **ShareDocs garde le défaut qu'on vient de retirer en local** — **promu en chantier
+      propre le 28 août, voir `SD-01`**, dont la première tranche est livrée.
+      Rappel du constat : `#prep-sd-profile`
       (`shareDocsImportTemplate.ts:77`) propose toujours `WP_DEFAULT_NUMBERED` en `selected`, et
       `shareDocs.ts:242` en dérive le mode. Les deux écrans sont donc désormais en désaccord sur
       ce qu'est un DOCX par défaut, ce qui est pire que l'un ou l'autre choix seul. La déduction

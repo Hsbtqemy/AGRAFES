@@ -9,6 +9,7 @@
 import type {
   ImportRemoteReport,
   RemoteEntry,
+  RemoteFileResult,
   RemoteFileStatus,
   WebdavAuth,
   WebdavAuthMode,
@@ -87,6 +88,22 @@ export function formatRemoteSize(bytes: number | null | undefined): string {
   return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
 }
 
+/**
+ * Fichiers **importés** dont l'import n'a écrit aucune unité indexable.
+ *
+ * `units_line` voyage dans le rapport de lot depuis toujours (`remote/ingest.py`), mais
+ * n'était affiché nulle part : ShareDocs pouvait importer un dossier entier en « tout
+ * vert » alors qu'aucun document n'était trouvable à la recherche. C'est le même défaut
+ * que l'import local a corrigé (IMPO-01) — avec, ici, un profil de lot unique qui rend le
+ * cas *plus* probable, pas moins.
+ *
+ * Un fichier dont le compte est absent (`undefined`/`null`) n'est **pas** compté : on ne
+ * signale que ce qu'on sait.
+ */
+export function filesWithoutIndexable(r: ImportRemoteReport): RemoteFileResult[] {
+  return (r.files ?? []).filter((f) => f.status === "imported" && f.units_line === 0);
+}
+
 /** One-line summary of a batch report (e.g. "5 fichiers : 3 importés, 1 doublon, 1 erreur"). */
 export function summarizeReport(r: ImportRemoteReport): string {
   const parts: string[] = [`${r.imported} importé${r.imported > 1 ? "s" : ""}`];
@@ -94,14 +111,27 @@ export function summarizeReport(r: ImportRemoteReport): string {
   if (r.skipped_filtered) parts.push(`${r.skipped_filtered} filtré${r.skipped_filtered > 1 ? "s" : ""}`);
   if (r.skipped_oversize) parts.push(`${r.skipped_oversize} trop volumineux`);
   if (r.errors) parts.push(`${r.errors} erreur${r.errors > 1 ? "s" : ""}`);
-  return `${r.total} fichier${r.total > 1 ? "s" : ""} : ${parts.join(", ")}`;
+  const vides = filesWithoutIndexable(r).length;
+  // En queue de résumé et non dans la liste des comptes : ce n'est pas un statut de plus
+  // (ces fichiers SONT importés), c'est ce que l'import a produit.
+  const rien = vides > 0
+    ? ` — ⚠ ${vides} sans unité indexable`
+    : "";
+  return `${r.total} fichier${r.total > 1 ? "s" : ""} : ${parts.join(", ")}${rien}`;
 }
 
-/** Badge kind (CSS suffix) for a per-file status. */
-export function statusBadgeKind(status: RemoteFileStatus): "ok" | "warn" | "error" | "muted" {
-  switch (status) {
+/**
+ * Badge kind (CSS suffix) pour une ligne du rapport.
+ *
+ * Prend le FICHIER et non son seul statut : un import abouti sans une seule unité
+ * indexable n'est pas un succès ordinaire, et le badge vert le donnait pour tel.
+ */
+export function statusBadgeKind(
+  f: { status: RemoteFileStatus; units_line?: number | null },
+): "ok" | "warn" | "error" | "muted" {
+  switch (f.status) {
     case "imported":
-      return "ok";
+      return f.units_line === 0 ? "warn" : "ok";
     case "error":
       return "error";
     case "skipped-duplicate":
