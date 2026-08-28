@@ -75,30 +75,30 @@ défaut (si non détectée) » reste, lui.
 
 - [x] Choisir un fichier présent **à la fois** sur le serveur et sur le disque. Noter son verdict ShareDocs **mot pour mot**
 - [x] Ouvrir l'écran **Importer**, y déposer le même fichier depuis le disque, et comparer : **mode identique, motif identique, compte identique**. C'est la thèse du lot — un désaccord est un échec, même si les deux verdicts semblent plausibles
-- [ ] Refaire la comparaison sur un fichier de l'autre famille : si le premier était numéroté `[n]`, en prendre un sans marqueur, et inversement
+- [x] Refaire la comparaison sur un fichier de l'autre famille : si le premier était numéroté `[n]`, en prendre un sans marqueur, et inversement
 
 ### Les fichiers que la sonde ne lit pas
 
-- [ ] Un `.pdf`, `.jpg` ou tout autre format non importable affiche **« format non importable »**, en gris neutre — ni alarme ni promesse
-- [ ] Un `.xml`/`.tei` ou un `.conllu` affiche **« importé tel quel · le format porte lui-même sa structure »**, en vert : il n'y a rien à déduire, mais il **s'importe**
-- [ ] Ces deux-là ne se ressemblent pas à l'écran, et c'est le point : le premier ne s'importe pas du tout, le second oui
-- [ ] Le compte du journal les sépare aussi — « N sans déduction » d'un côté, « N non importable(s) » de l'autre
+- [x] Un `.pdf`, `.jpg` ou tout autre format non importable affiche **« format non importable »**, en gris neutre — ni alarme ni promesse
+- [x] Un `.xml`/`.tei` ou un `.conllu` affiche **« importé tel quel · le format porte lui-même sa structure »**, en vert : il n'y a rien à déduire, mais il **s'importe**
+- [x] Ces deux-là ne se ressemblent pas à l'écran, et c'est le point : le premier ne s'importe pas du tout, le second oui
+- [x] Le compte du journal les sépare aussi — « N sans déduction » d'un côté, « N non importable(s) » de l'autre
 
 ### La navigation et le panier
 
-- [ ] Naviguer vers un sous-dossier : les verdicts de l'ancien dossier ne suivent pas, et une nouvelle sonde part pour le nouveau
-- [ ] Cocher un **fichier**, naviguer ailleurs, puis regarder le détail du panier sous la liste : son **mode** y est toujours affiché, et c'est le mode déduit — pas un repli
-- [ ] Cocher un **dossier** : le journal sort une seconde ligne `✓ Sonde <ce dossier> — …` alors qu'on ne l'a pas ouvert. C'est voulu — il sera développé à l'import et ses fichiers doivent avoir été lus
-- [ ] Décocher puis recocher ce dossier après avoir navigué : une sonde repart (elle avait été oubliée exprès au décochage)
-- [ ] Le listing affiché **ne bouge pas** pendant qu'un dossier non affiché est sondé
+- [x] Naviguer vers un sous-dossier : les verdicts de l'ancien dossier ne suivent pas, et une nouvelle sonde part pour le nouveau
+- [x] Cocher un **fichier**, naviguer ailleurs, puis regarder le détail du panier sous la liste : son **mode** y est toujours affiché, et c'est le mode déduit — pas un repli
+- [x] Cocher un **dossier** : le journal sort une seconde ligne `✓ Sonde <ce dossier> — …` alors qu'on ne l'a pas ouvert. C'est voulu — il sera développé à l'import et ses fichiers doivent avoir été lus
+- [x] Décocher puis recocher ce dossier après avoir navigué : une sonde repart (elle avait été oubliée exprès au décochage)
+- [x] Le listing affiché **ne bouge pas** pendant qu'un dossier non affiché est sondé
 
 ### Après l'import
 
-- [ ] Importer une petite sélection (2 ou 3 fichiers de modes différents si possible) : le **rapport** liste chaque fichier avec `doc #N · X indexables`
-- [ ] Un fichier importé **sans aucune unité indexable** porte `⚠ rien d'indexable` et une pastille **orange**, pas verte
-- [ ] Dans ce cas le **résumé du lot** finit par « — ⚠ N sans unité indexable », et la bulle qui l'annonce est **rouge**, pas le ✓ vert habituel
-- [ ] Quand tout est indexable, ni le résumé ni la bulle ne mentionnent quoi que ce soit : le bandeau se tait
-- [ ] Le journal porte, par lot, une ligne préfixée `⚠` au lieu de `✓` quand ce lot a produit des documents vides
+- [x] Importer une petite sélection (2 ou 3 fichiers de modes différents si possible) : le **rapport** liste chaque fichier avec `doc #N · X indexables`
+- [x] Un fichier importé **sans aucune unité indexable** porte `⚠ rien d'indexable` et une pastille **orange**, pas verte
+- [x] Dans ce cas le **résumé du lot** finit par « — ⚠ N sans unité indexable », et la bulle qui l'annonce est **rouge**, pas le ✓ vert habituel
+- [x] Quand tout est indexable, ni le résumé ni la bulle ne mentionnent quoi que ce soit : le bandeau se tait
+- [x] Le journal porte, par lot, une ligne préfixée `⚠` au lieu de `✓` quand ce lot a produit des documents vides
 
 ### Le mode déduit est bien celui qui est employé
 
