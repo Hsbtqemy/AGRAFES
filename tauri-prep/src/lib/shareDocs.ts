@@ -87,6 +87,30 @@ export function buildWebdavAuth(
   return { mode: "anonymous" };
 }
 
+/**
+ * Ce que le bandeau replié dit de la connexion en cours : `hôte · qui`.
+ *
+ * L'hôte et non l'URL entière — le chemin, lui, vit dans le fil d'Ariane du dossier, et
+ * c'est précisément la duplication qu'on supprime : tant que la carte restait dépliée,
+ * son champ URL gardait l'adresse d'**entrée** pendant que le fil montrait où l'on est
+ * vraiment. Deux URL à l'écran, celle du haut périmée dès le premier sous-dossier.
+ *
+ * Jamais de secret : en mode jeton on nomme le mode, pas le jeton.
+ */
+export function connectionSummary(url: string, auth: WebdavAuth): string {
+  let hote: string;
+  try {
+    hote = new URL(url).host;
+  } catch {
+    hote = (url ?? "").trim() || "—";
+  }
+  const qui =
+    auth.mode === "basic" ? ((auth.user ?? "").trim() || "identifiant vide")
+    : auth.mode === "bearer" ? "jeton d'accès"
+    : "accès anonyme";
+  return `${hote} · ${qui}`;
+}
+
 /** Client-side mirror of the server's auth requirement, for an early UX guard. */
 export function authIsComplete(auth: WebdavAuth): boolean {
   if (auth.mode === "basic") return Boolean(auth.user && auth.password);

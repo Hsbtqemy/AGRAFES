@@ -34,10 +34,23 @@ le disque. Un désaccord entre les deux est un échec, quel que soit le chiffre.
 **Où ça se passe.** Écran **ShareDocs** (barre de gauche). Le listing d'un dossier a
 désormais **cinq colonnes**, la dernière s'intitulant « Ce que l'import en ferait ».
 
+**La mise en page a changé le 28 août** : une fois connecté, la carte « Connexion » se
+**replie** en un bandeau d'une ligne et laisse la place au dossier. Les cartes ne sont plus
+numérotées — « Connexion / Dossier / Rapport » — puisque ce n'est plus une séquence.
+
 **Ce qui a disparu, et qu'il ne faut pas chercher** : le sélecteur « Profil par défaut
 (style) » avec ses options « Lignes numérotées [n] » / « Paragraphes ». Il décidait pour
 tout un lot et se trompait sur 149 des 273 fichiers réels mesurés. Le champ « Langue par
 défaut (si non détectée) » reste, lui.
+
+### La connexion se replie
+
+- [ ] Avant connexion, la carte **« Connexion »** est dépliée et il n'y a aucun bandeau au-dessus
+- [ ] Après un **« Connecter »** réussi, la carte disparaît et un **bandeau** la remplace : « 🔗 <hôte> · <identifiant> », avec un bouton **« Changer de connexion »** à droite. Le dossier remonte en haut de l'écran
+- [ ] Le bandeau montre l'**hôte seul**, pas l'URL entière — le chemin vit dans le fil d'Ariane du dossier. Descendre de deux sous-dossiers : le bandeau **ne bouge pas**, le fil d'Ariane suit
+- [ ] En authentification par **jeton**, le bandeau dit « jeton d'accès » et **jamais le jeton** ; en anonyme, « accès anonyme »
+- [ ] Cliquer **« Changer de connexion »** redéplie le formulaire, **sans déconnecter** : le dossier reste affiché et navigable en dessous
+- [ ] Une connexion **échouée** (mauvaise URL, mauvais mot de passe) laisse la carte dépliée : on ne replie que ce qui a abouti
 
 ### La colonne de verdicts apparaît
 

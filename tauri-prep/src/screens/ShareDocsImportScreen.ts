@@ -45,6 +45,7 @@ import {
   deducedModesFrom,
   isImportRemoteReport,
   isRemoteProbeReport,
+  connectionSummary,
   keyringAccount,
   probeKeysToKeep,
   mergeReports,
@@ -107,6 +108,11 @@ const SHAREDOCS_CSS = `
   .prep-sharedocs-screen .prep-sd-import-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
   .prep-sharedocs-screen .prep-sd-import-controls .prep-sd-field { flex: 1 1 140px; margin-bottom: 0; }
   .prep-sharedocs-screen .prep-sd-summary { font-weight: 600; margin: 0 0 0.6rem; }
+  .prep-sharedocs-screen .prep-sd-conn-summary { display: flex; align-items: center; gap: 0.7rem;
+    flex-wrap: wrap; margin: 0 0 0.9rem; padding: 0.5rem 0.75rem; border-radius: 6px;
+    background: var(--color-surface-alt, #f4f7fb); border: 1px solid var(--color-border, #e3e8f0); }
+  .prep-sharedocs-screen .prep-sd-conn-what { font-size: 0.84rem; }
+  .prep-sharedocs-screen .prep-sd-conn-summary .prep-sd-btn { margin-left: auto; }
   .prep-sharedocs-screen .prep-sd-summary--warn { color: #856404; }
   .prep-sharedocs-screen .prep-sd-badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 10px;
     font-size: 0.72rem; font-weight: 700; }
@@ -195,6 +201,7 @@ export class ShareDocsImportScreen {
 
     root.querySelector("#prep-sd-auth-mode")?.addEventListener("change", () => this._onAuthModeChange());
     root.querySelector("#prep-sd-preset-btn")?.addEventListener("click", () => void this._prefillUrlFromPreset());
+    root.querySelector("#prep-sd-conn-edit")?.addEventListener("click", () => this._setConnectionCollapsed(false));
     root.querySelector("#prep-sd-connect-btn")?.addEventListener("click", () => void this._connect());
     root.querySelector("#prep-sd-up-btn")?.addEventListener("click", () => void this._goUp());
     root.querySelector("#prep-sd-import-btn")?.addEventListener("click", () => void this._runImport());
@@ -318,7 +325,12 @@ export class ShareDocsImportScreen {
     }
     this._history = [];
     const ok = await this._browse(url);
-    if (ok) await this._persistConnection(url);
+    if (ok) {
+      // Une seule fois par session : dès que le dossier répond, le formulaire n'a plus
+      // rien à dire que le bandeau ne dise mieux.
+      this._setConnectionCollapsed(true);
+      await this._persistConnection(url);
+    }
   }
 
   // ─── Persistance des identifiants (Phase 4A) ────────────────────────────────
@@ -576,6 +588,31 @@ export class ShareDocsImportScreen {
       this._probedFolders.delete(entry.href);
     }
     this._updateSelectionUi();
+  }
+
+  /**
+   * Replie ou déplie la carte de connexion.
+   *
+   * Repliée, elle laisse la place au dossier — la seule zone où l'on travaille. Le
+   * bandeau qui la remplace dit à quoi on est connecté, ce que la carte dépliée disait
+   * **mal** : son champ URL gardait l'adresse d'entrée pendant que le fil d'Ariane du
+   * dossier montrait la position réelle, soit deux URL à l'écran dont la première
+   * périmait dès le premier sous-dossier.
+   *
+   * Replier ne **déconnecte pas** : déplier est donc annulable, et le geste ne coûte
+   * jamais la session en cours.
+   */
+  private _setConnectionCollapsed(collapsed: boolean): void {
+    const root = this._root;
+    if (!root) return;
+    const carte = root.querySelector<HTMLElement>("#prep-sd-conn-section");
+    const bandeau = root.querySelector<HTMLElement>("#prep-sd-conn-summary");
+    if (carte) carte.style.display = collapsed ? "none" : "";
+    if (bandeau) bandeau.style.display = collapsed ? "" : "none";
+    if (collapsed) {
+      const label = root.querySelector<HTMLElement>("#prep-sd-conn-label");
+      if (label) label.textContent = connectionSummary(this._currentUrl, this._auth);
+    }
   }
 
   private _goUp(): void {

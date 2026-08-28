@@ -654,6 +654,7 @@ import {
   deducedModesFrom,
   isRemoteProbeReport,
   probeKeysToKeep,
+  connectionSummary,
 } from "../shareDocs.ts";
 import type { RemoteProbeFile } from "../sidecarClient.ts";
 
@@ -814,5 +815,39 @@ describe("probeKeysToKeep", () => {
       [{ href: F, is_dir: true }, { href: `${G}x.docx`, is_dir: false }],
     );
     expect([...garde].sort()).toEqual([`${F}a.docx`, `${G}x.docx`]);
+  });
+});
+
+
+describe("connectionSummary", () => {
+  it("montre l'hôte et l'identifiant, pas l'URL entière", () => {
+    // Le chemin vit dans le fil d'Ariane du dossier : le répéter ici recréerait la
+    // duplication qu'on supprime — deux URL à l'écran, celle du haut périmée.
+    expect(connectionSummary(
+      "https://dav.huma-num.fr/remote.php/dav/files/alice/corpus/",
+      { mode: "basic", user: "alice", password: "s3cr3t" },
+    )).toBe("dav.huma-num.fr · alice");
+  });
+
+  it("ne laisse jamais fuir un secret", () => {
+    const s = connectionSummary("https://dav.example/x/", { mode: "bearer", token: "TRES-SECRET" });
+    expect(s).toBe("dav.example · jeton d'accès");
+    expect(s).not.toContain("TRES-SECRET");
+  });
+
+  it("nomme l'accès anonyme", () => {
+    expect(connectionSummary("https://dav.example/x/", { mode: "anonymous" }))
+      .toBe("dav.example · accès anonyme");
+  });
+
+  it("retombe sur l'URL brute quand elle n'est pas analysable", () => {
+    expect(connectionSummary("pas-une-url", { mode: "anonymous" }))
+      .toBe("pas-une-url · accès anonyme");
+    expect(connectionSummary("", { mode: "anonymous" })).toBe("— · accès anonyme");
+  });
+
+  it("dit quand l'identifiant est vide plutôt que de laisser un blanc", () => {
+    expect(connectionSummary("https://dav.example/", { mode: "basic", user: "  ", password: "x" }))
+      .toBe("dav.example · identifiant vide");
   });
 });
