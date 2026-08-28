@@ -32,7 +32,7 @@ Chaque ligne dit ce que la ligne du fichier doit afficher.
 | `2021_Texte1…Tableau.docx` *sans colonne* | Paragraphes | tableau de 2 colonnes | **rien d’indexable** |
 | `2021_Texte1…Tableau.docx` *colonne 1* | Paragraphes | aucun marqueur | **48 indexables** |
 | `Coe-House-AL_FR.docx` | Lignes numérotées [n] | marqueurs [n] détectés | *aucun* |
-| `Houellebecq-Plateforme_FR.docx` | Lignes numérotées [n] | marqueurs [n] détectés | *aucun* |
+| `Houellebecq-Plateforme_FR.docx` (**FrRo** — voir l'avertissement) | Lignes numérotées [n] | marqueurs [n] détectés | *aucun* |
 | `Asimov-Foundation_FR_réaligné.odt` | Paragraphes | aucun marqueur | **1141 indexables** |
 | `9_CI-TrFr-2021_Aligné_UTF8.txt` | TXT lignes [n] | seul mode TXT | **rien d’indexable** |
 | `Asimov-Foundation_EN.txt` (`…EnEs-Aligné-TXT-utf8`) | TXT lignes [n] | marqueurs [n] détectés | **1683 indexables** |
@@ -52,10 +52,18 @@ sépare. C'est le défaut qu'une seconde passe adverse a trouvé : `Asimov-Found
 195 autres `.txt` du disque étaient dans le même cas. Les deux lignes doivent donc être jouées
 ensemble, sinon le trou se rouvre sans qu'on le voie.
 
-**Les deux cas qui portent la passe.** `Houellebecq-Plateforme_FR.docx` est le piège : les deux
-modes y rendent **1133 unités chacun**, et 1133 sur 1133 sont **différentes** — le mode numéroté
-consomme `[4] ` et en fait l'ancre, le mode paragraphes le laisse collé au texte. Aucun compte
-ne montre cette différence, seul le signal des marqueurs la voit. Et `testparagraphesAgrafes.docx`
+**⚠ Trois fichiers portent le nom `Houellebecq-Plateforme_FR.docx`, et ils diffèrent.**
+Mesuré le 28 août — `GRAFE-Lit-FrRo-Aligné-DOCX` rend **1133 / 1133**, `GRAFE-Lit-FrEn-Aligné-DOCX`
+**1129 / 1**, et `Bitextes francais-espagnol/DOCX` **1171 / 1**. Les deux derniers sont des
+**blobs** : tout le texte dans un seul paragraphe, marqueurs séparés par des sauts de ligne
+doux. La passe veut le **FrRo**, le seul qui mette un paragraphe par ligne. Le *verdict* est le
+même sur les trois — les marqueurs sont là — mais seul le FrRo montre l'égalité des totaux.
+Même piège que le couple `-utf8` / `-ansi` d'`Asimov-Foundation_EN.txt`.
+
+**Les deux cas qui portent la passe.** `Houellebecq-Plateforme_FR.docx` (**FrRo**) est le
+piège : les deux modes y rendent **1133 unités chacun**, et 1133 sur 1133 sont **différentes** —
+le mode numéroté consomme `[4] ` et en fait l'ancre, le mode paragraphes le laisse collé au
+texte. Aucun compte ne montre cette différence, seul le signal des marqueurs la voit. Et `testparagraphesAgrafes.docx`
 est le cas de l'ancien défaut : importé en « Lignes numérotées [n] », il produisait 17 unités,
 **0 indexée**, et l'application répondait `ok` sans un mot.
 
@@ -73,9 +81,10 @@ du dossier voisin, qui porte le même nom.
 - [x] Le verdict lu est **Paragraphes · 17 indexables · aucun marqueur — un paragraphe par unité**
 - [x] Le sélecteur de mode de la ligne montre bien **Paragraphes**, pas « Lignes numérotées [n] »
 - [x] Ajouter `Coe-House-AL_FR.docx` : le mode posé est **Lignes numérotées [n]**, motif **marqueurs [n] détectés**
-- [ ] Le **verdict sur sa ligne**, à gauche, n'affiche **aucun compte** — pas « 1 », pas « 833 », rien. C'est voulu : l'analyse n'a lu le fichier qu'en mode paragraphes, elle ne connaît donc pas le compte du mode numéroté qu'elle vient de poser
-- [ ] Le **tableau du panneau**, lui, les affiche tous les deux : **836 unités / 833 indexables** en Lignes numérotées, **1 / 1** en Paragraphes. C'est le contraste à vérifier — le verdict se tait là où il ne sait pas, le tableau parle là où il a mesuré
-- [ ] Ajouter `Houellebecq-Plateforme_FR.docx` : même verdict, **Lignes numérotées [n]** — c'est le fichier où les deux modes rendent le même nombre d'unités
+- [x] Le **verdict sur sa ligne**, à gauche, n'affiche **aucun compte** — pas « 1 », pas « 833 », rien. C'est voulu : l'analyse n'a lu le fichier qu'en mode paragraphes, elle ne connaît donc pas le compte du mode numéroté qu'elle vient de poser
+- [x] Le **tableau du panneau**, lui, les affiche tous les deux : **836 unités / 833 indexables** en Lignes numérotées, **1 / 1** en Paragraphes. C'est le contraste à vérifier — le verdict se tait là où il ne sait pas, le tableau parle là où il a mesuré
+- [ ] Ajouter `Houellebecq-Plateforme_FR.docx` **du dossier `GRAFE-Lit-FrRo-Aligné-DOCX`** (trois fichiers portent ce nom, voir l'avertissement) : même verdict, **Lignes numérotées [n]**
+- [ ] Son tableau du panneau annonce **1133 unités des deux côtés** — 1133 indexables en numéroté, 1133 aussi en paragraphes. C'est le seul fichier de la passe où le total ne sépare rien, et c'est là que le comptage seul choisirait à pile ou face
 - [ ] Ajouter `Asimov-Foundation_FR_réaligné.odt` : **Paragraphes · 1141 indexables**, alors que le mode numéroté en annoncerait autant d'unités et 0 indexable
 
 ### Ce que l'écran refuse de deviner
