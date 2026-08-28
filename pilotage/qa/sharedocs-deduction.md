@@ -103,9 +103,9 @@ défaut (si non détectée) » reste, lui.
 ### Le mode déduit est bien celui qui est employé
 
 - [x] Importer un `.docx` **sans marqueur [n]** dont le verdict annonçait « Paragraphes ». Vérifier dans **Métadonnées** que le document a des unités, et dans le **concordancier** (après réindexation) qu'on le trouve. Avant ce lot, il serait entré en 100 % `structure` et resterait introuvable
-- [ ] Ouvrir ce document dans **Métadonnées** : le pied du panneau d'édition porte une ligne **« Provenance: ShareDocs (WebDAV) — <URL> »**, l'URL **décodée** donc lisible (ni `%C3%A9` ni `%20`), et surtout pas un chemin temporaire. L'infobulle de l'URL donne la valeur exacte telle qu'elle est en base
+- [x] Ouvrir ce document dans **Métadonnées** : le pied du panneau d'édition porte une ligne **« Provenance: ShareDocs (WebDAV) — <URL> »**, l'URL **décodée** donc lisible (ni `%C3%A9` ni `%20`), et surtout pas un chemin temporaire. L'infobulle de l'URL donne la valeur exacte telle qu'elle est en base
 
 ### Quand la sonde échoue
 
-- [ ] Couper la connexion au serveur (ou saisir une mauvaise URL) après avoir ouvert un dossier, puis y revenir : le journal dit `⚠ Sonde indisponible` ou `⚠ Sonde impossible`, l'écran reste utilisable, et les fichiers restent importables
-- [ ] Dans ce cas les verdicts sont absents — la colonne est vide — mais **aucune ligne ne reste bloquée sur « analyse… »**
+- [x] Couper la connexion au serveur (ou saisir une mauvaise URL) après avoir ouvert un dossier, puis y revenir : le journal dit `⚠ Sonde indisponible` ou `⚠ Sonde impossible`, l'écran reste utilisable, et les fichiers restent importables
+- [x] Dans ce cas les verdicts sont absents — la colonne est vide — mais **aucune ligne ne reste bloquée sur « analyse… »**
