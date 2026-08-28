@@ -63,8 +63,10 @@ export function verdictForChoice(
       mode: chosenMode,
       // Un choix contraire à la lecture du fichier n'est pas une erreur, mais il
       // mérite d'être vu : c'est le cas où l'utilisateur sait quelque chose que le
-      // fichier ne dit pas — ou se trompe.
-      verdict: plan.verdict === "ok" ? "numbering_lost" : plan.verdict,
+      // fichier ne dit pas — ou se trompe. Verdict **propre** : réutiliser
+      // `numbering_lost` faisait annoncer « perdrait sa numérotation comme ancre » sur
+      // un fichier dont la déduction venait de dire « aucun marqueur ».
+      verdict: plan.verdict === "ok" ? "manual" : plan.verdict,
       reason: `choisi à la main — la lecture du fichier proposait « ${deducedLabel} »${garde}`,
     },
     modeLabel: chosenLabel,
@@ -77,6 +79,7 @@ const CLASSES: Record<PlanVerdict, string> = {
   numbering_lost: "imp-verdict-warn",
   column_needed: "imp-verdict-warn",
   no_mode: "imp-verdict-bad",
+  manual: "imp-verdict-warn",
 };
 
 /** Vrai si ce verdict demande une intervention avant d'importer. */
@@ -112,9 +115,14 @@ export function buildVerdictHtml(v: FileVerdict | null): string {
  * Ce que le bandeau de la liste annonce avant d'importer, ou `null` si rien ne cloche.
  *
  * Compte les fichiers qui demandent une intervention, pour que le geste d'import ne
- * soit pas le premier endroit où on l'apprend. Un fichier introuvable à la recherche
- * est nommé séparément d'un fichier qui attend une colonne : le premier est une perte,
- * le second une information manquante.
+ * soit pas le premier endroit où on l'apprend. Un fichier sans unité indexable est
+ * nommé séparément d'un fichier qui attend une colonne : le premier est une perte, le
+ * second une information manquante. **Seules les catégories non vides sont nommées**,
+ * et le bandeau se tait quand il n'y en a aucune.
+ *
+ * Un mode **choisi à la main** (`manual`) n'y figure pas : le bandeau rapporte ce que
+ * l'application a trouvé, pas ce que l'utilisateur a décidé. Il reste visible sur la
+ * ligne du fichier, en orange, avec son motif.
  */
 export function buildQueueWarningHtml(verdicts: Array<FileVerdict | null>): string | null {
   let sansRien = 0;

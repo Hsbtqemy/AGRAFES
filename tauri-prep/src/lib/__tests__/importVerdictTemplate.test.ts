@@ -169,3 +169,29 @@ describe("verdictForChoice — ce qu'un choix ne doit pas effacer", () => {
     expect(v.plan.reason).not.toContain("aucun marqueur");
   });
 });
+
+describe("un choix manuel n'est pas une numérotation perdue", () => {
+  it("ne prétend pas qu'un fichier SANS numérotation perdrait la sienne", () => {
+    // RED avant correctif. `verdictForChoice` réutilisait `numbering_lost` pour dire
+    // « choisi à la main », si bien que le bandeau de la file annonçait « perdrait sa
+    // numérotation comme ancre » sur un fichier dont la déduction disait justement
+    // « aucun marqueur ». Trouvé en jouant la passe : 11 colonnes en attente + 1
+    // numérotation perdue, alors qu'aucun fichier numéroté n'était en jeu.
+    const sansNumerotation = plan({ verdict: "ok", reason: "aucun marqueur — un paragraphe par unité" });
+    const v = verdictForChoice(sansNumerotation, "docx_numbered_lines", "Lignes numérotées [n]", "Paragraphes", null);
+    expect(v.plan.verdict).toBe("manual");
+    expect(buildQueueWarningHtml([v])).toBeNull();
+  });
+
+  it("mais un vrai « 1. » compte toujours dans le bandeau", () => {
+    const dot = plan({ verdict: "numbering_lost", reason: "numéroté « 1. » …" });
+    expect(buildQueueWarningHtml([{ plan: dot, modeLabel: "Paragraphes", searchable: 46 }]))
+      .toContain("ancre");
+  });
+
+  it("et un choix manuel reste VISIBLE sur la ligne", () => {
+    const v = verdictForChoice(plan({ verdict: "ok" }), "docx_numbered_lines", "N", "P", null);
+    expect(buildVerdictHtml(v)).toContain("imp-verdict-warn");
+    expect(buildVerdictHtml(v)).toContain("choisi à la main");
+  });
+});

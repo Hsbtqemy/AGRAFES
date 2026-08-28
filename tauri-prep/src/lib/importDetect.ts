@@ -196,9 +196,15 @@ export function detectNumbering(texts: string[]): NumberingEvidence {
  * `ok` : le mode déduit lit le document. `column_needed` : le texte est dans un
  * tableau, il manque une information que le fichier ne porte pas. `numbering_lost` :
  * le document s'importera, mais sa numérotation restera dans le texte au lieu de
- * devenir une ancre. `no_mode` : aucun mode ne rend d'unité trouvable.
+ * devenir une ancre. `no_mode` : aucun mode ne rend d'unité indexable.
+ *
+ * `manual` n'est jamais produit par {@link planImport} : il vient de
+ * `verdictForChoice`, quand l'utilisateur retient un autre mode que le mode déduit.
+ * Il a sa propre valeur parce que réutiliser `numbering_lost` faisait annoncer
+ * « perdrait sa numérotation comme ancre » sur un fichier dont la déduction venait de
+ * dire « aucun marqueur » — un défaut trouvé en jouant la passe de QA.
  */
-export type PlanVerdict = "ok" | "column_needed" | "numbering_lost" | "no_mode";
+export type PlanVerdict = "ok" | "column_needed" | "numbering_lost" | "no_mode" | "manual";
 
 export interface ImportPlan {
   /** Mode à poser sur le fichier — toujours un mode valide pour l'extension. */

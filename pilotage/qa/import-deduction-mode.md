@@ -117,8 +117,9 @@ pris le dossier français.
 ### Ce que la file annonce avant d'importer
 
 - [x] Avec le `.txt` et le tableau sans colonne dans la liste, un bandeau **au-dessus** des lignes compte ce qui cloche
-- [ ] Ajouter assez de fichiers pour faire **défiler** la liste, puis défiler : le bandeau **ne bouge pas** — il vit hors de la zone qui défile, sans quoi il disparaîtrait au moment où il sert
-- [ ] Il nomme **séparément** les fichiers sans unité indexable et ceux qui attendent une colonne
+- [x] Ajouter assez de fichiers pour faire **défiler** la liste, puis défiler : le bandeau **ne bouge pas** — il vit hors de la zone qui défile, sans quoi il disparaîtrait au moment où il sert
+- [ ] Il nomme **séparément** chaque nature de problème, et **seulement celles qui s'appliquent** — avec les fichiers de cette passe on lit « … attendent une colonne de tableau ; … n'aurait aucune unité indexable », sans mention des catégories vides
+- [ ] Changer le mode à la main d'un fichier **sans numérotation** (`testparagraphesAgrafes.docx`) : sa ligne passe à l'orange « choisi à la main », mais le bandeau **ne le compte pas** — il rapporte ce que l'application a trouvé, pas ce que vous avez décidé, et surtout il ne prétend pas qu'un fichier sans numérotation perdrait la sienne
 - [ ] Le bandeau est **rouge** dès qu'un fichier n'aurait rien d’indexable, **orange** s'il n'y a que des colonnes en attente
 - [ ] Retirer le `.txt` : le bandeau se met à jour, et disparaît quand plus rien ne cloche
 
