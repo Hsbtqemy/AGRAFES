@@ -54,7 +54,15 @@ export function showToast(msg: string, isError = false): void {
     _toastEl.setAttribute("aria-live", "polite");
     _toastEl.setAttribute("aria-atomic", "true");
     _toastEl.style.cssText = [
+      // `pointer-events:none` n'est PAS decoratif : au bout de 3 s le toast ne fait que
+      // passer son opacite a 0 — il reste donc dans le DOM, invisible mais cliquable, a
+      // `z-index:9999` dans le coin inferieur droit. Il mangeait la quasi-totalite du
+      // bouton « Importer » de l'ecran d'import (barre de pied a `z-index:100`), qui ne
+      // recevait plus le clic que sur ~7 px le long de son bord bas. Un toast n'a aucun
+      // gestionnaire : il n'a rien a intercepter. Meme parti pris que le bandeau
+      // d'astuce du shell (`explorerModule.ts:294`).
       "position:fixed", "bottom:1.2rem", "right:1.2rem", "z-index:9999",
+      "pointer-events:none",
       "padding:0.5rem 1rem", "border-radius:6px", "font-size:0.85rem",
       "font-weight:500", "box-shadow:0 2px 8px rgba(0,0,0,0.18)",
       "transition:opacity 0.4s", "max-width:400px",

@@ -385,6 +385,75 @@ l'écran affiche une coche verte.
       déchiqueter, le numéro avalé en `external_id` ; ce doit être un mode distinct, choisi par
       la détection. C'est un **amendement à ADR-001**, donc une décision, pas seulement du code
 - [ ] Élucider les 5 fichiers en zone grise du sondage (ratio ~0,66 de lignes marquées, famille Beigbeder / cullioli) — non localisés au moment du sondage, la forme reste inconnue
+- [x] **Le toast invisible mangeait le bouton « Importer »** — 28 août, signalé par
+      l'utilisateur (« la surface de clic est limitée »). `showToast`
+      (`components/JobCenter.ts:49`) pose un `<div>` en `position:fixed`, coin inférieur
+      droit, `z-index:9999` — et au bout de 3 s ne fait que passer son `opacity` à `0`.
+      Jamais retiré, jamais `visibility:hidden` : un élément à opacité nulle **reçoit
+      toujours les clics**. Dès qu'un toast avait paru — et « Appliquer » en émet un — un
+      rectangle invisible couvrait durablement la barre de pied (`z-index:100`) : il ne
+      restait qu'une bande d'environ 7 px le long du bord bas du bouton pour recevoir le
+      clic. Correctif : `pointer-events:none`, un toast n'ayant aucun gestionnaire à
+      déclencher. Vérifié unique — le bandeau d'astuce du shell
+      (`explorerModule.ts:294`) le faisait déjà, et c'était le seul autre site
+- [ ] **Une ligne importée ne peut plus rien faire, et l'écran conseille un geste qui
+      n'existe pas.** Trouvé le 28 août : l'utilisateur importe, supprime le document
+      depuis Métadonnées, et veut réimporter. Impossible sans retirer la ligne.
+      `_updateButtons` (l. 311) n'active le bouton que sur `status === "pending"`, et
+      **aucun chemin ne repasse une ligne de `done` — ou d'`error` — à `pending`** :
+      cherché dans tout l'écran, le geste n'existe pas. Re-sélectionner le fichier ne
+      contourne rien, `_tryAddSingle` (l. 345) dédupliquant **par chemin quel que soit le
+      statut**, avec un refus (« déjà dans la liste ») qui ne dit pas que la ligne en cause
+      est celle qu'on vient d'importer. Il reste le `✕` puis un nouveau passage par le
+      sélecteur de fichiers. Corollaire : la bulle de « Appliquer » sans fichier en attente
+      conseille « ajoutez des fichiers ou **réinitialisez une ligne en erreur** » (l. 439)
+      — le geste qu'elle nomme n'a jamais existé. Un bouton « ↺ Remettre en attente » sur
+      les lignes `done`/`error` règle les deux : front pur, il rend la ligne à `pending` et
+      relance son analyse, le garde-fou restant le contrôle de doublon côté corpus, qui se
+      reconstruit à chaque import depuis `listDocuments` (l. 1175)
+- [x] **Ce que l'import a enfin à dire, il le disait dans un tiroir fermé — et l'écran
+      disait le contraire.** Corrigé le 28 août : la bulle porte le compte et **passe en
+      erreur** quand il est nul, la pastille de la ligne vire à l'orange, et le libellé de
+      statut dit « ⚠ doc_id=N · rien d’indexable » (`lib/importStatusLabel.ts`, deux tests
+      neufs). Le journal reste le récit complet ; l'écran ne le contredit plus. Trouvé le 28 août, l'utilisateur demandant où s'affichait le message de
+      la passe. `_log` écrit dans `#prep-journal-log`, qui vit dans le tiroir
+      `.prep-journal-drawer` (`app.ts:284`) — `translateX(100%)` et `visibility: hidden`
+      tant qu'on n'a pas cliqué **📋 Journal** dans la barre du haut. Or c'est là, et
+      **seulement là**, qu'atterrit le « ⚠ AUCUNE unité indexable » ajouté par ce chantier.
+      Ce qui reste visible à l'écran le dément : la bulle
+      (`this._showToast?.(´✓ Importé: ...´)`, `ImportScreen.ts:1316`) ne porte **aucun**
+      compte et n'est jamais en erreur, et `_chipClass` rend `ok` dès que le statut est
+      `done` (l. 444) — pastille verte pour un document sans une seule unité indexable.
+      Vérifié sur `testparagraphesAgrafes.docx`, dont les deux modes rendent 17 unités :
+      17 `line` en Paragraphes, 17 `structure` en numéroté. Le chantier a donné la parole à
+      l'import ; il reste à la mettre là où elle est entendue. À trancher : porter le
+      compte dans la bulle et la pastille, ou ouvrir le tiroir sur une ligne d'erreur
+- [x] **Trois libellés ne disaient plus ce que le code fait** — trouvés **et corrigés** le
+      28 août en jouant la passe. (1) L'infobulle de l'étiquette **recommandé** du tableau comparatif dit
+      « Le mode qui rend le plus d'unités indexables »
+      (`lib/importModeComparisonTemplate.ts:75`) — critère abandonné la veille :
+      `recommendedMode` recommande le mode **déduit**, qui peut en rendre moins, et sur
+      `Houellebecq-Carte_FR.docx` c'est le cas (724 contre 725). (2) Le journal du bouton
+      « Appliquer » annonce « ✓ Profil de lot appliqué… » (`ImportScreen.ts:437`) alors que
+      la carte « Profil de lot » a été retirée le même jour. (3) Ce même journal compte les
+      fichiers **en attente**, pas ceux dont la langue a changé : il affirmait donc un
+      succès sur des fichiers auxquels rien n'était arrivé. Corrigés : l'infobulle dit
+      « le mode déduit de la lecture du fichier ; à défaut de signal, celui qui rend le plus
+      d'unités indexables » ; « Appliquer » compte séparément les fichiers vus et ceux
+      réellement changés, et **nomme le cas où il n'a rien à faire** (« les N fichiers en
+      attente portent déjà un code de langue dans leur nom ») ; et le conseil fantôme
+      « réinitialisez une ligne en erreur » disparaît au profit d'un état de fait
+- [ ] **Le « 42 % prennent le défaut » est vrai en moyenne et faux partout** — remesuré le
+      28 août sur les mêmes 514 fichiers, après que l'utilisateur eut constaté que
+      « Appliquer » ne changeait rien à `Coe-House-AL_FR.docx`. Le compte tient (297 avec
+      code de langue, 217 sans), mais la répartition n'est **pas diffuse, elle est par
+      corpus** : `GRAFE-Lit-Aligne` 294/298 tokenisés (99 %), `OneDrive/CI` 3/216 (1 %). Le
+      champ « Langue par défaut » est donc soit **inerte**, soit **indispensable**, selon le
+      dossier d'où l'on glisse — jamais entre les deux. Un chiffre moyen ne prépare à
+      aucun des deux cas. À trancher : écrire la règle dans l'écran plutôt que dans une
+      infobulle, et/ou ne compter que les fichiers réellement touchés. **Second volet fait**
+      le 28 août (cf. item ci-dessus) ; reste à décider si la règle doit être lisible dans
+      l'écran plutôt que dans une infobulle
 - [ ] Renommer ou étoffer le « précontrôle » de l'écran d'import : `_updatePrecheck` ne compte que les fichiers par statut (total / en attente / importés / en erreur), il ne vérifie aucun contenu — le mot promet ce que la fonction ne fait pas
 - [x] **Le sort de l'aperçu — dissous le 27 août, pas tranché.** Il reste volontaire et un
       fichier à la fois, mais ce n'est plus lui qui protège : le verdict vit désormais sur la

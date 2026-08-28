@@ -92,6 +92,11 @@ interface FileItem {
   searchable?: number | null;
   /** L'utilisateur a choisi le mode lui-même : l'analyse ne le réécrit plus. */
   modeLocked?: boolean;
+  /**
+   * Unites indexables ecrites par l'import (`units_line`), une fois `status === "done"`.
+   * `null` quand la reponse ne le disait pas. Cf. `StatusLabelInput.importedLine`.
+   */
+  importedLine?: number | null;
 }
 
 export class ImportScreen {
@@ -417,9 +422,18 @@ export class ImportScreen {
       return;
     }
     const defaultLang = (this._root.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
-    let touched = 0;
+    // On compte SEPAREMENT les fichiers vus et ceux dont la langue a reellement change.
+    // Le defaut ne s'applique qu'aux noms sans code de langue, et cette proportion n'est
+    // pas diffuse : mesuree le 28 aout 2026 sur 514 fichiers reels, elle vaut 1 % dans un
+    // corpus (GRAFE-Lit, tout tokenise) et 99 % dans l'autre (CI, aucun). Un lot entier
+    // peut donc ne rien changer — et l'ancien message affirmait quand meme un succes sur
+    // tous les fichiers en attente, ce qui etait le seul retour visible du bouton.
+    let vus = 0;
+    let changes = 0;
     for (const file of this._files) {
       if (file.status !== "pending") continue;
+      vus += 1;
+      const avant = file.language;
       const base = file.path.split(/[/\\]/u).pop() ?? "";
       // Le MODE n'est plus réappliqué ici : il est déduit du fichier (`_analyzeFile`)
       // et le profil de lot ne le décide plus. Il décidait pour tous à la fois, et il
@@ -429,21 +443,45 @@ export class ImportScreen {
       // (champ vide), cohérent avec _tryAddSingle (DESIGN §11.8).
       file.language = detectLanguageForMode(file.mode, base, defaultLang) ?? "";
       file.langGuessed = file.mode !== "tei" && detectLanguageToken(base) === null; // IMP-11
-      touched += 1;
+      if (file.language !== avant) changes += 1;
     }
     this._renderList();
     this._updateButtons();
-    if (touched > 0) {
-      this._log(`✓ Profil de lot appliqué à ${touched} fichier(s) en attente.`);
+    if (vus === 0) {
+      // La liste n'est pas vide (cas traite plus haut) : tout y est deja importe ou en
+      // erreur. Ne PAS conseiller de « reinitialiser une ligne en erreur » — ce geste
+      // n'existe nulle part dans l'ecran.
+      this._showToast?.(
+        "Aucun fichier en attente — les lignes de la liste sont déjà importées ou en erreur.",
+        false,
+      );
+    } else if (changes === 0) {
+      this._log(
+        `Langue par défaut « ${defaultLang} » sans effet : les ${vus} fichier(s) en attente `
+        + "portent déjà un code de langue dans leur nom, qui prime sur le défaut."
+      );
+      this._showToast?.(
+        `Aucune langue à changer — les ${vus} fichier(s) en attente portent leur code dans leur nom.`,
+        false,
+      );
     } else {
-      this._showToast?.("Aucun fichier en attente — ajoutez des fichiers ou réinitialisez une ligne en erreur.", false);
+      const reste = vus - changes;
+      const suffixe = reste > 0
+        ? ` ; ${reste} inchangé(s), leur nom portant déjà un code de langue`
+        : "";
+      this._log(`✓ Langue « ${defaultLang} » appliquée à ${changes} fichier(s) en attente${suffixe}.`);
     }
   }
 
-  private _chipClass(status: FileItem["status"]): string {
-    if (status === "done") return "ok";
-    if (status === "importing") return "warn";
-    if (status === "error") return "error";
+  /**
+   * Couleur de la pastille de statut. Prend le FICHIER et non son seul statut : un
+   * import abouti sans aucune unite indexable n'est pas un succes ordinaire, et la
+   * pastille verte le faisait pourtant passer pour tel.
+   */
+  private _chipClass(f: FileItem): string {
+    if (f.status === "done") return f.importedLine === 0 ? "warn" : "ok";
+    if (f.status === "importing") return "warn";
+    if (f.status === "error") return "error";
     return "";
   }
 
@@ -476,7 +514,7 @@ export class ImportScreen {
       row.tabIndex = 0;
       row.setAttribute("role", "button");
       row.setAttribute("aria-pressed", selected ? "true" : "false");
-      const chipCls = this._chipClass(f.status);
+      const chipCls = this._chipClass(f);
       // La ligne ne porte QUE ce qui doit être vu sans avoir été cherché : le nom, le
       // statut, et le verdict de la déduction. Les commandes — mode, colonne, langue,
       // titre — vivent dans le panneau du fichier sélectionné, où elles tiennent
@@ -1283,6 +1321,7 @@ export class ImportScreen {
             // `warnings: []`, 17 unités écrites, 0 indexée, 0 résultat à la recherche.
             const nLine = result?.units_line;
             const nStruct = result?.units_structure;
+            f.importedLine = nLine ?? null;
             const compte = nLine === undefined
               ? ""
               : nLine === 0
@@ -1314,7 +1353,16 @@ export class ImportScreen {
             for (const w of result?.warnings ?? []) {
               this._log(`  ⚠ ${w}`, true);
             }
-            this._showToast?.(`✓ Importé: ${fileTitle}`);
+            // La bulle disait « ✓ Importé » a l'identique qu'un document soit indexable ou
+            // vide, le seul avertissement partant dans un tiroir ferme. Elle porte
+            // desormais le compte, et passe en erreur quand il est nul.
+            this._showToast?.(
+              nLine === 0
+                ? `⚠ Importé sans unité indexable : ${fileTitle}`
+                : `✓ Importé: ${fileTitle}`
+                  + (nLine === undefined ? "" : ` — ${nLine} indexable(s)`),
+              nLine === 0,
+            );
             // Sprint 8: propose family link (queued — one dialog at a time)
             if (typeof docId === "number" && !this._skipFamilyDialog) {
               // fileLang peut être undefined (TEI sans token → langue résolue côté

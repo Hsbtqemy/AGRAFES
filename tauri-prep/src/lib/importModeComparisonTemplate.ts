@@ -36,7 +36,7 @@ export interface ModeComparisonInput {
   rows: ModeComparisonRow[];
   /** Mode actuellement retenu pour ce fichier. */
   currentMode: string;
-  /** Mode recommandé (`pickBestMode`), ou `null` si aucun ne lit le document. */
+  /** Mode recommandé (`recommendedMode`), ou `null` si aucun ne lit le document. */
   bestMode: string | null;
 }
 
@@ -72,7 +72,7 @@ export function buildModeComparisonHtml(input: ModeComparisonInput): string {
       r.searchable === 0 ? "imp-cmp-row-empty" : "",
     ].filter(Boolean).join(" ");
     const marque = isBest
-      ? ' <span class="imp-cmp-best" title="Le mode qui rend le plus d\'unités indexables">recommandé</span>'
+      ? ' <span class="imp-cmp-best" title="Le mode déduit de la lecture du fichier ; à défaut de signal, celui qui rend le plus d\'unités indexables">recommandé</span>'
       : "";
     const coche = isCurrent ? '<span class="imp-cmp-check" aria-hidden="true">✓</span> ' : "";
     return `<tr class="${cls}">

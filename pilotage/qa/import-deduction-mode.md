@@ -118,32 +118,38 @@ pris le dossier français.
 
 - [x] Avec le `.txt` et le tableau sans colonne dans la liste, un bandeau **au-dessus** des lignes compte ce qui cloche
 - [x] Ajouter assez de fichiers pour faire **défiler** la liste, puis défiler : le bandeau **ne bouge pas** — il vit hors de la zone qui défile, sans quoi il disparaîtrait au moment où il sert
-- [ ] Il nomme **séparément** chaque nature de problème, et **seulement celles qui s'appliquent** — avec les fichiers de cette passe on lit « … attendent une colonne de tableau ; … n'aurait aucune unité indexable », sans mention des catégories vides
-- [ ] Changer le mode à la main d'un fichier **sans numérotation** (`testparagraphesAgrafes.docx`) : sa ligne passe à l'orange « choisi à la main », mais le bandeau **ne le compte pas** — il rapporte ce que l'application a trouvé, pas ce que vous avez décidé, et surtout il ne prétend pas qu'un fichier sans numérotation perdrait la sienne
-- [ ] Le bandeau est **rouge** dès qu'un fichier n'aurait rien d’indexable, **orange** s'il n'y a que des colonnes en attente
-- [ ] Retirer le `.txt` : le bandeau se met à jour, et disparaît quand plus rien ne cloche
-- [ ] **Vider** la liste : le bandeau de la file **et** celui des familles détectées disparaissent tous les deux — aucun ne doit survivre à la liste qu'il décrit
-- [ ] Retirer un fichier d'une paire détectée : le bandeau des familles se recalcule au lieu de rester sur l'ancienne paire
+- [x] Il nomme **séparément** chaque nature de problème, et **seulement celles qui s'appliquent** — avec les fichiers de cette passe on lit « … attendent une colonne de tableau ; … n'aurait aucune unité indexable », sans mention des catégories vides
+- [x] Changer le mode à la main d'un fichier **sans numérotation** (`testparagraphesAgrafes.docx`) : sa ligne passe à l'orange « choisi à la main », mais le bandeau **ne le compte pas** — il rapporte ce que l'application a trouvé, pas ce que vous avez décidé, et surtout il ne prétend pas qu'un fichier sans numérotation perdrait la sienne
+- [x] Le bandeau est **rouge** dès qu'un fichier n'aurait rien d’indexable, **orange** s'il n'y a que des colonnes en attente
+- [x] Retirer le `.txt` : le bandeau se met à jour, et disparaît quand plus rien ne cloche
+- [x] **Vider** la liste : le bandeau de la file **et** celui des familles détectées disparaissent tous les deux — aucun ne doit survivre à la liste qu'il décrit
+- [x] Retirer un fichier d'une paire détectée : le bandeau des familles se recalcule au lieu de rester sur l'ancienne paire
 
 ### Le choix reste possible, et il se voit
 
-- [ ] Sélectionner `Coe-House-AL_FR.docx` et changer son mode pour **Paragraphes** dans le sélecteur **Mode d'import** du panneau
-- [ ] Le verdict ne dit **plus** « marqueurs [n] détectés » — ce motif justifiait le mode qu'on vient d'écarter — mais **« choisi à la main — la lecture du fichier proposait « Lignes numérotées [n] » »**
-- [ ] Il n'affiche plus de compte non plus : celui qu'on avait était mesuré sur l'autre mode
-- [ ] Sur le bitexte en tableau **sans colonne**, changer le mode à la main : le motif dit « choisi à la main » **et** continue de réclamer la colonne — l'information ne disparaît pas parce qu'on a touché au mode
-- [ ] Le tableau comparatif du panneau marque **recommandé** sur **Lignes numérotées [n]**, et le ✓ sur Paragraphes — l'écran montre le désaccord au lieu de le masquer
-- [ ] Cliquer **Lignes numérotées [n]** dans le tableau : la ligne suit, et le verdict retrouve son motif d'origine
+- [x] Sélectionner `Coe-House-AL_FR.docx` et changer son mode pour **Paragraphes** dans le sélecteur **Mode d'import** du panneau
+- [x] Le verdict ne dit **plus** « marqueurs [n] détectés » — ce motif justifiait le mode qu'on vient d'écarter — mais **« choisi à la main — la lecture du fichier proposait « Lignes numérotées [n] » »**
+- [x] Il n'affiche plus de compte non plus : celui qu'on avait était mesuré sur l'autre mode
+- [x] Sur le bitexte en tableau **sans colonne**, changer le mode à la main : le motif dit « choisi à la main » **et** continue de réclamer la colonne — l'information ne disparaît pas parce qu'on a touché au mode
+- [x] Revenir sur `Coe-House-AL_FR.docx` (le point précédent a changé de fichier) et descendre au **tableau comparatif** du panneau (« Ce que chaque mode ferait de ce fichier ») : deux marques y coexistent, et **sur deux lignes différentes** — le ✓ est passé devant **Paragraphes**, le mode que vous venez de choisir, tandis que l'étiquette **recommandé** est restée sur **Lignes numérotées [n]**, celui que la lecture du fichier proposait
+- [x] Les deux ne disent pas la même chose et n'ont pas à se rejoindre : le ✓ suit le choix, l'étiquette ne bouge pas. Une recommandation qui se réalignerait sur ce qu'on vient de décider donnerait raison à tout choix, et on ne saurait plus vers quoi revenir
+- [x] Cliquer **Lignes numérotées [n]** dans le tableau : la ligne suit, et le verdict retrouve son motif d'origine
 
 ### Le lot n'impose plus de format
 
-- [ ] La **zone de dépôt** porte un champ **« Langue par défaut »** et un bouton **« Appliquer »** ; il n'y a **aucun** sélecteur de format nulle part hors du panneau
-- [ ] Le survol du bouton **« Appliquer »** dit que le mode d'import, lui, est déduit de chaque fichier
-- [ ] Changer la langue par défaut puis **« Appliquer »** change la **langue** de chaque fichier en attente et **laisse les modes intacts**
-- [ ] Ajouter plusieurs fichiers d'un coup (une dizaine) : chaque ligne passe par « analyse… » puis reçoit son verdict, l'une après l'autre, sans figer l'écran
-- [ ] Sur ce lot, la sélection du panneau **ne bouge pas** : sauter au dernier des dix déplacerait l'affichage sous les yeux de quelqu'un qui regardait autre chose
+- [x] La **zone de dépôt** porte un champ **« Langue par défaut »** et un bouton **« Appliquer »** ; il n'y a **aucun** sélecteur de format nulle part hors du panneau
+- [x] Le survol du bouton **« Appliquer »** dit que le mode d'import, lui, est déduit de chaque fichier
+- [x] Mettre `en` en langue par défaut puis **« Appliquer »** : `testparagraphesAgrafes.docx` passe à `en`, son nom ne portant aucun code de langue
+- [x] `Coe-House-AL_FR.docx`, lui, **reste à `fr`** — et c'est voulu : un code écrit dans le nom (`_FR`) prime sur le défaut. La règle n'est écrite **nulle part dans l'écran**, seulement dans l'infobulle du bouton
+- [x] Conséquence à vérifier sur un lot entièrement issu de `GRAFE-Lit-Aligne` : **aucune** langue ne change, ces 298 fichiers portant tous leur code — et le journal annonce quand même un succès sur tous les fichiers en attente. C'est un défaut connu, consigné dans IMPO-01, pas un échec de la passe
+- [x] Dans les deux cas le **mode d'import ne bouge pas**, y compris celui qu'on venait de choisir à la main : le bouton ne touche plus qu'à la langue
+- [x] Ajouter plusieurs fichiers d'un coup (une dizaine) : chaque ligne passe par « analyse… » puis reçoit son verdict, l'une après l'autre, sans figer l'écran
+- [x] Sur ce lot, la sélection du panneau **ne bouge pas** : sauter au dernier des dix déplacerait l'affichage sous les yeux de quelqu'un qui regardait autre chose
 
 ### Après l'import
 
-- [ ] Importer `testparagraphesAgrafes.docx` tel que l'écran le propose : le journal dit **« ✓ … · 17 unité(s) indexable(s) · réindexez pour la recherche. »**
-- [ ] Forcer le mode **Lignes numérotées [n]** sur un second exemplaire du même fichier, puis importer : le journal sort une ligne d'**erreur** disant **« ⚠ AUCUNE unité indexable à la recherche »**
-- [ ] Ce second import n'est pas refusé — il est **dit**. Vérifier que le document est bien en base, et que la recherche ne le trouve pas
+- [x] **Ouvrir le journal d'abord** : bouton **📋 Journal** dans la barre du haut, qui fait glisser un tiroir depuis la droite. C'est le **seul** endroit où l'import rend ses comptes, et il est **fermé par défaut**
+- [x] Importer `testparagraphesAgrafes.docx` tel que l'écran le propose : le journal dit **« ✓ "testparagraphesAgrafes" → doc_id N · 17 unité(s) indexable(s) · réindexez pour la recherche. »** — les 17 sont mesurées, `docx_paragraphs` rend 17 unités `line` sur ce fichier
+- [x] Forcer le mode **Lignes numérotées [n]** sur un second exemplaire du même fichier, puis importer : la ligne du journal passe en **rouge** et dit **« · ⚠ AUCUNE unité indexable · réindexez pour la recherche. »** — le même fichier, 17 unités `structure`, aucune indexable
+- [x] Pendant ce temps l'écran, lui, dit le contraire : la bulle verte annonce **« ✓ Importé: … »** sans aucun compte, et la ligne du fichier prend une pastille **verte** — les deux **identiques** que le document soit indexable ou vide. Défaut consigné dans IMPO-01, pas un échec de la passe
+- [x] Ce second import n'est pas refusé — il est **dit**. Vérifier que le document est bien en base, et que la recherche ne le trouve pas
