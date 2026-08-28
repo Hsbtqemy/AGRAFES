@@ -425,8 +425,16 @@ export class ShareDocsImportScreen {
       const entries = await webdavList(this._conn, { url, auth: this._auth });
       this._currentUrl = url;
       this._entries = sortRemoteEntries(entries);
-      // Les verdicts appartiennent au dossier qu'ils décrivent.
-      this._probeByHref.clear();
+      // Les verdicts appartiennent au dossier qu'ils décrivent — **sauf** ceux des
+      // fichiers déjà dans le panier. Le panier est fait pour survivre à la navigation
+      // (« la sélection se conserve quand tu navigues ») : tout vider ferait retomber un
+      // fichier coché dans un autre dossier sur le repli Paragraphes, alors que
+      // l'utilisateur venait d'en lire le verdict avant de le cocher. On élague donc au
+      // lieu de vider — ce qui borne aussi la mémoire, contrairement à un cache qui
+      // grossirait à chaque dossier visité.
+      for (const href of [...this._probeByHref.keys()]) {
+        if (!this._selected.has(href)) this._probeByHref.delete(href);
+      }
       this._renderEntries();
       this._log(`✓ ${entries.length} élément(s) — ${safeDecodeUrl(url)}`);
       void this._probeFolder(url);
@@ -459,11 +467,25 @@ export class ShareDocsImportScreen {
     this._renderEntries();
     try {
       const job = await webdavProbe(conn, { url, auth: this._auth });
-      this._jobCenter?.trackJob(job.job_id, `Sonde — ${folderLabel(url)}`, (done) => {
+      if (!this._jobCenter) {
+        // Sans suivi de job, personne ne rendrait la main : les lignes resteraient en
+        // « analyse… » indéfiniment. On le dit et on rend l'écran à son état sans sonde,
+        // où chaque fichier retombe sur la dérivation par extension.
         this._probing = false;
+        this._log("⚠ Sonde lancée sans suivi de job — verdicts indisponibles.", true);
+        this._renderEntries();
+        return;
+      }
+      this._jobCenter.trackJob(job.job_id, `Sonde — ${folderLabel(url)}`, (done) => {
         // Le dossier a pu changer pendant la sonde : ne peindre que si c'est encore lui,
         // sans quoi les verdicts d'un dossier se poseraient sur les lignes d'un autre.
+        //
+        // Le témoin `_probing` est éteint **à l'intérieur** de ce garde, et non avant :
+        // une sonde périmée qui aboutit pendant qu'une autre est en vol éteindrait le
+        // « analyse… » du dossier courant, dont les lignes redeviendraient muettes
+        // jusqu'à la fin de SA sonde.
         if (this._currentUrl !== url) return;
+        this._probing = false;
         if (done.status === "done" && isRemoteProbeReport(done.result)) {
           for (const f of done.result.files) this._probeByHref.set(f.source_url, f);
           const r = done.result;
@@ -478,6 +500,9 @@ export class ShareDocsImportScreen {
         this._renderEntries();
       });
     } catch (err) {
+      // Même garde qu'au retour du job : l'échec d'une sonde qu'on a quittée ne dit rien
+      // du dossier affiché maintenant.
+      if (this._currentUrl !== url) return;
       this._probing = false;
       const msg = err instanceof Error ? err.message : String(err);
       this._log(`⚠ Sonde impossible : ${msg}`, true);
@@ -528,11 +553,14 @@ export class ShareDocsImportScreen {
   // ─── Import ─────────────────────────────────────────────────────────────────
 
   /**
-   * Read + validate the shared *defaults* (profil de segmentation par défaut + langue
-   * par défaut) and the auth form. Shows a toast and returns null on a problem. Also
-   * refreshes `this._auth`. Shared by "Importer ce dossier" and "Importer la
-   * sélection". The per-file format + langue are derived later (importDetect) ; ces
-   * deux valeurs ne sont que les replis (profil = style ; langue si non détectée).
+   * Lit et valide ce qui vaut pour tout le lot — la **langue par défaut** et le
+   * formulaire d'authentification. Affiche une bulle et rend `null` en cas de problème ;
+   * rafraîchit aussi `this._auth`. Partagé par « Importer ce dossier » et « Importer la
+   * sélection ».
+   *
+   * `profile` n'est plus lu d'un sélecteur (SD-01, il a été retiré) : c'est le **repli**
+   * d'un fichier que la sonde n'a pas pu lire. Le mode réel vient d'elle, par fichier ;
+   * la langue reste déduite du nom, ce défaut ne servant qu'aux noms muets.
    */
   private _readImportForm(): { profile: string; defaultLanguage: string } | null {
     // Plus de sélecteur de profil (SD-01) : le mode vient de la sonde, par fichier.
@@ -906,13 +934,18 @@ export class ShareDocsImportScreen {
       WP_DEFAULT_PARAGRAPHS;
     const defaultLanguage =
       root.querySelector<HTMLInputElement>("#prep-sd-language")?.value.trim() || "fr";
+    // Construite UNE fois : `deducedModesFrom` rejoue `planForRemoteFile` sur chaque
+    // fichier sondé (donc `detectNumbering` sur ses 50 premières unités). L'appeler dans
+    // la boucle en refaisait tout le travail par ligne du panier — quadratique, sur du
+    // parsing.
+    const modesDeduits = this._deducedModes();
     const items = [...this._selected.values()].map((it) => {
       if (it.is_dir) {
         return safeHtml`<li>📁 ${it.name} — ${folderLabel(it.parentUrl)} <span class="prep-sd-fmt">(dossier — son contenu sera développé à l'import)</span></li>`;
       }
       const det = this._detectFile(
         it.name, it.href, it.parentUrl, profile, defaultLanguage,
-        this._deducedModes().get(it.href),
+        modesDeduits.get(it.href),
       );
       // langue undefined = TEI sans token → le xml:lang du document fait foi.
       const tag = det
@@ -983,11 +1016,12 @@ export class ShareDocsImportScreen {
     // 1) Fichiers cochés directement.
     const files: DetectedImportFile[] = [];
     let ignored = 0;
+    const modesDeduits = this._deducedModes();  // une fois, cf. `_updateSelectionUi`
     for (const it of items) {
       if (it.is_dir) continue;
       const det = this._detectFile(
         it.name, it.href, it.parentUrl, form.profile, form.defaultLanguage,
-        this._deducedModes().get(it.href),
+        modesDeduits.get(it.href),
       );
       if (det) files.push(det);
       else ignored += 1;
@@ -1071,8 +1105,11 @@ export class ShareDocsImportScreen {
       return '<span class="imp-verdict imp-verdict-bad">illisible</span>';
     }
     if (sonde.status === "skipped-no-probe") {
-      // Le format se décrit lui-même : il s'importe, il n'y a simplement rien à déduire.
-      return '<span class="imp-verdict imp-verdict-ok">format auto-descriptif</span>';
+      // Le format se décrit lui-même (TEI : `xml:lang` ; CoNLL-U : ses colonnes). Il
+      // s'importe, il n'y a simplement rien à déduire — et c'est ça qu'il faut dire,
+      // plutôt que de nommer la catégorie.
+      return '<span class="imp-verdict imp-verdict-ok">importé tel quel · '
+        + '<span class="imp-verdict-why">le format porte lui-même sa structure</span></span>';
     }
     return buildVerdictHtml(verdictForRemoteFile(sonde));
   }

@@ -61,8 +61,10 @@ export function shareDocsImportTemplate(): string {
             <code id="prep-sd-current-url" class="prep-sd-current-url"></code>
           </div>
           <p class="prep-sd-help">Coche des dossiers et/ou des fichiers (la sélection se conserve quand tu navigues),
-            puis « Importer la sélection ». « Importer ce dossier » ingère le dossier courant : chaque fichier est
-            importé avec son format (extension) et sa langue (nom du fichier) ; les extensions inconnues sont ignorées.</p>
+            puis « Importer la sélection ». « Importer ce dossier » ingère le dossier courant. Chaque dossier
+            ouvert est <strong>lu</strong> : la colonne de droite dit ce que l&rsquo;import ferait de chaque fichier,
+            et c&rsquo;est ce mode-là qui sera employé. La langue vient du nom du fichier ; les extensions inconnues
+            sont ignorées.</p>
           <div id="prep-sd-entries" class="prep-sd-entries"></div>
           <div id="prep-sd-selection" class="prep-sd-selection" style="display:none">
             <span id="prep-sd-sel-count" class="prep-sd-sel-count"></span>
