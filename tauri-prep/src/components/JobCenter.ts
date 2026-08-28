@@ -3,7 +3,7 @@
  *
  * Renders a strip between the tab bar and screen content.
  * Polls active jobs every 500ms; shows progress bars + cancel buttons.
- * Keeps the last 5 finished jobs in a "recent" list.
+ * Keeps the last few finished jobs, then retires itself once nothing runs.
  */
 
 import type { Conn, JobRecord } from "../lib/sidecarClient.ts";
@@ -18,28 +18,19 @@ interface TrackedJob {
   onDone: DoneCallback;
 }
 
-// CSS injected once by App
-export const JOB_CENTER_CSS = `
-  .job-center { background: #f0f5ff; border-bottom: 1px solid #c8d8f5; display: none; }
-  .jc-inner { max-width: 900px; margin: 0 auto; padding: 0.35rem 1.25rem; display: flex;
-    flex-direction: column; gap: 0.25rem; }
-  .jc-section-title { font-size: 0.68rem; text-transform: uppercase; color: var(--color-muted);
-    letter-spacing: 0.07em; margin: 0.15rem 0 0; }
-  .jc-job { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
-  .jc-job-active { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
-  .jc-job-head { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
-  .jc-job-label { font-weight: 600; }
-  .jc-job-kind { color: var(--color-muted); font-size: 0.72rem; font-family: monospace; }
-  .jc-job-pct { margin-left: auto; font-weight: 600; color: var(--color-primary); font-size: 0.8rem; }
-  .jc-progress-bar { width: 100%; height: 3px; background: #c8d8f5; border-radius: 2px; }
-  .jc-progress-fill { height: 100%; background: var(--color-primary); border-radius: 2px;
-    transition: width 0.4s ease; }
-  .jc-msg { font-size: 0.72rem; color: var(--color-muted); }
-  .jc-job-done .jc-icon { color: var(--color-ok); font-weight: 700; }
-  .jc-job-err .jc-icon  { color: var(--color-danger); font-weight: 700; }
-  .jc-job-cancel .jc-icon { color: var(--color-secondary); }
-  .jc-recent-row { display: flex; align-items: center; gap: 0.4rem; }
-`;
+/**
+ * Un job terminé garde son libellé. Le `JobRecord` seul ne porte que le `kind` et le
+ * message du moteur : cinq sondes de dossiers différents rendaient cinq lignes
+ * strictement identiques (`webdav-probe · Probe completed`), qui ne disaient rien.
+ */
+interface RecentJob {
+  job: JobRecord;
+  label: string;
+}
+
+/** Combien de jobs terminés rester à l'écran, et combien de temps après le dernier. */
+const RECENT_MAX = 3;
+const RETIRE_MS = 8000;
 
 // ─── Toast helper (static, appended to body) ──────────────────────────────────
 
@@ -84,8 +75,9 @@ export function showToast(msg: string, isError = false): void {
 export class JobCenter {
   private _conn: Conn | null = null;
   private _active: Map<string, TrackedJob> = new Map();
-  private _recent: JobRecord[] = [];
+  private _recent: RecentJob[] = [];
   private _pollTimer: number | null = null;
+  private _retireTimer: number | null = null;
   private _panelEl!: HTMLElement;
 
   render(): HTMLElement {
@@ -100,9 +92,38 @@ export class JobCenter {
     this._conn = conn;
     if (!conn) {
       this._stopPolling();
+      this._cancelRetire();
       this._active.clear();
+      this._recent = [];
       this._updatePanel();
     }
+  }
+
+  /**
+   * Le bandeau annonce ce qui **tourne**. Une fois le dernier job fini, il se retire
+   * seul : sans ça, ses lignes terminées restaient au sommet de tous les écrans pour le
+   * reste de la session. Le journal, lui, garde la trace durable — et il la garde mieux,
+   * avec le dossier et les comptes.
+   */
+  private _scheduleRetire(): void {
+    this._cancelRetire();
+    this._retireTimer = window.setTimeout(() => {
+      this._retireTimer = null;
+      this._recent = [];
+      this._updatePanel();
+    }, RETIRE_MS);
+  }
+
+  private _cancelRetire(): void {
+    if (this._retireTimer !== null) {
+      clearTimeout(this._retireTimer);
+      this._retireTimer = null;
+    }
+  }
+
+  private _pushRecent(job: JobRecord, label: string): void {
+    this._recent.unshift({ job, label });
+    if (this._recent.length > RECENT_MAX) this._recent.length = RECENT_MAX;
   }
 
   /** Submit a job and start tracking it. Polls until terminal state. */
@@ -111,12 +132,13 @@ export class JobCenter {
     // Fetch initial job state then register
     getJob(this._conn, jobId).then((job) => {
       if (job.status === "done" || job.status === "error" || job.status === "canceled") {
-        this._recent.unshift(job);
-        if (this._recent.length > 5) this._recent.length = 5;
+        this._pushRecent(job, label);
         onDone(job);
         this._updatePanel();
+        this._scheduleRetire();
         return;
       }
+      this._cancelRetire();
       this._active.set(jobId, { label, job, onDone });
       this._updatePanel();
       this._startPolling();
@@ -126,6 +148,7 @@ export class JobCenter {
         job_id: jobId, kind: "unknown", status: "queued",
         progress_pct: 0, created_at: new Date().toISOString(),
       };
+      this._cancelRetire();
       this._active.set(jobId, { label, job: placeholder, onDone });
       this._updatePanel();
       this._startPolling();
@@ -156,8 +179,7 @@ export class JobCenter {
         entry.job = job;
         if (job.status === "done" || job.status === "error" || job.status === "canceled") {
           this._active.delete(jobId);
-          this._recent.unshift(job);
-          if (this._recent.length > 5) this._recent.length = 5;
+          this._pushRecent(job, entry.label);
           entry.onDone(job);
         }
       } catch {
@@ -165,7 +187,10 @@ export class JobCenter {
       }
     }
     this._updatePanel();
-    if (this._active.size === 0) this._stopPolling();
+    if (this._active.size === 0) {
+      this._stopPolling();
+      this._scheduleRetire();
+    }
   }
 
   private async _doCancel(jobId: string): Promise<void> {
@@ -183,7 +208,13 @@ export class JobCenter {
       this._panelEl.style.display = "none";
       return;
     }
-    this._panelEl.style.display = "";
+    // Valeur EXPLICITE, et non `""`. Vider le style inline ne rend pas l'élément
+    // visible : ça rend la main à la feuille de style, qui dit
+    // `.job-center { display: none }` (job-center.css:1). Le bandeau se peignait donc
+    // correctement puis se cachait dans le même geste — invisible depuis son origine
+    // (5808736), pour tous les jobs et tous les écrans. Personne ne l'a vu manquer :
+    // le toast et les journaux d'écran couvraient le même besoin.
+    this._panelEl.style.display = "block";
 
     let html = `<div class="jc-inner">`;
 
@@ -207,14 +238,15 @@ export class JobCenter {
     }
 
     if (this._recent.length > 0) {
-      html += `<div class="jc-section-title">Récents (5)</div>`;
-      for (const j of this._recent) {
+      html += `<div class="jc-section-title">Terminés (${this._recent.length})</div>`;
+      for (const { job: j, label } of this._recent) {
         const icon = j.status === "done" ? "✓" : j.status === "canceled" ? "↩" : "✗";
         const cls = j.status === "done" ? "jc-job-done" : j.status === "canceled" ? "jc-job-cancel" : "jc-job-err";
         const msg = j.progress_message ?? j.status;
         html += `
           <div class="jc-job ${cls} jc-recent-row">
             <span class="jc-icon">${icon}</span>
+            <span class="jc-job-label">${_esc(label)}</span>
             <span class="jc-job-kind">${_esc(j.kind)}</span>
             <span class="jc-msg">${_esc(msg)}</span>
           </div>`;
