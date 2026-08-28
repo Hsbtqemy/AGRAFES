@@ -225,6 +225,11 @@ l'écran affiche une coche verte.
       bouton « Suivant », champ « col » sur la ligne, carte « Langue par défaut ») — mais
       **aucune n'a encore été jouée**, et l'écran a changé de forme entre-temps. Elles
       restent le seul filet sur ce lot
+- [ ] **`segment` répond `ok` en ne faisant rien** — trouvé le 28 août en cherchant un
+      rattrapage pour un document 100 % `structure`. La commande rend `status: "ok"` sur un
+      document qu'elle ne peut pas traiter (aucune unité `line` à lire), sans un mot. Même
+      famille que le défaut de la fiche : une opération qui se déclare réussie en n'ayant
+      rien fait. À vérifier aussi côté sidecar (`POST /segment`) avant de trancher le remède
 - [ ] **ShareDocs garde le défaut qu'on vient de retirer en local.** `#prep-sd-profile`
       (`shareDocsImportTemplate.ts:77`) propose toujours `WP_DEFAULT_NUMBERED` en `selected`, et
       `shareDocs.ts:242` en dérive le mode. Les deux écrans sont donc désormais en désaccord sur
@@ -362,7 +367,18 @@ l'écran affiche une coche verte.
       numéroté `[n]` n'a aucune porte d'entrée. Les 3 `.docx` passent en paragraphes et rendent
       46 unités trouvables, mais avec `1. Texte 11` **collé dans le texte** et un `external_id`
       positionnel. L'écran le **dit** désormais (verdict `no_mode` / `numbering_lost`) au lieu de
-      l'importer en silence — reste à décider s'il doit aussi savoir le **lire**. Le motif `[n]`
+      l'importer en silence — reste à décider s'il doit aussi savoir le **lire**.
+      **Et il n'y a aucun rattrapage en aval, vérifié le 28 août en base.** `unit_type` est
+      écrit **une fois**, à l'insertion par l'importeur : les quatorze `UPDATE units` du
+      moteur touchent `meta_json`, `text_norm`, `text_raw`, `unit_role` et `unit_status`, et
+      **aucun** le type. Les *rôles* sont un axe distinct — une unité `structure` peut porter
+      le rôle « titre » et rester hors index. Le segmenteur filtre `unit_type = 'line'` à ses
+      treize accès, l'indexeur l'annonce dès son en-tête (« structure units excluded »), et
+      la curation peut bien éditer le texte : l'index ne le prendra pas. Mesuré de bout en
+      bout — import `ok` 48 unités / 0 ligne, resegmentation **sans effet**, index 0. La seule
+      issue est de supprimer le document et de le réimporter, ce qui suppose un mode qui sache
+      le lire. Le défaut n'est donc pas « une ancre perdue » mais **un document définitivement
+      inutilisable** Le motif `[n]`
       est recopié à l'identique dans **trois** importeurs (`docx_numbered_lines.py:42`,
       `odt_numbered_lines.py:23`, `txt.py:30`) : il faut le centraliser avant d'y toucher. Et
       **ne pas élargir `[n]` à `1.`** — une prose contenant une liste numérotée se ferait
