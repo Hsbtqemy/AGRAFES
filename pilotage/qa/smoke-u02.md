@@ -44,9 +44,12 @@ refactor — rebuilder `npm --prefix tauri-shell run build` avant de conclure.
 
 - [ ] Bannière familles : des fichiers partageant un radical avec suffixes de langue (`roman_fr.docx`, `roman_en.docx`) font apparaître « 🔗 Familles détectées automatiquement » avec le bon nombre de groupes, chaque groupe listant ses fichiers `roman_fr.docx [FR]` et un `<select>` « Original : »
 - [ ] Labels de statut par fichier au fil de l'import : `En attente` → `Importation…` (avec l'ellipsis) → `✓ doc_id=…` ou `✗ …`, sans `?` ni mojibake
+- [ ] Un import qui n'écrit **aucune** unité indexable donne un troisième libellé — `⚠ doc_id=… · rien d’indexable`, pastille **orange** — et non `✓` (IMPO-01, 28 août). Le cas se produit en forçant **Lignes numérotées [n]** sur `testparagraphesAgrafes.docx`
+- [ ] Une ligne déjà jouée (`✓` ou `✗`) porte un bouton **↺** qui la remet en attente et relance son analyse ; les lignes en attente ne l'ont pas
 
 ### ShareDocsImportScreen (#151)
 
+- [ ] La ligne du rapport d'un fichier importé porte son compte — `doc #12 · 34 indexables`, ou `doc #12 · ⚠ rien d’indexable` avec une pastille **orange** — et le résumé du lot finit par « ⚠ N sans unité indexable », la bulle passant alors en **erreur** au lieu du ✓ vert (SD-01, 28 août)
 - [ ] L'écran ShareDocs (WebDAV) s'ouvre entièrement : titre, intro, carte « 1. Connexion » avec champ URL, bouton « ↧ Préremplir l'URL racine », sélecteur Anonyme / Identifiant+mot de passe / Jeton (Bearer), case « Se souvenir », note « 🔒 … trousseau du système »
 - [ ] Changer le sélecteur d'authentification affiche et masque les bons champs (basic / bearer)
 - [ ] Après connexion : carte « 2. Dossier » (fil d'ariane « ← Retour », liste d'entrées, sélecteur « Profil par défaut » avec `Lignes numérotées [n]` / `Paragraphes`) et carte « 3. Rapport » ; tous les boutons réagissent

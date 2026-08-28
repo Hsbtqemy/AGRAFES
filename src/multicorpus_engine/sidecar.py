@@ -2611,7 +2611,9 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._send_error("Internal error", code=ERR_INTERNAL, http_status=500)
         else:
             try:
-                units, total, tables, n_line, n_structure = self._preview_text_units(
+                from multicorpus_engine.services.import_service import preview_text_units
+
+                units, total, tables, n_line, n_structure = preview_text_units(
                     fpath, mode, limit, column_index=column_index
                 )
                 self._send_json(success_payload({
@@ -2938,63 +2940,6 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
             return
         self._send_json(success_payload(result))
-
-    def _preview_text_units(
-        self, fpath: "Path", mode: str, limit: int, column_index: "int | None" = None
-    ) -> "tuple[list[dict], int, list[dict] | None, int, int]":
-        """Parse a file without writing to DB. Returns (units[:limit], total_count).
-
-        Each unit dict: { n, external_id, unit_type, text_raw }
-        Supported modes: txt_numbered_lines, docx_numbered_lines, docx_paragraphs,
-                         odt_numbered_lines, odt_paragraphs, tei.
-
-        A-02: every mode goes through the importer's own ``parse_<mode>`` so the
-        preview shows EXACTLY what an import would write — no parsing is
-        reimplemented here.
-
-        IMPO-01 : ``column_index`` manquait ici pour **tous** les modes, si bien
-        qu'aucun aperçu d'une extraction par colonne n'était possible — l'aperçu
-        montrait zéro unité là où l'import en écrivait des centaines. Il n'a de
-        sens que pour les deux modes DOCX ; ailleurs il est ignoré, comme au
-        dispatch.
-        """
-        from multicorpus_engine.importers import (
-            docx_numbered_lines, docx_paragraphs,
-            odt_numbered_lines, odt_paragraphs, tei_importer, txt,
-        )
-        from multicorpus_engine.importers.parsed import to_preview
-
-        if mode in ("txt_numbered_lines", "txt"):
-            parsed = txt.parse_txt_numbered_lines(fpath)
-        elif mode in ("docx_numbered_lines", "docx"):
-            parsed = docx_numbered_lines.parse_docx_numbered_lines(
-                fpath, column_index=column_index
-            )
-        elif mode == "docx_paragraphs":
-            parsed = docx_paragraphs.parse_docx_paragraphs(
-                fpath, column_index=column_index
-            )
-        elif mode in ("odt_numbered_lines", "odt"):
-            parsed = odt_numbered_lines.parse_odt_numbered_lines(fpath)
-        elif mode == "odt_paragraphs":
-            parsed = odt_paragraphs.parse_odt_paragraphs(fpath)
-        elif mode == "tei":
-            parsed = tei_importer.parse_tei(fpath)
-        else:
-            raise ValueError(f"Preview not supported for mode '{mode}'")
-
-        units, total = to_preview(parsed.units, limit)
-        # IMPO-01 — la forme des tables (`{columns, rows}` en ordre de lecture) ne
-        # remonte que pour les modes qui savent en extraire une colonne, donc les deux
-        # modes DOCX. `None` ailleurs : ne rien promettre qu'on ne sait pas honorer,
-        # l'ODT portant des tables mais aucun parcours par colonne.
-        tables = parsed.stats.get("tables") if isinstance(parsed.stats, dict) else None
-        # IMPO-01 — les comptes par type, calculés sur TOUTES les unités et non sur les
-        # `limit` rapatriées. Sans eux, l'aperçu comparatif devait redemander le document
-        # entier par mode juste pour compter ses unités indexables : ~110 Ko de texte sur
-        # la boucle locale, deux fois, pour deux entiers que le parse tient déjà.
-        units_line = sum(1 for u in parsed.units if u.unit_type == "line")
-        return units, total, tables, units_line, total - units_line
 
     def _handle_curate_exceptions_list(self, body: dict) -> None:
         # Thin adapter over the curate service (audit P0-1 / A-01).

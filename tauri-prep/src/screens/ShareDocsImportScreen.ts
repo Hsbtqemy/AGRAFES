@@ -50,6 +50,7 @@ import {
   safeDecodeUrl,
   type SelectedRemoteItem,
   sortRemoteEntries,
+  filesWithoutIndexable,
   statusBadgeKind,
   statusLabel,
   summarizeReport,
@@ -101,6 +102,7 @@ const SHAREDOCS_CSS = `
   .prep-sharedocs-screen .prep-sd-import-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
   .prep-sharedocs-screen .prep-sd-import-controls .prep-sd-field { flex: 1 1 140px; margin-bottom: 0; }
   .prep-sharedocs-screen .prep-sd-summary { font-weight: 600; margin: 0 0 0.6rem; }
+  .prep-sharedocs-screen .prep-sd-summary--warn { color: #856404; }
   .prep-sharedocs-screen .prep-sd-badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 10px;
     font-size: 0.72rem; font-weight: 700; }
   .prep-sharedocs-screen .prep-sd-badge--ok { background: #d4edda; color: #155724; }
@@ -542,8 +544,20 @@ export class ShareDocsImportScreen {
           if (done.status === "done" && isImportRemoteReport(result)) {
             this._report = mergeReports(this._report, result);
             this._renderReport();
-            this._showToast?.(`✓ ${summarizeReport(this._report)}`);
-            this._log(`✓ ${g.label} — ${summarizeReport(result)}`);
+            // Le résumé peut porter « ⚠ N sans unité indexable » : le préfixer d'un ✓ vert
+            // reproduirait exactement le défaut qu'IMPO-01 vient de corriger sur l'import
+            // local — une bulle de succès qui transporte un avertissement. Le lot suit son
+            // propre résultat, la bulle suit le cumul qu'elle affiche.
+            const videsLot = filesWithoutIndexable(result).length;
+            const videsCumul = filesWithoutIndexable(this._report).length;
+            this._showToast?.(
+              `${videsCumul > 0 ? "⚠" : "✓"} ${summarizeReport(this._report)}`,
+              videsCumul > 0,
+            );
+            this._log(
+              `${videsLot > 0 ? "⚠" : "✓"} ${g.label} — ${summarizeReport(result)}`,
+              videsLot > 0,
+            );
           } else {
             const msg =
               done.error ||
@@ -1039,7 +1053,10 @@ export class ShareDocsImportScreen {
       </tr>`;
     });
 
-    setHtml(host, safeHtml`<p class="prep-sd-summary">${summarizeReport(r)}</p>`);
+    const classeResume = filesWithoutIndexable(r).length > 0
+      ? "prep-sd-summary prep-sd-summary--warn"
+      : "prep-sd-summary";
+    setHtml(host, safeHtml`<p class="${classeResume}">${summarizeReport(r)}</p>`);
     appendHtml(
       host,
       safeHtml`<table class="prep-sd-table">

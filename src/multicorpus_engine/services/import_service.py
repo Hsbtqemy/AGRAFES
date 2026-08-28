@@ -144,3 +144,71 @@ def import_document(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
         **({"relation_id": relation_id} if relation_id is not None else {}),
         **stats,
     }
+
+
+def preview_text_units(
+    fpath: "Path", mode: str, limit: int, column_index: "int | None" = None
+) -> "tuple[list[dict], int, list[dict] | None, int, int]":
+    """Parse a file without writing to DB. Returns (units[:limit], total_count).
+
+    Each unit dict: { n, external_id, unit_type, text_raw }
+    Supported modes: txt_numbered_lines, docx_numbered_lines, docx_paragraphs,
+                     odt_numbered_lines, odt_paragraphs, tei.
+
+    A-02: every mode goes through the importer's own ``parse_<mode>`` so the
+    preview shows EXACTLY what an import would write — no parsing is
+    reimplemented here.
+
+    IMPO-01 : ``column_index`` manquait ici pour **tous** les modes, si bien
+    qu'aucun aperçu d'une extraction par colonne n'était possible — l'aperçu
+    montrait zéro unité là où l'import en écrivait des centaines. Il n'a de
+    sens que pour les deux modes DOCX ; ailleurs il est ignoré, comme au
+    dispatch.
+
+    Sortie de ``sidecar.py`` le 28 août 2026 (SD-01) : elle ne touchait déjà jamais
+    ``self``, et la sonde distante ``/webdav/probe`` doit l'appeler sur un fichier
+    téléchargé en temporaire. Extraction **mécanique**, corps inchangé.
+
+    Note de contrat : le ``ValueError`` du mode non supporté est aujourd'hui absorbé
+    par le ``except Exception`` de ``_handle_import_preview``, qui répond **500**. Un
+    nouvel appelant est libre de le mapper autrement ; ce n'est pas une erreur typée
+    de ``services/errors.py`` parce que la rendre telle changerait le code de réponse
+    historique de ``/import/preview``, que le gel du contrat protège.
+    """
+    from multicorpus_engine.importers import (
+        docx_numbered_lines, docx_paragraphs,
+        odt_numbered_lines, odt_paragraphs, tei_importer, txt,
+    )
+    from multicorpus_engine.importers.parsed import to_preview
+
+    if mode in ("txt_numbered_lines", "txt"):
+        parsed = txt.parse_txt_numbered_lines(fpath)
+    elif mode in ("docx_numbered_lines", "docx"):
+        parsed = docx_numbered_lines.parse_docx_numbered_lines(
+            fpath, column_index=column_index
+        )
+    elif mode == "docx_paragraphs":
+        parsed = docx_paragraphs.parse_docx_paragraphs(
+            fpath, column_index=column_index
+        )
+    elif mode in ("odt_numbered_lines", "odt"):
+        parsed = odt_numbered_lines.parse_odt_numbered_lines(fpath)
+    elif mode == "odt_paragraphs":
+        parsed = odt_paragraphs.parse_odt_paragraphs(fpath)
+    elif mode == "tei":
+        parsed = tei_importer.parse_tei(fpath)
+    else:
+        raise ValueError(f"Preview not supported for mode '{mode}'")
+
+    units, total = to_preview(parsed.units, limit)
+    # IMPO-01 — la forme des tables (`{columns, rows}` en ordre de lecture) ne
+    # remonte que pour les modes qui savent en extraire une colonne, donc les deux
+    # modes DOCX. `None` ailleurs : ne rien promettre qu'on ne sait pas honorer,
+    # l'ODT portant des tables mais aucun parcours par colonne.
+    tables = parsed.stats.get("tables") if isinstance(parsed.stats, dict) else None
+    # IMPO-01 — les comptes par type, calculés sur TOUTES les unités et non sur les
+    # `limit` rapatriées. Sans eux, l'aperçu comparatif devait redemander le document
+    # entier par mode juste pour compter ses unités indexables : ~110 Ko de texte sur
+    # la boucle locale, deux fois, pour deux entiers que le parse tient déjà.
+    units_line = sum(1 for u in parsed.units if u.unit_type == "line")
+    return units, total, tables, units_line, total - units_line
