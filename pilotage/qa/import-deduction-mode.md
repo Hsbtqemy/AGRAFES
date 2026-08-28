@@ -110,13 +110,14 @@ pris le dossier français.
 - [x] Ajouter `9_CI-TrFr-2021_Aligné_UTF8.txt` : verdict **rouge**, **« rien d’indexable »**, motif disant que c'est le **seul mode TXT**
 - [x] Ajouter `Asimov-Foundation_EN.txt` : verdict **vert**, **1683 indexables**, motif **marqueurs [n] détectés**
 - [x] Son aperçu est **plein** — c'est normal — mais **aucun `[n]` n'y figure** : le mode les a consommés. La colonne *ID* commence à **4** (puis 5, 6, 7) et la colonne texte démarre directement sur « Isaac Asimov, Foundation and Earth… », sans préfixe
-- [ ] Comparer les deux `.txt` ligne à ligne dans leur aperçu : sur Asimov la colonne *ID* est remplie (4, 5, 6…), le *Type* est `line`, et le texte n'a pas de marqueur ; sur `9_CI-TrFr` l'*ID* est **—**, le *Type* est `structure`, et le marqueur « 1. » est **bien visible** dans le texte. Deux aperçus qui ne se ressemblent pas, pour deux verdicts opposés
-- [ ] Les deux `.txt` sont côte à côte dans la liste et portent des verdicts **opposés** : c'est ce contraste qui protège du défaut trouvé le 27 août
-- [ ] Aucun de ces fichiers n'est passé en statut « erreur » : ils restent **en attente**, importables si on insiste
+- [x] Comparer les deux `.txt` ligne à ligne dans leur aperçu : sur Asimov la colonne *ID* est remplie (4, 5, 6…), le *Type* est `line`, et le texte n'a pas de marqueur ; sur `9_CI-TrFr` l'*ID* est **—**, le *Type* est `structure`, et le marqueur « 1. » est **bien visible** dans le texte. Deux aperçus qui ne se ressemblent pas, pour deux verdicts opposés
+- [x] Les deux `.txt` sont côte à côte dans la liste et portent des verdicts **opposés** : c'est ce contraste qui protège du défaut trouvé le 27 août
+- [x] Aucun de ces fichiers n'est passé en statut « erreur » : ils restent **en attente**, importables si on insiste
 
 ### Ce que la file annonce avant d'importer
 
-- [ ] Avec le `.txt` et le tableau sans colonne dans la liste, un bandeau **au-dessus** des lignes compte ce qui cloche
+- [x] Avec le `.txt` et le tableau sans colonne dans la liste, un bandeau **au-dessus** des lignes compte ce qui cloche
+- [ ] Ajouter assez de fichiers pour faire **défiler** la liste, puis défiler : le bandeau **ne bouge pas** — il vit hors de la zone qui défile, sans quoi il disparaîtrait au moment où il sert
 - [ ] Il nomme **séparément** les fichiers sans unité indexable et ceux qui attendent une colonne
 - [ ] Le bandeau est **rouge** dès qu'un fichier n'aurait rien d’indexable, **orange** s'il n'y a que des colonnes en attente
 - [ ] Retirer le `.txt` : le bandeau se met à jour, et disparaît quand plus rien ne cloche

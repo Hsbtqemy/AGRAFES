@@ -99,6 +99,7 @@ export class ImportScreen {
   private _files: FileItem[] = [];
   private _root!: HTMLElement;
   private _listEl!: HTMLElement;
+  private _queueWarnEl!: HTMLElement;
   private _logEl: HTMLElement = document.createElement("div");
   private _summaryEl!: HTMLElement;
   private _stateEl!: HTMLElement;
@@ -155,6 +156,7 @@ export class ImportScreen {
     setHtml(root, raw(importScreenTemplate()));
 
     this._listEl = root.querySelector("#imp-list")!;
+    this._queueWarnEl = root.querySelector("#imp-queue-warn")!;
     this._summaryEl = root.querySelector("#imp-summary")!;
     this._stateEl = root.querySelector("#imp-state-banner")!;
     this._importBtn = root.querySelector("#imp-import-btn")!;
@@ -450,6 +452,7 @@ export class ImportScreen {
     if (this._files.length === 0) {
       this._listEl.innerHTML = '<p class="empty-hint">Aucun fichier sélectionné.</p>';
       this._selectedPath = null;
+      this._renderQueueWarning();
       this._updatePrecheck();
       void this._refreshDetail();
       return;
@@ -513,16 +516,7 @@ export class ImportScreen {
       });
     });
 
-    // Ce que la file annonce AVANT qu'on appuie sur Importer — pour que le geste
-    // d'import ne soit pas le premier endroit où on apprend qu'un fichier est perdu.
-    const warn = buildQueueWarningHtml(
-      this._files.filter((f) => f.status === "pending").map((f) => this._verdictOf(f)),
-    );
-    if (warn) {
-      const el = document.createElement("div");
-      setHtml(el, raw(warn));
-      this._listEl.prepend(el);
-    }
+    this._renderQueueWarning();
 
     this._updatePrecheck();
     void this._refreshDetail();
@@ -664,6 +658,23 @@ export class ImportScreen {
       const sel = this._listEl.querySelector(".imp-file-item-sel .imp-file-name");
       if (sel) sel.textContent = f.title;
     });
+  }
+
+  /**
+   * Ce que la file annonce **avant** qu'on appuie sur Importer.
+   *
+   * Rendu **hors de la liste**, qui défile (`max-height: 42vh`) : injecté dedans, le
+   * bandeau disparaissait au premier défilement, alors qu'il compte précisément ce
+   * qu'on est sur le point d'importer. Un avertissement qui sort de l'écran cesse
+   * d'avertir.
+   */
+  private _renderQueueWarning(): void {
+    if (!this._queueWarnEl) return;
+    const warn = buildQueueWarningHtml(
+      this._files.filter((f) => f.status === "pending").map((f) => this._verdictOf(f)),
+    );
+    this._queueWarnEl.hidden = warn === null;
+    setHtml(this._queueWarnEl, raw(warn ?? ""));
   }
 
   /** Le fichier sélectionné, ou `null` s'il a quitté la liste. */

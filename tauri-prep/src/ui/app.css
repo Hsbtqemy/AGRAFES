@@ -5959,3 +5959,9 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 /* Sous `table-layout: fixed`, la cellule tient sa largeur de sa colonne : le plafond
    en pixels ne sert plus, l'abrègement si. */
 .prep-import-screen .imp-units-wrap .imp-text-preview-cell { max-width: none; }
+
+/* Le bandeau de la file vit HORS de la liste, qui défile (`max-height: 42vh`).
+   Injecté dedans, il disparaissait au premier défilement — alors qu'il compte
+   précisément ce qu'on est sur le point d'importer. */
+.prep-import-screen .imp-queue-warn-slot[hidden] { display: none; }
+.prep-import-screen .imp-queue-warn-slot .imp-queue-warn { margin-bottom: 0; }

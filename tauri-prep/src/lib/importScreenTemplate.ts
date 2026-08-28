@@ -90,6 +90,7 @@ export function importScreenTemplate(): string {
                 </button>
               </div>
             </div>
+            <div id="imp-queue-warn" class="imp-queue-warn-slot" hidden></div>
             <div id="imp-list" class="imp-file-list">
               <p class="empty-hint">Aucun fichier sélectionné.</p>
             </div>
