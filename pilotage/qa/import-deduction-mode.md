@@ -83,17 +83,17 @@ du dossier voisin, qui porte le même nom.
 - [x] Ajouter `Coe-House-AL_FR.docx` : le mode posé est **Lignes numérotées [n]**, motif **marqueurs [n] détectés**
 - [x] Le **verdict sur sa ligne**, à gauche, n'affiche **aucun compte** — pas « 1 », pas « 833 », rien. C'est voulu : l'analyse n'a lu le fichier qu'en mode paragraphes, elle ne connaît donc pas le compte du mode numéroté qu'elle vient de poser
 - [x] Le **tableau du panneau**, lui, les affiche tous les deux : **836 unités / 833 indexables** en Lignes numérotées, **1 / 1** en Paragraphes. C'est le contraste à vérifier — le verdict se tait là où il ne sait pas, le tableau parle là où il a mesuré
-- [ ] Ajouter `Houellebecq-Plateforme_FR.docx` **du dossier `GRAFE-Lit-FrRo-Aligné-DOCX`** (trois fichiers portent ce nom, voir l'avertissement) : même verdict, **Lignes numérotées [n]**
-- [ ] Son tableau du panneau annonce **1133 unités des deux côtés** — 1133 indexables en numéroté, 1133 aussi en paragraphes. C'est le seul fichier de la passe où le total ne sépare rien, et c'est là que le comptage seul choisirait à pile ou face
-- [ ] Ajouter `Asimov-Foundation_FR_réaligné.odt` : **Paragraphes · 1141 indexables**, alors que le mode numéroté en annoncerait autant d'unités et 0 indexable
+- [x] Ajouter `Houellebecq-Plateforme_FR.docx` **du dossier `GRAFE-Lit-FrRo-Aligné-DOCX`** (trois fichiers portent ce nom, voir l'avertissement) : même verdict, **Lignes numérotées [n]**
+- [x] Son tableau du panneau annonce **1133 unités des deux côtés** — 1133 indexables en numéroté, 1133 aussi en paragraphes. C'est le seul fichier de la passe où le total ne sépare rien, et c'est là que le comptage seul choisirait à pile ou face
+- [x] Ajouter `Asimov-Foundation_FR_réaligné.odt` : **Paragraphes · 1141 indexables**, alors que le mode numéroté en annoncerait autant d'unités et 0 indexable
 
 ### Ce que l'écran refuse de deviner
 
-- [ ] Ajouter `2021_Texte1…Tableau.docx` **sans colonne** : le verdict est orange et dit **« le texte est dans un tableau de 2 colonnes — indiquez la colonne à extraire »**
-- [ ] Il dit aussi **« rien d’indexable »** — les deux informations coexistent, la seconde étant la conséquence de la première
-- [ ] Saisir **1** dans le champ **Colonne** du panneau : le verdict de la ligne redevient vert, **48 indexables**, et la mention de colonne disparaît
-- [ ] Effacer la colonne : le verdict redemande la colonne — il ne reste pas sur l'ancien état
-- [ ] Ajouter `9_CI-TrFr-2021_Aligné_UTF8.txt` : verdict **rouge**, **« rien d’indexable »**, motif disant que c'est le **seul mode TXT**
+- [x] Ajouter `2021_Texte1…Tableau.docx` **sans colonne** : le verdict est orange et dit **« le texte est dans un tableau de 2 colonnes — indiquez la colonne à extraire »**
+- [x] Il dit aussi **« rien d’indexable »** — les deux informations coexistent, la seconde étant la conséquence de la première
+- [x] Saisir **1** dans le champ **Colonne** du panneau : le verdict de la ligne redevient vert, **48 indexables**, et la mention de colonne disparaît
+- [x] Effacer la colonne : le verdict redemande la colonne — il ne reste pas sur l'ancien état
+- [x] Ajouter `9_CI-TrFr-2021_Aligné_UTF8.txt` : verdict **rouge**, **« rien d’indexable »**, motif disant que c'est le **seul mode TXT**
 - [ ] Ajouter `Asimov-Foundation_EN.txt` : verdict **vert**, **1683 indexables**, motif **marqueurs [n] détectés** — alors que son aperçu n'en montre aucun, le mode les ayant consommés
 - [ ] Les deux `.txt` sont côte à côte dans la liste et portent des verdicts **opposés** : c'est ce contraste qui protège du défaut trouvé le 27 août
 - [ ] Aucun de ces fichiers n'est passé en statut « erreur » : ils restent **en attente**, importables si on insiste

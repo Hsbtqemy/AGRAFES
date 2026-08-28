@@ -201,6 +201,7 @@ export class ImportScreen {
         const files = e.dataTransfer?.files;
         if (!files || files.length === 0) return;
         const defaultLang = (this._root.querySelector<HTMLInputElement>("#imp-default-lang"))!.value.trim() || "fr";
+        const ajoutes: string[] = [];
         let added = 0;
         let skippedDup = 0;
         let skippedUnknown = 0;
@@ -214,9 +215,10 @@ export class ImportScreen {
           // dans la liste avec un mode bidon qui n'échoue qu'au dispatch.
           if (!isKnownImportExt(extFromFileName(name))) { skippedUnknown++; continue; }
           const r = this._tryAddSingle(path, name, defaultLang);
-          if (r === "added") added++;
+          if (r === "added") { added++; ajoutes.push(path); }
           else skippedDup++;
         }
+        this._selectIfSingleAdd(ajoutes);
         if (added > 0) {
           this._renderList();
           this._updateButtons();
@@ -310,6 +312,24 @@ export class ImportScreen {
   }
 
   /**
+   * Sélectionne le fichier qu'on vient d'ajouter — **seulement s'il est seul**.
+   *
+   * Ajouter un fichier et en ajouter trente-trois ne sont pas le même geste : le
+   * premier est une inspection (« qu'est-ce que l'application en fait ? »), le second
+   * un chargement, où l'on lit les verdicts dans la liste et non dans le panneau.
+   * La cadence réelle du corpus tranche dans le même sens — sur les 11 rafales
+   * d'avril à août, **sept sont un fichier seul**, mais 47 documents sur 58 sont
+   * arrivés dans les deux grosses.
+   *
+   * Sur un lot, la sélection ne bouge pas : sauter arbitrairement au dernier des
+   * trente-trois ne servirait personne, et déplacerait le panneau sous les yeux de
+   * quelqu'un qui regardait autre chose.
+   */
+  private _selectIfSingleAdd(ajoutes: string[]): void {
+    if (ajoutes.length === 1) this._selectedPath = ajoutes[0];
+  }
+
+  /**
    * Ajoute un fichier à la file s'il n'y est pas déjà (même chemin normalisé).
    * @returns "added" | "dup_queue"
    */
@@ -356,14 +376,16 @@ export class ImportScreen {
     const paths = Array.isArray(selected) ? selected : [selected];
     const defaultLang = (this._root.querySelector("#imp-default-lang") as HTMLInputElement).value.trim() || "fr";
 
+    const ajoutes: string[] = [];
     let added = 0;
     let skippedDup = 0;
     for (const p of paths) {
       const name = p.split("/").pop()?.split("\\").pop() ?? p;
       const r = this._tryAddSingle(p, name, defaultLang);
-      if (r === "added") added++;
+      if (r === "added") { added++; ajoutes.push(p); }
       else skippedDup++;
     }
+    this._selectIfSingleAdd(ajoutes);
     if (added > 0) {
       this._renderList();
       this._updateButtons();
