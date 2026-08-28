@@ -69,11 +69,12 @@ du dossier voisin, qui porte le même nom.
 
 ### Le verdict sur la ligne
 
-- [ ] Ajouter `testparagraphesAgrafes.docx` : sa ligne affiche brièvement **« analyse… »**, puis le verdict
-- [ ] Le verdict lu est **Paragraphes · 17 indexables · aucun marqueur — un paragraphe par unité**
-- [ ] Le sélecteur de mode de la ligne montre bien **Paragraphes**, pas « Lignes numérotées [n] »
-- [ ] Ajouter `Coe-House-AL_FR.docx` : le mode posé est **Lignes numérotées [n]**, motif **marqueurs [n] détectés**
-- [ ] Cette ligne-là n'affiche **aucun compte** — et c'est voulu, voir le préambule
+- [x] Ajouter `testparagraphesAgrafes.docx` : sa ligne affiche brièvement **« analyse… »**, puis le verdict
+- [x] Le verdict lu est **Paragraphes · 17 indexables · aucun marqueur — un paragraphe par unité**
+- [x] Le sélecteur de mode de la ligne montre bien **Paragraphes**, pas « Lignes numérotées [n] »
+- [x] Ajouter `Coe-House-AL_FR.docx` : le mode posé est **Lignes numérotées [n]**, motif **marqueurs [n] détectés**
+- [ ] Le **verdict sur sa ligne**, à gauche, n'affiche **aucun compte** — pas « 1 », pas « 833 », rien. C'est voulu : l'analyse n'a lu le fichier qu'en mode paragraphes, elle ne connaît donc pas le compte du mode numéroté qu'elle vient de poser
+- [ ] Le **tableau du panneau**, lui, les affiche tous les deux : **836 unités / 833 indexables** en Lignes numérotées, **1 / 1** en Paragraphes. C'est le contraste à vérifier — le verdict se tait là où il ne sait pas, le tableau parle là où il a mesuré
 - [ ] Ajouter `Houellebecq-Plateforme_FR.docx` : même verdict, **Lignes numérotées [n]** — c'est le fichier où les deux modes rendent le même nombre d'unités
 - [ ] Ajouter `Asimov-Foundation_FR_réaligné.odt` : **Paragraphes · 1141 indexables**, alors que le mode numéroté en annoncerait autant d'unités et 0 indexable
 
