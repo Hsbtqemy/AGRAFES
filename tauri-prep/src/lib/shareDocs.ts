@@ -17,10 +17,57 @@ import type {
 import {
   deriveModeFromExt,
   detectLanguageForMode,
+  detectNumbering,
   extFromFileName,
   isKnownImportExt,
   normalizeModeForExt,
+  planImport,
+  uniformTableColumns,
 } from "./importDetect.ts";
+import type { ImportPlan } from "./importDetect.ts";
+import { modeOptionsForExt } from "./importDetect.ts";
+import type { FileVerdict } from "./importVerdictTemplate.ts";
+import type { RemoteProbeFile, RemoteProbeReport } from "./sidecarClient.ts";
+import { stripHiTags } from "./richTextModel.ts";
+
+/**
+ * Le verdict d'un fichier **distant**, déduit de ce que la sonde en a lu (SD-01).
+ *
+ * Rejoue la même chaîne que l'import local — `detectNumbering` puis `planImport` — sur
+ * la même forme de données, la sonde renvoyant la réponse de `/import/preview`. La règle
+ * de déduction reste donc en **un seul exemplaire** : c'est ce qui justifiait de
+ * télécharger deux fois plutôt que de la réécrire en Python.
+ *
+ * `null` quand il n'y a rien à dire : fichier non sondé (format auto-descriptif,
+ * extension inconnue, trop gros) ou illisible.
+ */
+export function planForRemoteFile(f: RemoteProbeFile): ImportPlan | null {
+  if (f.status !== "probed") return null;
+  const numbering = detectNumbering((f.units ?? []).map((u) => stripHiTags(u.text_raw ?? "")));
+  const plan = planImport({
+    ext: f.ext,
+    numbering: numbering.form,
+    searchableInProbe: f.units_line ?? 0,
+    uniformColumns: uniformTableColumns(f.tables),
+    // Aucune colonne ne peut être indiquée à distance : ni /webdav/probe ni
+    // /import-remote ne portent `column_index`. Toujours faux, donc — et c'est
+    // précisément pourquoi le motif est réécrit juste en dessous.
+    hasColumn: false,
+  });
+  if (plan.verdict === "column_needed") {
+    // Le motif local dit « indiquez la colonne à extraire ». À distance, ce serait une
+    // consigne que personne ne peut suivre : le champ n'existe pas, et l'import distant
+    // ne saurait pas la transmettre. On dit ce qui est vrai plutôt que de renvoyer
+    // l'utilisateur vers un geste absent.
+    return {
+      ...plan,
+      reason: `le texte est dans un tableau de ${uniformTableColumns(f.tables)} colonnes `
+        + "— l'extraction par colonne n'existe pas encore à distance ; importez ce fichier "
+        + "localement",
+    };
+  }
+  return plan;
+}
 
 /**
  * Build the auth object from raw form fields, keeping only the fields relevant to
@@ -266,10 +313,15 @@ export function detectImportFile(
   parentUrl: string,
   profile: string,
   defaultLanguage: string,
+  deducedMode?: string | null,
 ): DetectedImportFile | null {
   const ext = extFromFileName(name);
   if (!isKnownImportExt(ext)) return null;
-  const mode = normalizeModeForExt(deriveModeFromExt(ext, profile), ext);
+  // Le mode **déduit du contenu** prime sur celui dérivé de l'extension et du profil de
+  // lot (SD-01) : c'est ce que la sonde a lu du fichier, là où le profil ne pouvait que
+  // supposer. `normalizeModeForExt` reste le garde-fou — un mode déduit incompatible
+  // avec l'extension retombe sur la dérivation, plutôt que de partir tel quel.
+  const mode = normalizeModeForExt(deducedMode || deriveModeFromExt(ext, profile), ext);
   const language = detectLanguageForMode(mode, name, defaultLanguage);
   return { href, name, parentUrl, mode, language };
 }
@@ -285,6 +337,7 @@ export function routeEntriesToImport(
   parentUrl: string,
   profile: string,
   defaultLanguage: string,
+  deducedModes?: ReadonlyMap<string, string>,
 ): { files: DetectedImportFile[]; ignored: number; subfolders: number } {
   const files: DetectedImportFile[] = [];
   let ignored = 0;
@@ -294,7 +347,9 @@ export function routeEntriesToImport(
       subfolders += 1;
       continue;
     }
-    const det = detectImportFile(e.name, e.href, parentUrl, profile, defaultLanguage);
+    const det = detectImportFile(
+      e.name, e.href, parentUrl, profile, defaultLanguage, deducedModes?.get(e.href),
+    );
     if (det) files.push(det);
     else ignored += 1;
   }
@@ -450,6 +505,56 @@ export function safeDecodeUrl(url: string): string {
  * report — the job result is typed `Record<string, unknown>`, so a shape drift
  * (older sidecar, partial result) must not surface as "undefined fichier".
  */
+/**
+ * Le verdict d'un fichier distant, prêt pour {@link buildVerdictHtml}.
+ *
+ * `null` quand la sonde n'a rien lu — la ligne reste alors muette plutôt que d'afficher
+ * un verdict inventé.
+ *
+ * Le **compte** n'est donné que si le mode déduit est celui dans lequel la sonde a lu :
+ * sur un document numéroté `[n]`, elle sait *qu'il* sera indexable — les marqueurs sont
+ * là — sans connaître le compte du mode numéroté. Même règle qu'en local.
+ */
+export function verdictForRemoteFile(f: RemoteProbeFile): FileVerdict | null {
+  const plan = planForRemoteFile(f);
+  if (!plan) return null;
+  const opts = modeOptionsForExt(f.ext);
+  const label = opts.find((o) => o.value === plan.mode)?.label ?? plan.mode;
+  return {
+    plan,
+    modeLabel: label,
+    searchable: plan.mode === f.mode ? (f.units_line ?? 0) : null,
+  };
+}
+
+export function isRemoteProbeReport(x: unknown): x is RemoteProbeReport {
+  if (!x || typeof x !== "object") return false;
+  const r = x as Record<string, unknown>;
+  return (
+    typeof r.total === "number" &&
+    typeof r.probed === "number" &&
+    Array.isArray(r.files)
+  );
+}
+
+/**
+ * Modes déduits par la sonde, indexés par href — prêts pour `routeEntriesToImport`.
+ *
+ * Ne retient que les fichiers dont la sonde a **effectivement** tiré un plan : un
+ * document non sondé (format auto-descriptif, extension inconnue, illisible) n'a pas de
+ * mode déduit et retombe donc sur la dérivation par extension, comme avant.
+ */
+export function deducedModesFrom(
+  probes: Iterable<RemoteProbeFile>,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of probes) {
+    const plan = planForRemoteFile(f);
+    if (plan) out.set(f.source_url, plan.mode);
+  }
+  return out;
+}
+
 export function isImportRemoteReport(x: unknown): x is ImportRemoteReport {
   if (!x || typeof x !== "object") return false;
   const r = x as Record<string, unknown>;

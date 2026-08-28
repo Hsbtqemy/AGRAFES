@@ -5776,35 +5776,56 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   font-size: 0.82rem;
   line-height: 1.45;
 }
-.prep-import-screen .imp-verdict {
+/* Le verdict est **partagé par les deux écrans d'import** (SD-01) : ShareDocs affiche
+   le même, avec le même vocabulaire et le même code de rendu. Sans le second ancêtre,
+   ces règles ne s'appliquaient qu'à l'import local et la colonne distante sortait sans
+   style. Le préfixe `imp-*` reste namespacé par l'ancêtre, comme partout ici. */
+.prep-import-screen .imp-verdict,
+.prep-sharedocs-screen .imp-verdict {
   display: inline-block;
   padding: 2px 7px;
   border-radius: 4px;
   border-left: 3px solid transparent;
 }
-.prep-import-screen .imp-verdict-pending {
+.prep-import-screen .imp-verdict-pending,
+.prep-sharedocs-screen .imp-verdict-pending {
   color: var(--color-text-muted, #64748b);
   font-style: italic;
 }
-.prep-import-screen .imp-verdict-ok {
+.prep-import-screen .imp-verdict-ok,
+.prep-sharedocs-screen .imp-verdict-ok {
   background: var(--color-success-bg, #d1fae5);
   color: var(--color-success, #1a7f4e);
   border-left-color: var(--color-success, #1a7f4e);
 }
-.prep-import-screen .imp-verdict-warn {
+.prep-import-screen .imp-verdict-warn,
+.prep-sharedocs-screen .imp-verdict-warn {
   background: var(--color-warn-bg, #fff3cd);
   color: var(--color-warn, #b8590a);
   border-left-color: var(--color-warn, #b8590a);
 }
-.prep-import-screen .imp-verdict-bad {
+.prep-import-screen .imp-verdict-bad,
+.prep-sharedocs-screen .imp-verdict-bad {
   background: var(--color-danger-bg, #fee2e2);
   color: var(--color-danger, #b91c1c);
   border-left-color: var(--color-danger, #b91c1c);
 }
+/* Un fichier qu'aucun import ne sait router : dit, mais sans alarme — ce n'est pas un
+   défaut du document, il n'a simplement rien à faire dans un corpus. */
+.prep-sharedocs-screen .imp-verdict-muted {
+  background: var(--color-surface-alt, #f1f5f9);
+  color: var(--color-text-muted, #64748b);
+  border-left-color: var(--prep-line, #dde3ea);
+}
 /* Le motif : pourquoi ce mode. Sans lui la déduction est un oracle qu'on ne peut
    pas contredire — d'où un ton plus discret, mais jamais masqué. */
-.prep-import-screen .imp-verdict-why { opacity: 0.85; }
-.prep-import-screen .imp-verdict-zero { text-transform: uppercase; letter-spacing: 0.02em; }
+.prep-import-screen .imp-verdict-why,
+.prep-sharedocs-screen .imp-verdict-why { opacity: 0.85; }
+.prep-import-screen .imp-verdict-zero,
+.prep-sharedocs-screen .imp-verdict-zero { text-transform: uppercase; letter-spacing: 0.02em; }
+/* La colonne du verdict dans le listing distant : elle doit pouvoir respirer sans
+   écraser le nom du fichier. */
+.prep-sharedocs-screen .prep-sd-verdict { font-size: 0.78rem; line-height: 1.4; }
 
 /* Ce que la file annonce AVANT qu'on appuie sur Importer. */
 .prep-import-screen .imp-queue-warn {

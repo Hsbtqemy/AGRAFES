@@ -640,3 +640,142 @@ describe("mergeReports", () => {
     expect(m.files.map((f) => f.name)).toEqual(["a", "b"]);
   });
 });
+
+
+// ── La déduction sur un fichier DISTANT (SD-01) ─────────────────────────────
+//
+// Même chaîne que l'import local — detectNumbering puis planImport — sur la forme que
+// /webdav/probe renvoie. C'est ce qui justifiait de télécharger deux fois plutôt que de
+// réécrire la règle en Python : elle reste en un seul exemplaire.
+
+import {
+  planForRemoteFile,
+  verdictForRemoteFile,
+  deducedModesFrom,
+  isRemoteProbeReport,
+} from "../shareDocs.ts";
+import type { RemoteProbeFile } from "../sidecarClient.ts";
+
+const sonde = (over: Partial<RemoteProbeFile> = {}): RemoteProbeFile => ({
+  source_url: "https://dav.example/folder/a.docx",
+  name: "a.docx",
+  ext: "docx",
+  status: "probed",
+  mode: "docx_paragraphs",
+  units: [],
+  units_total: 0,
+  units_line: 0,
+  units_structure: 0,
+  truncated: false,
+  tables: null,
+  ...over,
+});
+
+const lignes = (textes: string[]) => textes.map((t, i) => ({
+  n: i + 1, external_id: null, unit_type: "line", text_raw: t,
+}));
+
+describe("planForRemoteFile", () => {
+  it("déduit « lignes numérotées » quand les marqueurs [n] sont là", () => {
+    const plan = planForRemoteFile(sonde({
+      units: lignes(["[1] Bonjour.", "[2] Le monde.", "[3] Encore."]) as never,
+      units_line: 3,
+    }));
+    expect(plan?.mode).toBe("docx_numbered_lines");
+    expect(plan?.verdict).toBe("ok");
+  });
+
+  it("déduit « paragraphes » quand il n'y a aucun marqueur", () => {
+    const plan = planForRemoteFile(sonde({
+      units: lignes(["Un paragraphe.", "Un autre."]) as never,
+      units_line: 2,
+    }));
+    expect(plan?.mode).toBe("docx_paragraphs");
+    expect(plan?.verdict).toBe("ok");
+  });
+
+  it("ne dit rien d'un fichier que la sonde n'a pas lu", () => {
+    expect(planForRemoteFile(sonde({ status: "skipped-no-probe", mode: null }))).toBeNull();
+    expect(planForRemoteFile(sonde({ status: "skipped-unsupported", mode: null }))).toBeNull();
+    expect(planForRemoteFile(sonde({ status: "error", error: "boum" }))).toBeNull();
+  });
+
+  it("sur un bitexte en tableau, ne renvoie PAS vers un geste inexistant", () => {
+    // Le motif local dit « indiquez la colonne à extraire ». À distance, ni
+    // /webdav/probe ni /import-remote ne portent column_index : ce serait une consigne
+    // que personne ne peut suivre.
+    const plan = planForRemoteFile(sonde({
+      units: [], units_line: 0, tables: [{ columns: 2, rows: 40 }],
+    }));
+    expect(plan?.verdict).toBe("column_needed");
+    expect(plan?.reason).not.toContain("indiquez la colonne");
+    expect(plan?.reason).toContain("localement");
+  });
+});
+
+describe("verdictForRemoteFile", () => {
+  it("donne le compte quand le mode déduit est celui qu'on a lu", () => {
+    const v = verdictForRemoteFile(sonde({
+      units: lignes(["Un paragraphe."]) as never, units_line: 7,
+    }));
+    expect(v?.searchable).toBe(7);
+    expect(v?.modeLabel).toBe("Paragraphes");
+  });
+
+  it("retire le compte quand le mode déduit n'est pas celui qu'on a lu", () => {
+    // Lu en paragraphes, déduit numéroté : le compte mesuré ne vaut plus pour le mode
+    // annoncé — on préfère n'en donner aucun qu'un chiffre d'à côté.
+    const v = verdictForRemoteFile(sonde({
+      units: lignes(["[1] Bonjour.", "[2] Monde."]) as never, units_line: 2,
+    }));
+    expect(v?.plan.mode).toBe("docx_numbered_lines");
+    expect(v?.searchable).toBeNull();
+  });
+
+  it("rend null sur un fichier non sondé", () => {
+    expect(verdictForRemoteFile(sonde({ status: "skipped-unsupported" }))).toBeNull();
+  });
+});
+
+describe("deducedModesFrom", () => {
+  it("n'indexe que les fichiers dont la sonde a tiré un plan", () => {
+    const m = deducedModesFrom([
+      sonde({ source_url: "u/a.docx", units: lignes(["Texte."]) as never, units_line: 1 }),
+      sonde({ source_url: "u/b.xml", ext: "xml", status: "skipped-no-probe", mode: null }),
+      sonde({ source_url: "u/c.pdf", ext: "pdf", status: "skipped-unsupported", mode: null }),
+    ]);
+    expect([...m.keys()]).toEqual(["u/a.docx"]);
+    expect(m.get("u/a.docx")).toBe("docx_paragraphs");
+  });
+});
+
+describe("detectImportFile — mode déduit", () => {
+  it("le mode déduit prime sur la dérivation par extension et profil", () => {
+    const det = detectImportFile(
+      "a.docx", "u/a.docx", "u/", "docx_numbered_lines", "fr", "docx_paragraphs",
+    );
+    expect(det?.mode).toBe("docx_paragraphs");
+  });
+
+  it("un mode déduit incompatible avec l'extension retombe sur la dérivation", () => {
+    // Garde-fou : `normalizeModeForExt`. Un mode TXT sur un .docx ne part pas tel quel.
+    const det = detectImportFile(
+      "a.docx", "u/a.docx", "u/", "docx_numbered_lines", "fr", "txt_numbered_lines",
+    );
+    expect(det?.mode).toBe("docx_numbered_lines");
+  });
+
+  it("sans mode déduit, le comportement est inchangé", () => {
+    const det = detectImportFile("a.docx", "u/a.docx", "u/", "docx_numbered_lines", "fr");
+    expect(det?.mode).toBe("docx_numbered_lines");
+  });
+});
+
+describe("isRemoteProbeReport", () => {
+  it("reconnaît un rapport de sonde et rejette le reste", () => {
+    expect(isRemoteProbeReport({ total: 1, probed: 1, files: [] })).toBe(true);
+    expect(isRemoteProbeReport({ total: 1, imported: 1, files: [] })).toBe(false);
+    expect(isRemoteProbeReport(null)).toBe(false);
+    expect(isRemoteProbeReport("x")).toBe(false);
+  });
+});

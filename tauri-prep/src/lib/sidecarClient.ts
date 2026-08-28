@@ -1452,6 +1452,13 @@ export interface ImportRemoteOptions {
   /** Explicit file selection (P4C): import only these hrefs (intersected with the
    *  folder listing server-side). Omit to import the whole folder. */
   hrefs?: string[];
+  /**
+   * Mode d'import **par fichier**, indexé par href (SD-01, contrat 1.6.82) —
+   * typiquement ce que {@link webdavProbe} a fait déduire de chaque document. Prime sur
+   * `mode` pour les fichiers qu'il nomme, lesquels contournent aussi le filtre
+   * d'extension du lot ; les absents retombent sur `mode`.
+   */
+  modes?: Record<string, string>;
   auth?: WebdavAuth;
   doc_role?: string;
   resource_type?: string;
@@ -1499,6 +1506,78 @@ export async function webdavList(
   const res = (await conn.post("/webdav/list", opts)) as { entries?: RemoteEntry[] };
   // Defensive: a 200 with an unexpected body must not crash the caller's spread.
   return Array.isArray(res?.entries) ? res.entries : [];
+}
+
+/**
+ * Pourquoi un fichier distant n'a **pas** été lu — et les deux raisons ne se valent pas.
+ *
+ * `skipped-no-probe` : le format se décrit lui-même (TEI, CoNLL-U). Rien à déduire, mais
+ * le document **s'importe** — l'écran doit le proposer, simplement sans verdict.
+ * `skipped-unsupported` : l'extension n'a aucune porte d'entrée (`.pdf`…). Le document ne
+ * s'importe pas du tout. Les confondre reviendrait à proposer un PDF à l'import.
+ */
+export type RemoteProbeStatus =
+  | "probed"
+  | "skipped-no-probe"
+  | "skipped-unsupported"
+  | "skipped-oversize"
+  | "error";
+
+/**
+ * Ce que la sonde a lu d'un fichier distant — **la forme de `/import/preview`**, pour que
+ * l'écran rejoue dessus exactement la déduction qu'il applique à un fichier local
+ * (`detectNumbering` → `planImport`), sans branche distante.
+ */
+export interface RemoteProbeFile {
+  source_url: string;
+  name: string;
+  /** Extension en minuscules, sans point (`""` si le nom n'en porte pas). */
+  ext: string;
+  status: RemoteProbeStatus;
+  /** Mode de **lecture** employé, `null` quand le fichier n'a pas été sondé. */
+  mode: string | null;
+  units?: ImportPreviewUnit[];
+  units_total?: number;
+  /** Compté sur TOUT le fichier, là où `units` est borné par `limit`. */
+  units_line?: number;
+  units_structure?: number;
+  truncated?: boolean;
+  tables?: { columns: number; rows: number }[] | null;
+  size?: number | null;
+  error?: string;
+}
+
+/** Rapport de sonde d'un dossier distant (job `webdav-probe`). */
+export interface RemoteProbeReport {
+  url: string;
+  total: number;
+  probed: number;
+  skipped_no_probe: number;
+  skipped_unsupported: number;
+  skipped_oversize: number;
+  errors: number;
+  files: RemoteProbeFile[];
+}
+
+/**
+ * Lit un dossier WebDAV **sans rien écrire** et rend, par fichier, de quoi déduire son
+ * mode d'import (SD-01, contrat 1.6.81/1.6.83). Aucun jeton : la sonde n'écrit rien.
+ *
+ * Retourne le job async ; le résultat final est un {@link RemoteProbeReport}.
+ */
+export async function webdavProbe(
+  conn: Conn,
+  opts: {
+    url: string;
+    hrefs?: string[];
+    include?: string;
+    auth?: WebdavAuth;
+    max_file_mb?: number;
+    limit?: number;
+  },
+): Promise<JobRecord> {
+  const res = (await conn.post("/webdav/probe", opts)) as { job: JobRecord };
+  return res.job;
 }
 
 /**

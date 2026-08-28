@@ -2,10 +2,10 @@
  * shareDocsImportTemplate.ts - static HTML skeleton of the ShareDocs (WebDAV)
  * import screen, extracted from ShareDocsImportScreen.render() (U-02). Mirrors
  * the importScreenTemplate.ts pattern: quasi-static, the only substitutions are
- * the default-profile constants WP_DEFAULT_* (mode-selector option values).
+ * Le sélecteur de profil de lot a été retiré (SD-01) : le mode vient désormais de la
+ * sonde, par fichier. Ce gabarit ne connaît donc plus aucune constante de mode.
  * Injected via the trusted sink setHtml(root, raw(...)). Moved byte-identical.
  */
-import { WP_DEFAULT_NUMBERED, WP_DEFAULT_PARAGRAPHS } from "./importDetect.ts";
 
 export function shareDocsImportTemplate(): string {
   return `
@@ -72,12 +72,12 @@ export function shareDocsImportTemplate(): string {
           <div id="prep-sd-sel-list" class="prep-sd-sel-list"></div>
           <div id="prep-sd-sel-confirm" class="prep-sd-sel-confirm"></div>
           <div class="prep-sd-import-controls">
-            <label class="prep-sd-field"><span>Profil par défaut (style)</span>
-              <select id="prep-sd-profile">
-                <option value="${WP_DEFAULT_NUMBERED}" selected>Lignes numérotées [n]</option>
-                <option value="${WP_DEFAULT_PARAGRAPHS}">Paragraphes</option>
-              </select>
-            </label>
+            <!-- Le sélecteur « Profil par défaut » a été retiré (SD-01). Il décidait du
+                 style — lignes numérotées ou paragraphes — pour TOUT un lot, et son
+                 défaut « lignes numérotées » se trompait sur 149 des 273 fichiers réels
+                 mesurés. Chaque fichier porte désormais le mode que la sonde a déduit de
+                 son contenu ; le repli d'un fichier illisible est **Paragraphes**, celui
+                 qui lit quelque chose de n'importe quel document. -->
             <label class="prep-sd-field"><span>Langue par défaut (si non détectée)</span><input type="text" id="prep-sd-language" placeholder="fr" /></label>
             <button type="button" id="prep-sd-import-btn" class="prep-sd-btn prep-sd-btn--primary">Importer ce dossier</button>
           </div>
