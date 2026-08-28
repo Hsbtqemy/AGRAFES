@@ -478,6 +478,18 @@ l'écran affiche une coche verte.
       les fichiers en attente. La cadence réelle (médiane 1 fichier, mais 47 documents sur 58
       entrés en deux rafales de 33 et 14) demande que les deux tiennent : un bouton par carte
       pour le geste unitaire, sans retirer l'import du lot en attente
+- [ ] **Un code de langue au milieu du nom n'est pas lu** — trouvé en jouant `qa/sharedocs-deduction.md`, au premier
+      import réel, **décidé de ne rien changer**. `LANG_RE` (`importDetect.ts`) est ancré
+      en **fin** de nom : dans `Asimov-Foundation_EN_réaligné.odt`, le suffixe `_réaligné`
+      met le `_EN_` hors de portée. Deux dégâts pour une cause, car `familyDetect.ts`
+      importe le **même** `LANG_RE` et saute un fichier sans correspondance : la langue
+      tombe sur le défaut du lot — l'anglais est entré en `fr` — et **aucun lien
+      source↔traduction n'est créé**, deux bitextes réalignés entrant comme deux documents
+      sans rapport. Mesure sur le corpus : **4 fichiers sur 514** (Asimov et Barnes, EN/FR)
+      ; les 213 sans token en fin n'en portent pas davantage au milieu, donc élargir la
+      règle n'aurait fait **aucun** faux positif. Écarté quand même, la règle étant
+      partagée par l'import local, ShareDocs et les familles. Ce qui reste vrai : le piège
+      frappe **en silence**, et l'écran affirme « La langue vient du nom du fichier ».
 
 ## QA
 
