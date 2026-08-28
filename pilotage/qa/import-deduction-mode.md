@@ -78,6 +78,7 @@ du dossier voisin, qui porte le même nom.
 ### Le verdict sur la ligne
 
 - [x] Ajouter `testparagraphesAgrafes.docx` : sa ligne affiche brièvement **« analyse… »**, puis le verdict
+- [ ] Le panneau de droite **bascule tout seul** sur ce fichier — un ajout unique se sélectionne, parce qu'ajouter un fichier c'est demander ce que l'application en fait
 - [x] Le verdict lu est **Paragraphes · 17 indexables · aucun marqueur — un paragraphe par unité**
 - [x] Le sélecteur de mode de la ligne montre bien **Paragraphes**, pas « Lignes numérotées [n] »
 - [x] Ajouter `Coe-House-AL_FR.docx` : le mode posé est **Lignes numérotées [n]**, motif **marqueurs [n] détectés**
@@ -120,6 +121,7 @@ du dossier voisin, qui porte le même nom.
 - [ ] Le survol du bouton **« Appliquer »** dit que le mode d'import, lui, est déduit de chaque fichier
 - [ ] Changer la langue par défaut puis **« Appliquer »** change la **langue** de chaque fichier en attente et **laisse les modes intacts**
 - [ ] Ajouter plusieurs fichiers d'un coup (une dizaine) : chaque ligne passe par « analyse… » puis reçoit son verdict, l'une après l'autre, sans figer l'écran
+- [ ] Sur ce lot, la sélection du panneau **ne bouge pas** : sauter au dernier des dix déplacerait l'affichage sous les yeux de quelqu'un qui regardait autre chose
 
 ### Après l'import
 
