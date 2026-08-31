@@ -101,6 +101,25 @@ export interface DocumentRecord {
    * `GET /families` ignore. Contrat 1.6.85.
    */
   aligned_count?: number;
+  /**
+   * ACT-01 — les coches MANUELLES de ce document, par capacité. Clé absente = pas de
+   * coche ; les deux autres états restent dérivés des quatre champs ci-dessus et ne
+   * sont jamais stockés. Contrat 1.6.88.
+   *
+   * `stale` veut dire que le travail postérieur dément la coche : elle doit alors se
+   * rendre « en cours », JAMAIS « fait ». `basis` vaut `derived` quand aucun historique
+   * n'existait à la pose — la coche est plus faible, et l'écran le dit.
+   */
+  step_status?: Record<string, StepMark>;
+}
+
+/** Une coche posée sur (document, capacité), avec son verdict de péremption. */
+export interface StepMark {
+  validated_at: string;
+  stale: boolean;
+  /** Le type d'action fautif, ou `derived:<champ>`. Null quand la coche tient. */
+  stale_reason?: string | null;
+  basis: "history" | "derived";
 }
 
 export interface DocumentPreviewLine {
@@ -2013,6 +2032,30 @@ export async function bulkSetUnitStatus(
 
 export async function updateDocument(conn: Conn, opts: DocumentUpdateOptions): Promise<{ updated: number; doc: DocumentRecord }> {
   return conn.post("/documents/update", opts) as Promise<{ updated: number; doc: DocumentRecord }>;
+}
+
+/**
+ * ACT-01 — pose la coche d'une capacité sur un document (contrat 1.6.88).
+ *
+ * Idempotent : re-poser une coche présente la rafraîchit, ce qui est le geste
+ * « je reconfirme après avoir retravaillé ». Le moteur fige au passage les deux
+ * signaux qui la feront périmer.
+ */
+export async function setStepStatus(
+  conn: Conn, docId: number, step: string,
+): Promise<{ doc_id: number; step: string; validated_at: string; basis: "history" | "derived" }> {
+  return conn.post("/documents/step_status", { doc_id: docId, step }) as Promise<{
+    doc_id: number; step: string; validated_at: string; basis: "history" | "derived";
+  }>;
+}
+
+/** ACT-01 — retire la coche. Retirer une coche absente n'est pas une erreur. */
+export async function clearStepStatus(
+  conn: Conn, docId: number, step: string,
+): Promise<{ doc_id: number; step: string; cleared: boolean }> {
+  return conn.post("/documents/step_status/clear", { doc_id: docId, step }) as Promise<{
+    doc_id: number; step: string; cleared: boolean;
+  }>;
 }
 
 export async function bulkUpdateDocuments(conn: Conn, updates: DocumentUpdateOptions[]): Promise<{ updated: number }> {

@@ -15,26 +15,37 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ActionsScreen } from "../ActionsScreen.ts";
 import type { Conn } from "../../lib/sidecarClient.ts";
 
+/** Une coche fraîche, non démentie. */
+const OK = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
+const coches = (...steps: string[]): Record<string, typeof OK> =>
+  Object.fromEntries(steps.map((s) => [s, OK]));
+
+// ACT-01 tri-état : une TRACE ne vaut plus « fait ». Un document curé, découpé, aligné
+// et annoté reste « en cours » sur les quatre tant que personne n'a rien validé — c'est
+// le changement de fond. Les états « fait » de ces fixtures passent donc par des coches.
 const DOCS = [
-  // brut, jamais curé, jamais aligné, jamais annoté → concerné par les quatre
+  // rien nulle part → les quatre capacités le concernent
   { doc_id: 10, title: "Brouillon", language: "fr", doc_role: null, unit_count: 1 },
-  // découpé + aligné + annoté, mais jamais curé, et index périmé
+  // tout validé SAUF la curation, jamais curé, et index périmé
   {
     doc_id: 11, title: "Les Misérables", language: "fr", doc_role: "source",
     unit_count: 4812, aligned_count: 1227, annotation_status: "annotated", fts_stale: true,
+    step_status: coches("segmentation", "alignement", "annotation"),
   },
-  // rien à faire du tout
+  // rien à faire du tout : les quatre coches
   {
     doc_id: 12, title: "Die Elenden", language: "de", doc_role: "cible",
     unit_count: 4655, aligned_count: 709, annotation_status: "annotated",
     curated_at: "2026-08-16T21:50:46Z",
+    step_status: coches("curation", "segmentation", "alignement", "annotation"),
   },
-  // tout fait SAUF l'annotation — le seul document qui permette d'obtenir
+  // tout validé SAUF l'annotation — le seul document qui permette d'obtenir
   // « enfant retenu par le filtre, parent hors filtre » dans la vue hiérarchie.
   {
     doc_id: 13, title: "The Wretched", language: "en", doc_role: "cible",
     unit_count: 4901, aligned_count: 640, annotation_status: "missing",
     curated_at: "2026-08-16T21:50:46Z",
+    step_status: coches("curation", "segmentation", "alignement"),
   },
 ];
 
@@ -207,9 +218,10 @@ describe("hub Actions — la liste porte l'état et le geste (ACT-01)", () => {
     document.body.innerHTML = "";
   });
 
-  it("une ligne très chargée ne se replie pas : elle borne et compte le reste", async () => {
-    // C'est ce qui faisait varier la hauteur d'une ligne à l'autre. Le document 10
-    // porte les quatre étapes ; on le rend périmé pour dépasser la borne.
+  it("une ligne très chargée ne se replie pas : quatre cases, toujours", async () => {
+    // Le bornage à quatre pastilles et son « +1 » ont disparu avec les pastilles : une
+    // case fait une largeur fixe, les quatre tiennent toujours, et l'anomalie d'index
+    // reste une pastille à part. La hauteur de ligne ne dépend plus du contenu.
     const view = new ActionsScreen();
     const root = view.render();
     document.body.appendChild(root);
@@ -224,26 +236,54 @@ describe("hub Actions — la liste porte l'état et le geste (ACT-01)", () => {
       expect(root.querySelector('tr[data-doc-id="10"]')).not.toBeNull();
     });
     const cell = root.querySelector<HTMLElement>('tr[data-doc-id="10"] .prep-acts-hub-state-cell')!;
-    const labels = Array.from(cell.querySelectorAll(".prep-acts-hub-badge"))
+    expect(cell.querySelectorAll(".prep-acts-hub-box")).toHaveLength(4);
+    const pastilles = Array.from(cell.querySelectorAll(".prep-acts-hub-badge"))
       .map((e) => e.textContent);
-    expect(labels).toHaveLength(5);          // 4 pastilles + le compteur
-    expect(labels[0]).toBe("Index périmé");  // l'anomalie n'est pas celle qu'on cache
-    expect(labels[4]).toBe("+1");
-    // Rien n'est perdu : l'infobulle porte les cinq états.
-    expect(cell.title).toBe("Curation · Segmentation · Alignement · Annotation · Index périmé");
+    expect(pastilles).toEqual(["Index périmé"]);
+    // Chaque case porte SA propre infobulle : c'est le seul endroit où elle peut dire
+    // ce qu'elle vaut, et une infobulle de cellule ne le pourrait pas.
+    const titres = Array.from(cell.querySelectorAll<HTMLElement>(".prep-acts-hub-box"))
+      .map((b) => b.title);
+    expect(titres.every((t) => t.includes("Brouillon"))).toBe(true);
+    expect(titres[0]).toContain("Curation");
+    expect(titres[3]).toContain("Annotation");
   });
 
-  it("chaque ligne dit ce qu'il reste à y faire", async () => {
+  it("chaque ligne porte quatre cases, dans le même ordre, à trois états", async () => {
     const { root } = await mountWithDocs();
-    const badges = (docId: number): string[] =>
+    const cases = (docId: number): string[] =>
       Array.from(
-        root.querySelectorAll(`#act-doc-list tr[data-doc-id="${docId}"] .prep-acts-hub-badge`),
-      ).map((el) => el.textContent ?? "");
+        root.querySelectorAll(`#act-doc-list tr[data-doc-id="${docId}"] .prep-acts-hub-box`),
+      ).map((el) => el.getAttribute("aria-checked") ?? "");
 
-    expect(badges(10)).toEqual(["Curation", "Segmentation", "Alignement", "Annotation"]);
-    // L'index périmé était l'état le plus parlant de ceux que l'écran laissait tomber.
-    expect(badges(11)).toEqual(["Curation", "Index périmé"]);
-    expect(badges(12)).toEqual(["Rien à faire"]);
+    // Toujours quatre, et toujours dans l'ordre des cartes : c'est ce qui rend la
+    // colonne scannable — on suit « Segmentation » du regard sur toute la liste.
+    expect(cases(10)).toEqual(["false", "false", "false", "false"]);
+    // 11 : trois coches, la curation jamais faite. `mixed` est le tri-état NATIF.
+    expect(cases(11)).toEqual(["false", "true", "true", "true"]);
+    expect(cases(12)).toEqual(["true", "true", "true", "true"]);
+  });
+
+  it("« en cours » se distingue de « rien » — une trace n'est pas une validation", async () => {
+    // Le document 13 est curé, découpé et aligné, mais son annotation manque : trois
+    // coches, et la quatrième case doit dire « rien », pas « en cours ». Le document 11,
+    // lui, porte une trace de segmentation validée ET un texte annoté.
+    const { root } = await mountWithDocs();
+    const etat = (docId: number, i: number): string | null =>
+      root.querySelectorAll(`#act-doc-list tr[data-doc-id="${docId}"] .prep-acts-hub-box`)[i]
+        ?.getAttribute("aria-checked") ?? null;
+    expect(etat(13, 3)).toBe("false");   // annotation : aucune trace, aucune coche
+    expect(etat(10, 1)).toBe("false");   // segmentation d'un document d'une seule unité
+  });
+
+  it("l'anomalie d'index reste une pastille, jamais une case", async () => {
+    // Ce n'est pas un travail qu'on mène à terme : lui donner une case laisserait
+    // croire qu'on peut la déclarer réglée à la main.
+    const { root } = await mountWithDocs();
+    const cell = root.querySelector<HTMLElement>('tr[data-doc-id="11"] .prep-acts-hub-state-cell')!;
+    expect(cell.querySelectorAll(".prep-acts-hub-box")).toHaveLength(4);
+    expect(Array.from(cell.querySelectorAll(".prep-acts-hub-badge")).map((e) => e.textContent))
+      .toEqual(["Index périmé"]);
   });
 
   it("hors filtre, la ligne offre les quatre gestes, nommés pour un lecteur d'écran", async () => {
@@ -376,7 +416,11 @@ describe("hub Actions — filtre et vue hiérarchie se composent (ACT-01)", () =
     const { root } = await mountWithDocs(FAMILY);
     await switchToHierarchy(root);
     const row = root.querySelector('tr[data-doc-id="12"]')!;
-    expect(row.querySelector(".prep-acts-hub-badge")?.textContent).toBe("Rien à faire");
+    // Même constructeur de ligne, donc mêmes cases et mêmes gestes que la vue plate.
+    expect(
+      Array.from(row.querySelectorAll(".prep-acts-hub-box"))
+        .map((b) => b.getAttribute("aria-checked")),
+    ).toEqual(["true", "true", "true", "true"]);
     expect(row.querySelectorAll(".prep-acts-hub-row-btn")).toHaveLength(4);
   });
 });
@@ -619,5 +663,124 @@ describe("hub Actions — l'actualisation ne fait pas mentir le bouton Hiérarch
     expect(treeShown(root)).toBe(false);
     expect(hierBtn(root).textContent).toBe("🌿 Hiérarchie");
     expect(hierBtn(root).getAttribute("aria-pressed")).toBe("false");
+  });
+});
+/**
+ * Le geste que le modèle à trois états ajoute : cocher. C'est le seul endroit de la page
+ * où l'utilisateur *déclare* quelque chose — partout ailleurs il ne fait que regarder ce
+ * que le moteur observe.
+ *
+ * Deux états sur trois mènent à la coche, un seul en revient. Et cocher n'ouvre RIEN :
+ * une case énonce un état, elle ne désigne pas une destination — c'est la décision du
+ * 31 août, et sans test elle se perdrait au premier « tant qu'à cliquer ».
+ */
+describe("hub Actions — cocher une capacité (ACT-01, tri-état)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  /** Monte la liste en capturant les POST, pour lire ce qui part vraiment au moteur. */
+  async function mountCapturing(): Promise<{
+    view: ActionsScreen; root: HTMLElement; posts: Array<[string, unknown]>;
+  }> {
+    const posts: Array<[string, unknown]> = [];
+    const view = new ActionsScreen();
+    const root = view.render();
+    document.body.appendChild(root);
+    view.setConn({
+      get: vi.fn(async (path: string) => {
+        if (path.startsWith("/documents")) return { documents: DOCS, count: DOCS.length };
+        if (path.startsWith("/doc_relations/all")) return { relations: [] };
+        if (path.startsWith("/models")) return { models: [], active: null };
+        return {};
+      }),
+      post: vi.fn(async (path: string, body: unknown) => {
+        posts.push([path, body]);
+        return {};
+      }),
+    } as unknown as Conn);
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll("#act-doc-list tbody tr").length).toBeGreaterThan(0);
+    });
+    return { view, root, posts };
+  }
+
+  const box = (root: HTMLElement, docId: number, i: number): HTMLButtonElement =>
+    root.querySelectorAll<HTMLButtonElement>(
+      `#act-doc-list tr[data-doc-id="${docId}"] .prep-acts-hub-box`,
+    )[i];
+
+  it("cliquer une case vide POSE la coche, sur cette capacité et ce document", async () => {
+    const { root, posts } = await mountCapturing();
+    box(root, 10, 1).click();   // segmentation du document 10
+    await vi.waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toEqual(["/documents/step_status", { doc_id: 10, step: "segmentation" }]);
+  });
+
+  it("cliquer une case cochée la RETIRE", async () => {
+    const { root, posts } = await mountCapturing();
+    box(root, 12, 0).click();   // curation du document 12, déjà validée
+    await vi.waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toEqual([
+      "/documents/step_status/clear", { doc_id: 12, step: "curation" },
+    ]);
+  });
+
+  it("une case « en cours » se coche, elle ne se décoche pas", async () => {
+    // Le document 11 est annoté sans être validé sur la curation : sa première case
+    // est « rien », mais son texte porte des traces ailleurs. On vise la curation, qui
+    // n'a ni trace ni coche, puis on vérifie qu'un document EN COURS part aussi vers
+    // la pose et non vers le retrait.
+    const { root, posts } = await mountCapturing();
+    box(root, 13, 3).click();   // annotation du 13 : rien
+    await vi.waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0][0]).toBe("/documents/step_status");
+  });
+
+  it("cocher ne déplace personne — c'est la colonne « Ouvrir » qui navigue", async () => {
+    // Une case énonce un état ; elle ne désigne pas une destination. Si le clic
+    // basculait de sous-vue, on serait devant le canvas au lieu de la liste.
+    const { root } = await mountCapturing();
+    box(root, 10, 0).click();
+    await vi.waitFor(() => {
+      expect(root.querySelector("#act-doc-list")).not.toBeNull();
+    });
+    expect(root.querySelector("#act-doc-list")).not.toBeNull();
+  });
+
+  it("chaque case dit ce qu'elle vaut, jamais seulement qu'elle est cochée", async () => {
+    // « Validé le 12/08, avant que l'historique existe » n'est pas la même promesse que
+    // « validé le 12/08, aucune modification enregistrée depuis ». Une coche qui tait sa
+    // propre incertitude est le défaut qu'on vient de corriger sur l'index de recherche.
+    const view = new ActionsScreen();
+    const root = view.render();
+    document.body.appendChild(root);
+    const faible = {
+      ...DOCS[0], doc_id: 20,
+      // Une trace de découpage EXISTE : c'est ce qui fait retomber la coche périmée
+      // sur « en cours » plutôt que sur « rien ». Sans trace, elle retomberait à rien,
+      // ce qui est aussi correct — et c'est le module pur qui l'épingle.
+      unit_count: 900,
+      step_status: {
+        curation: { validated_at: "2026-08-12T09:00:00Z", stale: false, basis: "derived" },
+        segmentation: {
+          validated_at: "2026-08-12T09:00:00Z", stale: true,
+          stale_reason: "resegment", basis: "history",
+        },
+      },
+    };
+    view.setConn({
+      get: vi.fn(async (path: string) =>
+        path.startsWith("/documents") ? { documents: [faible], count: 1 } : { relations: [] }),
+      post: vi.fn(async () => ({})),
+    } as unknown as Conn);
+    await vi.waitFor(() => {
+      expect(root.querySelector('tr[data-doc-id="20"]')).not.toBeNull();
+    });
+    expect(box(root, 20, 0).title).toContain("avant que l'historique existe");
+    // La coche périmée n'est pas muette non plus : elle dit quand, et par quoi.
+    expect(box(root, 20, 1).getAttribute("aria-checked")).toBe("mixed");
+    expect(box(root, 20, 1).title).toContain("puis modifié");
+    expect(box(root, 20, 1).title).toContain("resegment");
   });
 });

@@ -4108,6 +4108,53 @@ button.prep-matrix-remove-choice:hover {
 .prep-acts-hub-badge--none { border-color: #86efac; background: #f0fdf4; color: #166534; }
 .prep-acts-hub-badge--more { border-style: dashed; color: #64748b; }
 
+/* ACT-01 tri-état — quatre cases par ligne, une par capacité, LARGEUR FIXE.
+   C'est la largeur fixe qui rend la colonne scannable : on suit « Segmentation » du
+   regard sur toute la liste, ce qu'un chapelet de pastilles de largeurs différentes
+   interdisait. Elle garantit aussi que la ligne ne change pas de hauteur selon son
+   contenu — le défaut que la passe de QA du 31 août a fait tomber ailleurs. */
+.prep-acts-hub-box {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-right: 4px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.prep-acts-hub-box:hover { border-color: var(--prep-accent, #0f766e); }
+.prep-acts-hub-box:focus-visible {
+  outline: 2px solid var(--prep-accent, #0f766e);
+  outline-offset: 1px;
+}
+/* Rien : une case vide, qui ne réclame pas l'attention. */
+.prep-acts-hub-box--none { background: #fff; color: transparent; }
+/* En cours : le trait oblique du modèle, `[/]`. Le seul état que le moteur pose de
+   lui-même, et il ne dit jamais mieux que « quelqu'un a commencé ». */
+.prep-acts-hub-box--started {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+/* Fait : la seule que l'utilisateur pose. Verte comme « Rien à faire » l'était. */
+.prep-acts-hub-box--done {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+  font-weight: 700;
+}
+
 /* Colonne « Ouvrir » — les quatre gestes, ou le seul geste filtré. */
 .prep-acts-hub-row-actions { white-space: nowrap; }
 .prep-acts-hub-row-btn {

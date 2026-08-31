@@ -16,6 +16,8 @@ import {
   listDocuments,
   enqueueJob,
   getAllDocRelations,
+  setStepStatus,
+  clearStepStatus,
   SidecarError,
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
@@ -27,9 +29,9 @@ import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { registerLevel, unregisterLevel, sync as navSync } from "../lib/navHistory.ts";
 import {
   HUB_STEPS, STEP_LABEL, docBadges, docsForStep, hubComparator, sortDocs, stepCounts,
-  visibleBadges,
+  stepMark, stepState,
 } from "../lib/actionsHubState.ts";
-import type { HubSortCol, HubStep, SortDir } from "../lib/actionsHubState.ts";
+import type { HubSortCol, HubStep, SortDir, StepState } from "../lib/actionsHubState.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AlignMatrixView } from "./AlignMatrixView.ts";
 import { TextCanvasView } from "./TextCanvasView.ts";
@@ -380,12 +382,21 @@ export class ActionsScreen {
     const total = this._docs.length;
 
     for (const step of HUB_STEPS) {
-      const remaining = counts[step];
+      const { none, started } = counts[step];
+      const remaining = none + started;
       const countEl = find<HTMLElement>(`#act-hub-count-${step}`);
       if (countEl) {
+        // DEUX nombres, parce qu'un seul mentait. Sur un corpus neuf, l'import produit
+        // des lignes : les cinq documents sont « en cours » de segmentation sans que
+        // personne ait rien validé. Une carte qui n'aurait compté que « jamais
+        // touché » y aurait affiché « 0 à faire », le mensonge exact que le modèle à
+        // trois états existe pour tuer ; une carte qui aurait tout additionné aurait
+        // affiché le même nombre sur les quatre cartes, sans plus aider à choisir.
         countEl.textContent = total === 0 ? "aucun document"
           : remaining === 0 ? "tout à jour"
-          : `${remaining} à faire`;
+          : started === 0 ? `${none} à faire`
+          : none === 0 ? `${started} en cours`
+          : `${none} à faire · ${started} en cours`;
         countEl.classList.toggle("prep-acts-hub-wf-count--done", total > 0 && remaining === 0);
       }
       const filterBtn = find<HTMLButtonElement>(`#act-hub-filter-${step}`);
@@ -834,6 +845,83 @@ export class ActionsScreen {
     });
   }
 
+  /** Le glyphe de chaque état — l'écriture `[ ] [/] [X]` du modèle, telle quelle. */
+  private static readonly STEP_GLYPH: Record<StepState, string> = {
+    none: "\u00a0", started: "/", done: "✕",
+  };
+
+  /**
+   * Une case à trois états pour (document, capacité).
+   *
+   * `aria-checked="mixed"` est le tri-état natif : « en cours » n'a pas besoin d'un
+   * bricolage d'accessibilité. Le clic ne fait qu'UNE chose — poser ou retirer la
+   * coche. Il n'ouvre rien : une case énonce un état, elle ne désigne pas une
+   * destination, et c'est la colonne « Ouvrir » qui porte le déplacement.
+   *
+   * L'infobulle est le seul endroit où la coche peut dire ce qu'elle vaut. « Validé le
+   * 12/08, avant que l'historique existe » n'est pas la même promesse que « validé le
+   * 12/08, aucune modification enregistrée depuis » — une coche qui tait sa propre
+   * incertitude est le défaut qu'on vient de corriger sur l'index de recherche.
+   */
+  private _stepBox(doc: DocumentRecord, step: HubStep): HTMLElement {
+    const state = stepState(doc, step);
+    const mark = stepMark(doc, step);
+    const box = document.createElement("button");
+    box.type = "button";
+    box.className = `prep-acts-hub-box prep-acts-hub-box--${state}`;
+    box.dataset.step = step;
+    box.setAttribute("role", "checkbox");
+    box.setAttribute("aria-checked", state === "done" ? "true" : state === "started" ? "mixed" : "false");
+    box.textContent = ActionsScreen.STEP_GLYPH[state];
+
+    const nom = STEP_LABEL[step];
+    let dit: string;
+    if (state === "done") {
+      const quand = (mark?.validated_at ?? "").slice(0, 10);
+      dit = mark?.basis === "derived"
+        ? `${nom} — validé le ${quand}, avant que l'historique existe`
+        : `${nom} — validé le ${quand}, aucune modification enregistrée depuis`;
+    } else if (mark?.stale) {
+      const quand = mark.validated_at.slice(0, 10);
+      dit = `${nom} — validé le ${quand}, puis modifié (${mark.stale_reason ?? "?"})`;
+    } else {
+      dit = state === "started"
+        ? `${nom} — commencé, jamais validé`
+        : `${nom} — rien de fait`;
+    }
+    box.title = `${dit} · « ${doc.title} »`;
+    box.setAttribute("aria-label", `${dit} sur ${doc.title}`);
+    box.addEventListener("click", () => void this._toggleStep(doc, step));
+    return box;
+  }
+
+  /**
+   * Cocher ou décocher. Deux états sur trois mènent à la coche, un seul en revient :
+   * « rien » et « en cours » se valident, « fait » se retire. Une coche PÉRIMÉE se
+   * re-pose — c'est le geste « je reconfirme après avoir retravaillé », et le moteur
+   * refige alors ses deux signaux.
+   *
+   * La liste est rechargée plutôt que peinte sur place : les compteurs des cartes
+   * dépendent du même état, et les repeindre à la main d'un côté pendant que la ligne
+   * change de l'autre est exactement la façon dont deux affichages du même fait se
+   * mettent à diverger.
+   */
+  private async _toggleStep(doc: DocumentRecord, step: HubStep): Promise<void> {
+    if (!this._conn) return;
+    const state = stepState(doc, step);
+    try {
+      if (state === "done") await clearStepStatus(this._conn, doc.doc_id, step);
+      else await setStepStatus(this._conn, doc.doc_id, step);
+    } catch (err) {
+      this._log(
+        `${STEP_LABEL[step]} sur « ${doc.title} » : ${err instanceof SidecarError ? err.message : String(err)}`,
+        true,
+      );
+      return;
+    }
+    await this._loadDocs();
+  }
+
   /**
    * Une ligne. `titleTd` permet à la vue hiérarchie de fournir sa propre cellule
    * de titre (indentation + badge de relation) sans dupliquer le reste.
@@ -859,33 +947,22 @@ export class ActionsScreen {
     tr.appendChild(cell(doc.doc_role ?? "—"));
     tr.appendChild(cell(String(doc.unit_count)));
 
-    // « À faire » — vide veut dire quelque chose ici : les quatre capacités sont
-    // passées et l'index est à jour. Le dire en toutes lettres plutôt que par un blanc.
+    // « À faire » — quatre cases à trois états, une par capacité, TOUJOURS dans le même
+    // ordre. C'est ce qui la rend scannable en colonne : on suit « Segmentation » du
+    // regard sur 58 lignes, ce qu'un chapelet de pastilles de largeurs différentes
+    // interdisait. L'anomalie d'index reste une pastille à part — ce n'est pas un
+    // travail qu'on mène à terme, et lui donner une case laisserait croire qu'on peut
+    // la déclarer réglée à la main.
     const stateTd = document.createElement("td");
     stateTd.className = "prep-acts-hub-state-cell";
-    const all = docBadges(doc);
-    if (all.length === 0) {
-      const none = document.createElement("span");
-      none.className = "prep-acts-hub-badge prep-acts-hub-badge--none";
-      none.textContent = "Rien à faire";
-      stateTd.appendChild(none);
-    } else {
-      // Bornées à une seule ligne : au-delà elles se replient et la ligne grandit,
-      // ce qui empêche de suivre une colonne du regard. L'infobulle porte le tout.
-      const { shown, hidden } = visibleBadges(doc, ActionsScreen.MAX_ROW_BADGES);
-      stateTd.title = all.map((b) => b.label).join(" · ");
-      for (const badge of shown) {
-        const span = document.createElement("span");
-        span.className = `prep-acts-hub-badge prep-acts-hub-badge--${badge.kind}`;
-        span.textContent = badge.label;
-        stateTd.appendChild(span);
-      }
-      if (hidden > 0) {
-        const more = document.createElement("span");
-        more.className = "prep-acts-hub-badge prep-acts-hub-badge--more";
-        more.textContent = `+${hidden}`;
-        stateTd.appendChild(more);
-      }
+    for (const step of HUB_STEPS) {
+      stateTd.appendChild(this._stepBox(doc, step));
+    }
+    if (doc.fts_stale === true) {
+      const warn = document.createElement("span");
+      warn.className = "prep-acts-hub-badge prep-acts-hub-badge--warn";
+      warn.textContent = "Index périmé";
+      stateTd.appendChild(warn);
     }
     tr.appendChild(stateTd);
 
@@ -917,9 +994,6 @@ export class ActionsScreen {
     tr.appendChild(actionsTd);
     return tr;
   }
-
-  /** Combien de pastilles tiennent sur une ligne de la colonne « À faire ». */
-  private static readonly MAX_ROW_BADGES = 4;
 
   /** Mêmes glyphes que l'arbre de navigation (app.ts), pour ne pas inventer un second alphabet. */
   private static readonly STEP_ICON: Record<HubStep, string> = {

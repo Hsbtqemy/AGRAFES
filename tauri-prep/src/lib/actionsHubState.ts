@@ -20,15 +20,26 @@
  * et peindrait donc « fait » partout.
  */
 
-import type { DocumentRecord } from "./sidecarClient.ts";
+import type { DocumentRecord, StepMark } from "./sidecarClient.ts";
 import { compareDocsByTitle, compareLocale } from "../../../shared/docSort.ts";
 
 /** Les quatre capacités de préparation. Ordre d'affichage des cartes. */
 export const HUB_STEPS = ["curation", "segmentation", "alignement", "annotation"] as const;
 export type HubStep = (typeof HUB_STEPS)[number];
 
-/** État d'une capacité sur un document : reste à faire, ou déjà passée dessus. */
-export type StepState = "todo" | "done";
+/**
+ * L'état d'une capacité sur un document, à trois valeurs.
+ *
+ *   "none"     aucune trace — la capacité n'a jamais rien produit ici
+ *   "started"  une trace existe, mais PERSONNE n'a dit que c'était fini
+ *   "done"     l'utilisateur a coché, et rien ne l'a démenti depuis
+ *
+ * Les deux premiers sont dérivés et gratuits ; seul `done` se stocke, et seul
+ * l'utilisateur le pose. Le moteur n'a pas qualité à déclarer qu'un travail est fini —
+ * c'est ce qui fait qu'une segmentation appliquée mais insatisfaisante retombe sur
+ * "started" au retour, sans que personne ait eu à penser à la marquer avant de quitter.
+ */
+export type StepState = "none" | "started" | "done";
 
 /** Nombre d'unités au-delà duquel un document n'est plus un bloc brut. */
 export const RAW_UNIT_THRESHOLD = 1;
@@ -42,34 +53,77 @@ export const RAW_UNIT_THRESHOLD = 1;
  * dans /families, qui ignore les documents hors famille.
  */
 export function stepState(doc: DocumentRecord, step: HubStep): StepState {
+  // La coche de l'utilisateur passe avant tout — mais seulement si le travail qui a
+  // suivi ne l'a pas démentie. Une coche périmée retombe à "started" : elle a bien été
+  // posée, et le moteur dit qu'elle ne vaut plus. Elle ne disparaît pas pour autant,
+  // `stepMark` la rend avec sa raison pour que la ligne puisse l'expliquer.
+  const mark = doc.step_status?.[step];
+  if (mark && !mark.stale) return "done";
+  return hasTrace(doc, step) ? "started" : "none";
+}
+
+/** Y a-t-il une trace de cette capacité sur ce document ? Entièrement dérivé. */
+export function hasTrace(doc: DocumentRecord, step: HubStep): boolean {
   switch (step) {
     case "curation":
-      return doc.curated_at ? "done" : "todo";
+      return Boolean(doc.curated_at);
     case "segmentation":
       // `unit_count` absent = on ne sait pas ; ne pas accuser un document de
       // n'être pas segmenté sur une donnée manquante.
-      return typeof doc.unit_count === "number" && doc.unit_count <= RAW_UNIT_THRESHOLD
-        ? "todo"
-        : "done";
+      return !(typeof doc.unit_count === "number" && doc.unit_count <= RAW_UNIT_THRESHOLD);
     case "alignement":
-      return (doc.aligned_count ?? 0) > 0 ? "done" : "todo";
+      return (doc.aligned_count ?? 0) > 0;
     case "annotation":
-      return doc.annotation_status === "annotated" ? "done" : "todo";
+      return doc.annotation_status === "annotated";
   }
 }
 
-/** Les documents que `step` concerne encore, dans l'ordre reçu. */
-export function docsForStep(docs: DocumentRecord[], step: HubStep | null): DocumentRecord[] {
-  if (step === null) return docs.slice();
-  return docs.filter((d) => stepState(d, step) === "todo");
+/** La coche telle qu'elle est stockée, périmée ou non — `null` s'il n'y en a pas. */
+export function stepMark(doc: DocumentRecord, step: HubStep): StepMark | null {
+  return doc.step_status?.[step] ?? null;
 }
 
-/** Combien de documents restent à traiter, par capacité. */
-export function stepCounts(docs: DocumentRecord[]): Record<HubStep, number> {
-  const out = { curation: 0, segmentation: 0, alignement: 0, annotation: 0 };
+/**
+ * Les documents que `step` concerne encore : tout ce qui n'est pas validé, donc les
+ * deux premiers états. Un document « en cours » concerne toujours la capacité — c'est
+ * même celui sur lequel il reste le plus à décider.
+ */
+export function docsForStep(docs: DocumentRecord[], step: HubStep | null): DocumentRecord[] {
+  if (step === null) return docs.slice();
+  return docs.filter((d) => stepState(d, step) !== "done");
+}
+
+/** Ce qu'une carte annonce : jamais commencé d'un côté, commencé sans conclusion de l'autre. */
+export interface StepCount {
+  /** Aucune trace : la capacité n'a rien produit sur ce document. */
+  none: number;
+  /** Une trace, aucune validation. */
+  started: number;
+}
+
+/**
+ * Les deux nombres de chaque carte.
+ *
+ * Un seul nombre ne pouvait pas les porter, et la simulation d'un corpus NEUF le
+ * montre mieux que le corpus de travail : cinq documents fraîchement importés donnent
+ * `[/]` sur les cinq en segmentation, parce que l'import a produit des lignes. Une
+ * carte qui ne compterait que « aucune trace » y afficherait « 0 à faire » — le
+ * mensonge exact que ce modèle existe pour tuer. Une carte qui compterait les deux
+ * afficherait le nombre de documents partout, sur les quatre cartes, et n'aiderait plus
+ * à choisir par quoi commencer.
+ */
+export function stepCounts(docs: DocumentRecord[]): Record<HubStep, StepCount> {
+  const out: Record<HubStep, StepCount> = {
+    curation:     { none: 0, started: 0 },
+    segmentation: { none: 0, started: 0 },
+    alignement:   { none: 0, started: 0 },
+    annotation:   { none: 0, started: 0 },
+  };
   for (const doc of docs) {
     for (const step of HUB_STEPS) {
-      if (stepState(doc, step) === "todo") out[step] += 1;
+      const state = stepState(doc, step);
+      if (state === "none") out[step].none += 1;
+      else if (state === "started") out[step].started += 1;
     }
   }
   return out;
@@ -101,36 +155,10 @@ export interface DocBadge {
  */
 export function docBadges(doc: DocumentRecord): DocBadge[] {
   const badges: DocBadge[] = HUB_STEPS
-    .filter((step) => stepState(doc, step) === "todo")
+    .filter((step) => stepState(doc, step) !== "done")
     .map((step) => ({ label: STEP_LABEL[step], kind: "todo" as const }));
   if (doc.fts_stale === true) badges.push({ label: "Index périmé", kind: "warn" });
   return badges;
-}
-
-/** Ce qu'une ligne montre, et ce qu'elle garde pour l'infobulle. */
-export interface VisibleBadges {
-  shown: DocBadge[];
-  /** Nombre de pastilles non montrées ; 0 = tout est visible. */
-  hidden: number;
-}
-
-/**
- * Borne les pastilles d'une ligne à `max`, pour que toutes les lignes fassent la
- * MÊME hauteur : au-delà, elles se replient et la ligne grandit, ce qui rend la
- * liste illisible en diagonale — on ne peut plus suivre une colonne du regard.
- *
- * Une anomalie n'est jamais celle qu'on cache. « Index périmé » appelle une action
- * et ne concerne que 17 documents sur 58 ; les étapes restantes, elles, sont le cas
- * courant. Les avertissements sont donc servis d'abord, et le débordement ne mange
- * que des étapes.
- */
-export function visibleBadges(doc: DocumentRecord, max: number): VisibleBadges {
-  const all = docBadges(doc);
-  if (all.length <= max) return { shown: all, hidden: 0 };
-  const warns = all.filter((b) => b.kind === "warn");
-  const steps = all.filter((b) => b.kind !== "warn");
-  const shown = [...warns.slice(0, max), ...steps.slice(0, Math.max(0, max - warns.length))];
-  return { shown, hidden: all.length - shown.length };
 }
 
 // ─── Tri de la liste ────────────────────────────────────────────────────────

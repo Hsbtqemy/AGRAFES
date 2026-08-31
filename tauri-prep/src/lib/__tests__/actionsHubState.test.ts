@@ -12,7 +12,6 @@ import { describe, it, expect } from "vitest";
 import type { DocumentRecord } from "../sidecarClient.ts";
 import {
   HUB_STEPS, docBadges, docsForStep, hubComparator, sortDocs, stepCounts, stepState,
-  visibleBadges,
 } from "../actionsHubState.ts";
 
 function doc(over: Partial<DocumentRecord> = {}): DocumentRecord {
@@ -22,38 +21,75 @@ function doc(over: Partial<DocumentRecord> = {}): DocumentRecord {
   } as DocumentRecord;
 }
 
+/** Les quatre capacités validées, coches fraîches — le seul moyen de vider une ligne. */
+const TOUT_COCHE = Object.fromEntries(
+  HUB_STEPS.map((step) => [
+    step,
+    { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const },
+  ]),
+);
+
 describe("stepState", () => {
-  it("curation : suit curated_at, servi par le moteur", () => {
-    expect(stepState(doc({ curated_at: null }), "curation")).toBe("todo");
-    expect(stepState(doc({}), "curation")).toBe("todo");
-    expect(stepState(doc({ curated_at: "2026-08-16T21:50:46Z" }), "curation")).toBe("done");
+  it("curation : une trace donne « en cours », jamais « fait »", () => {
+    expect(stepState(doc({ curated_at: null }), "curation")).toBe("none");
+    expect(stepState(doc({}), "curation")).toBe("none");
+    // LE point du modèle : le moteur OBSERVE une curation, il ne DÉCLARE pas qu'elle
+    // est finie. C'est ce qui fait qu'un travail insatisfaisant reste visible au retour.
+    expect(stepState(doc({ curated_at: "2026-08-16T21:50:46Z" }), "curation")).toBe("started");
   });
 
-  it("segmentation : un texte d'un seul tenant reste à découper", () => {
-    expect(stepState(doc({ unit_count: 0 }), "segmentation")).toBe("todo");
-    expect(stepState(doc({ unit_count: 1 }), "segmentation")).toBe("todo");
-    expect(stepState(doc({ unit_count: 2 }), "segmentation")).toBe("done");
-    expect(stepState(doc({ unit_count: 4812 }), "segmentation")).toBe("done");
+  it("segmentation : un texte d'un seul tenant n'a aucune trace", () => {
+    expect(stepState(doc({ unit_count: 0 }), "segmentation")).toBe("none");
+    expect(stepState(doc({ unit_count: 1 }), "segmentation")).toBe("none");
+    expect(stepState(doc({ unit_count: 2 }), "segmentation")).toBe("started");
+    expect(stepState(doc({ unit_count: 4812 }), "segmentation")).toBe("started");
   });
 
   it("segmentation : un unit_count absent ne vaut pas accusation", () => {
-    // Sans la garde, `undefined <= 1` est false et le document passerait pour
-    // segmenté — ce qui est le bon repli — mais un jour où l'on écrirait
+    // Sans la garde, `undefined <= 1` est false et le document passe pour porteur
+    // d'une trace — ce qui est le bon repli — mais un jour où l'on écrirait
     // `(doc.unit_count ?? 0)` il passerait pour brut. Le cas est verrouillé.
     const d = doc({});
     delete (d as Partial<DocumentRecord>).unit_count;
-    expect(stepState(d, "segmentation")).toBe("done");
+    expect(stepState(d, "segmentation")).toBe("started");
   });
 
   it("alignement : compte les liens, dans un sens comme dans l'autre", () => {
-    expect(stepState(doc({ aligned_count: 0 }), "alignement")).toBe("todo");
-    expect(stepState(doc({}), "alignement")).toBe("todo");
-    expect(stepState(doc({ aligned_count: 1227 }), "alignement")).toBe("done");
+    expect(stepState(doc({ aligned_count: 0 }), "alignement")).toBe("none");
+    expect(stepState(doc({}), "alignement")).toBe("none");
+    expect(stepState(doc({ aligned_count: 1227 }), "alignement")).toBe("started");
   });
 
   it("annotation : suit annotation_status", () => {
-    expect(stepState(doc({ annotation_status: "missing" }), "annotation")).toBe("todo");
-    expect(stepState(doc({ annotation_status: "annotated" }), "annotation")).toBe("done");
+    expect(stepState(doc({ annotation_status: "missing" }), "annotation")).toBe("none");
+    expect(stepState(doc({ annotation_status: "annotated" }), "annotation")).toBe("started");
+  });
+
+  it("seule la coche de l'utilisateur donne « fait »", () => {
+    const marque = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
+    // Même sans AUCUNE trace : cocher, c'est dire « il n'y a rien à faire ici ».
+    expect(stepState(doc({ step_status: { curation: marque } }), "curation")).toBe("done");
+    expect(stepState(doc({ unit_count: 900, step_status: { segmentation: marque } }), "segmentation")).toBe("done");
+  });
+
+  it("une coche PÉRIMÉE retombe à « en cours », elle ne ment pas", () => {
+    // Le cœur du modèle. Sans ça, une coche que le travail suivant dément resterait
+    // « fait » pour toujours — mesuré : environ une sur trois finirait ainsi.
+    const perimee = {
+      validated_at: "2026-08-31T10:00:00Z", stale: true,
+      stale_reason: "resegment", basis: "history" as const,
+    };
+    expect(stepState(doc({ unit_count: 900, step_status: { segmentation: perimee } }), "segmentation")).toBe("started");
+    // Et sans trace dérivée, elle ne remonte pas non plus à « fait ».
+    expect(stepState(doc({ step_status: { curation: perimee } }), "curation")).toBe("none");
+  });
+
+  it("une coche sur une AUTRE capacité ne déteint pas", () => {
+    const marque = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
+    const d = doc({ unit_count: 900, step_status: { curation: marque } });
+    expect(stepState(d, "curation")).toBe("done");
+    expect(stepState(d, "segmentation")).toBe("started");
+    expect(stepState(d, "alignement")).toBe("none");
   });
 });
 
@@ -70,31 +106,71 @@ describe("docsForStep", () => {
     expect(all).not.toBe(corpus);
   });
 
-  it("ne retient que ce que l'étape concerne encore", () => {
-    expect(docsForStep(corpus, "segmentation").map((d) => d.doc_id)).toEqual([1]);
-    expect(docsForStep(corpus, "alignement").map((d) => d.doc_id)).toEqual([1, 3]);
-    expect(docsForStep(corpus, "curation").map((d) => d.doc_id)).toEqual([1, 2]);
+  it("retient tout ce qui n'est pas validé, « en cours » compris", () => {
+    // Aucun des trois n'est coché : la capacité les concerne donc tous, y compris
+    // ceux qui portent déjà une trace. C'est le sens de « concerne encore ».
+    expect(docsForStep(corpus, "segmentation").map((d) => d.doc_id)).toEqual([1, 2, 3]);
+    expect(docsForStep(corpus, "curation").map((d) => d.doc_id)).toEqual([1, 2, 3]);
+  });
+
+  it("une coche fait sortir le document de la liste filtrée", () => {
+    const marque = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
+    const coche = [corpus[0], doc({ doc_id: 2, unit_count: 900, step_status: { curation: marque } }), corpus[2]];
+    expect(docsForStep(coche, "curation").map((d) => d.doc_id)).toEqual([1, 3]);
+  });
+
+  it("une coche périmée l'y laisse — c'est tout l'intérêt", () => {
+    const perimee = {
+      validated_at: "2026-08-31T10:00:00Z", stale: true,
+      stale_reason: "curation_apply", basis: "history" as const,
+    };
+    const liste = [doc({ doc_id: 9, unit_count: 900, step_status: { curation: perimee } })];
+    expect(docsForStep(liste, "curation").map((d) => d.doc_id)).toEqual([9]);
   });
 
   it("conserve l'ordre reçu, sans re-trier", () => {
     const shuffled = [corpus[1], corpus[2], corpus[0]];
-    expect(docsForStep(shuffled, "curation").map((d) => d.doc_id)).toEqual([2, 1]);
+    expect(docsForStep(shuffled, "curation").map((d) => d.doc_id)).toEqual([2, 3, 1]);
   });
 });
 
 describe("stepCounts", () => {
-  it("compte les restants par capacité, indépendamment les unes des autres", () => {
+  it("sépare « jamais commencé » de « commencé sans conclusion »", () => {
     const counts = stepCounts([
       doc({ doc_id: 1, unit_count: 1 }),
       doc({ doc_id: 2, unit_count: 900, aligned_count: 5, annotation_status: "annotated" }),
       doc({ doc_id: 3, unit_count: 900, curated_at: "2026-01-01T00:00:00Z" }),
     ]);
-    expect(counts).toEqual({ curation: 2, segmentation: 1, alignement: 2, annotation: 2 });
+    expect(counts).toEqual({
+      curation:     { none: 2, started: 1 },
+      segmentation: { none: 1, started: 2 },
+      alignement:   { none: 2, started: 1 },
+      annotation:   { none: 2, started: 1 },
+    });
+  });
+
+  it("une coche ne compte NI dans l'un NI dans l'autre", () => {
+    const marque = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
+    const counts = stepCounts([doc({ unit_count: 900, step_status: { segmentation: marque } })]);
+    expect(counts.segmentation).toEqual({ none: 0, started: 0 });
+  });
+
+  it("un corpus neuf : rien de commencé partout, SAUF la segmentation", () => {
+    // Simulé en base le 31 août : cinq documents fraîchement importés donnent une
+    // trace de segmentation sur les cinq, parce que l'import a produit des lignes. Une
+    // carte qui ne compterait que « jamais touché » y afficherait « 0 à faire » — le
+    // mensonge exact que le modèle à trois états existe pour tuer.
+    const neuf = [1, 2, 3].map((n) => doc({ doc_id: n, unit_count: 20 }));
+    const counts = stepCounts(neuf);
+    expect(counts.segmentation).toEqual({ none: 0, started: 3 });
+    expect(counts.curation).toEqual({ none: 3, started: 0 });
+    expect(counts.alignement).toEqual({ none: 3, started: 0 });
+    expect(counts.annotation).toEqual({ none: 3, started: 0 });
   });
 
   it("rend zéro partout sur un corpus vide, sans clé manquante", () => {
     const counts = stepCounts([]);
-    for (const step of HUB_STEPS) expect(counts[step]).toBe(0);
+    for (const step of HUB_STEPS) expect(counts[step]).toEqual({ none: 0, started: 0 });
   });
 });
 
@@ -107,29 +183,36 @@ describe("docBadges", () => {
     expect(badges.every((b) => b.kind === "todo")).toBe(true);
   });
 
-  it("un document entièrement traité ne rend AUCUNE pastille", () => {
+  it("des traces partout ne suffisent PAS à vider la liste", () => {
+    // Le document est curé, découpé, aligné, annoté — et il reste les quatre
+    // pastilles, parce que personne n'a rien validé. C'est le changement de fond du
+    // modèle : le moteur ne conclut pas à la place de l'utilisateur.
     const badges = docBadges(doc({
       unit_count: 900,
       curated_at: "2026-01-01T00:00:00Z",
       aligned_count: 4,
       annotation_status: "annotated",
     }));
-    expect(badges).toEqual([]);
+    expect(badges.map((b) => b.label)).toEqual([
+      "Curation", "Segmentation", "Alignement", "Annotation",
+    ]);
+  });
+
+  it("quatre coches, elles, la vident", () => {
+    expect(docBadges(doc({ unit_count: 900, step_status: TOUT_COCHE }))).toEqual([]);
   });
 
   it("l'index périmé est une anomalie, pas une étape — il vient en dernier", () => {
     const badges = docBadges(doc({
       unit_count: 900,
-      curated_at: "2026-01-01T00:00:00Z",
-      aligned_count: 4,
-      annotation_status: "annotated",
+      step_status: TOUT_COCHE,
       fts_stale: true,
     }));
     expect(badges).toEqual([{ label: "Index périmé", kind: "warn" }]);
   });
 
   it("fts_stale absent ou false ne produit pas de pastille", () => {
-    expect(docBadges(doc({ unit_count: 900, curated_at: "x", aligned_count: 1, annotation_status: "annotated", fts_stale: false })))
+    expect(docBadges(doc({ unit_count: 900, step_status: TOUT_COCHE, fts_stale: false })))
       .toEqual([]);
   });
 });
@@ -169,9 +252,9 @@ describe("tri de la liste", () => {
 
   it("« à faire » trie par quantité de travail restant", () => {
     const docs = [
-      doc({ doc_id: 1, unit_count: 900, curated_at: "x", aligned_count: 1, annotation_status: "annotated" }), // 0
-      doc({ doc_id: 2, unit_count: 1 }),                                                                      // 4
-      doc({ doc_id: 3, unit_count: 900, curated_at: "x", aligned_count: 1, annotation_status: "annotated", fts_stale: true }), // 1
+      doc({ doc_id: 1, unit_count: 900, step_status: TOUT_COCHE }),                    // 0
+      doc({ doc_id: 2, unit_count: 1 }),                                              // 4
+      doc({ doc_id: 3, unit_count: 900, step_status: TOUT_COCHE, fts_stale: true }),   // 1
     ];
     expect(sortDocs(docs, "todo", "asc").map((d) => d.doc_id)).toEqual([1, 3, 2]);
     expect(sortDocs(docs, "todo", "desc").map((d) => d.doc_id)).toEqual([2, 3, 1]);
@@ -191,35 +274,5 @@ describe("tri de la liste", () => {
     const cmp = hubComparator("title", "asc");
     const niveau = [corpus[0], corpus[2]];
     expect([...niveau].sort(cmp).map((d) => d.doc_id)).toEqual([2, 3]);
-  });
-});
-
-describe("visibleBadges — une ligne fait une ligne", () => {
-  it("sous la borne, tout est montré et rien n'est caché", () => {
-    const { shown, hidden } = visibleBadges(doc({ unit_count: 900, aligned_count: 1 }), 4);
-    expect(shown.map((b) => b.label)).toEqual(["Curation", "Annotation"]);
-    expect(hidden).toBe(0);
-  });
-
-  it("au-delà, l'anomalie passe DEVANT et n'est jamais celle qu'on cache", () => {
-    // Quatre étapes + index périmé = cinq pastilles pour quatre places. Cacher
-    // « Index périmé » cacherait le seul état qui appelle une action.
-    const { shown, hidden } = visibleBadges(doc({ unit_count: 1, fts_stale: true }), 4);
-    expect(shown[0].label).toBe("Index périmé");
-    expect(shown).toHaveLength(4);
-    expect(hidden).toBe(1);
-    expect(shown.map((b) => b.label)).not.toContain("Annotation");
-  });
-
-  it("le compte caché est exact, pas approximatif", () => {
-    const d = doc({ unit_count: 1, fts_stale: true });
-    const { shown, hidden } = visibleBadges(d, 2);
-    expect(shown).toHaveLength(2);
-    expect(hidden).toBe(docBadges(d).length - 2);
-  });
-
-  it("un document sans rien à faire ne cache rien", () => {
-    const d = doc({ unit_count: 900, curated_at: "x", aligned_count: 1, annotation_status: "annotated" });
-    expect(visibleBadges(d, 4)).toEqual({ shown: [], hidden: 0 });
   });
 });
