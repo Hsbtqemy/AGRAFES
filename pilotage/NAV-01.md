@@ -1,35 +1,38 @@
 ---
 chantier: NAV-01
-statut: à venir
+statut: interrompu
 ---
 
 # NAV-01 — aucun retour en arrière, et deux raisons empilées
 
-**Point de départ** — question posée le 31 août 2026 : « on n'a pas de retour en arrière dans la navigation, avec un geste du pad ou un bouton de souris ? » Non. Sonde du lot 0 passée le même jour : le bouton de souris est gratuit, le glissé du pad ne l'est pas. Aucune ligne de code écrite.
+**Arrêté sur** — lot 1 posé et testé (`navHistory.ts`, les quatre accroches branchées, 20 tests), le geste souris marche ; reste la QA dans le shell et les gestes du pad, 31 août 2026.
 
 ## Reste
 
 - [x] Sonde du lot 0 — le bouton latéral émet `button=3`/`button=4` au DOM **et** WebView2 navigue nativement ; le glissé du pad n'émet que des `wheel`, sans jamais naviguer
-- [ ] Écrire le descripteur de destination `{mode, tab, subView, layer, docId}` et ses deux fonctions `lire`/`appliquer` : c'est le seul contrat partagé entre les quatre niveaux de navigation
-- [ ] Alimenter l'historique par `pushState` dans les **quatre** points d'accroche uniques du tableau ci-dessous, jamais dans les 56 sites d'appel qui y mènent
-- [ ] Brancher `popstate` sur `appliquer`, avec dédoublonnage : deux poussées de la même destination ne doivent pas créer deux entrées à remonter
+- [x] Le descripteur et la pile : `tauri-prep/src/lib/navHistory.ts`, un enregistrement plat `{mode, tab, subView, layer}` et des niveaux qui s'enregistrent avec leur `read`/`apply` — **sans** `docId`, décidé au cadrage du lot
+- [x] Les quatre points d'accroche alimentent l'historique par `pushState` — une ligne chacun, aucun des 56 sites d'appel touché
+- [x] `popstate` applique la destination du plus englobant au plus fin, avec dédoublonnage et un drapeau qui interdit à une restauration de se re-pousser elle-même
 - [x] `preventDefault()` sur le `pointerdown` supprime bien la navigation native — deux appuis mesurés, aucun `popstate` derrière, alors qu'il tombait à 6 ms sans le blocage
-- [ ] Traiter le refus par le veto sur le chemin souris : intercepter le `pointerdown` bouton 3, interroger `hasPendingChanges` (`app.ts:508`), ne naviguer que sur un oui — c'est possible parce que le veto est mesuré
-- [ ] Traiter le refus sur les autres chemins (clavier, pad rallumé) par la re-poussée : là, `popstate` ne s'annule pas, et un retour refusé oblige à re-pousser l'état qu'on vient de quitter
-- [ ] Poser un garde sur `_setMode` du shell, qui n'en a aucun : il dispose le module et remplace `#app` sans jamais demander, et le `beforeunload` d'`app.ts:195` ne couvre que la fermeture
+- [x] Le refus par le veto sur le chemin souris : `setPendingGuard` interroge `hasPendingChanges`, annule le `pointerdown` et pose la question avant de naviguer
+- [ ] Traiter le refus sur les autres chemins (clavier, pad rallumé) par la re-poussée : là, `popstate` ne s'annule pas, et un retour refusé oblige à re-pousser l'état qu'on vient de quitter — inutile tant que la souris est le seul geste
+- [ ] Le garde ne couvre que le GESTE : cliquer un onglet du bandeau shell pendant une édition démonte toujours le module sans demander (`_setMode` n'a aucun garde). Défaut préexistant, révélé par ce chantier — décider s'il entre dans son périmètre
 - [ ] Glissé du pad sous Windows : rallumer `SetIsSwipeNavigationEnabled(true)` par `with_webview()` — un appel COM, et surtout **pas** un détecteur de geste en JS (voir la queue d'inertie mesurée)
 - [ ] Glissé du pad sous macOS : `setAllowsBackForwardNavigationGestures(true)` par `objc2`, sachant que ce code ne sera compilé par aucune CI avant un tag `v*`
 - [ ] Décider si un retour clavier accompagne le geste : `_installKeyboardShortcuts` (`shell.ts:3622`) tient déjà `Ctrl+1/2/3/0` pour sauter entre modes, et tout ajout doit apparaître dans le panneau `Ctrl+/`
-- [ ] Écrire la passe de QA du geste une fois la pile posée, en couvrant d'abord le geste **involontaire** pendant une édition au canvas
+- [x] Écrire la passe de QA du geste — `qa/retour-arriere-geste.md`
+- [ ] **La jouer** : la pile est vérifiée par 20 tests unitaires, mais rien n'a encore été mesuré dans le shell en marche
+- [x] Les tests de la pile : 20 cas dans `navHistory.test.ts` (ordre d'application, dédoublonnage, niveau qui refuse, entrée étrangère, garde, cycle de vie)
 
 ## QA
 
 - qa/sonde-geste-retour.md
+- qa/retour-arriere-geste.md
 
-La sonde du lot 0 y vit : une mesure, pas une vérification — c'est elle qui a fait tomber le
-chiffrage de 2,5-3,5 j à 2-3 j pour la souris. Sa zone « Blocage » reste à passer. La passe
-du geste lui-même viendra avec le lot 1, et son point le plus important ne sera pas que le
-retour marche : c'est qu'un coup de pouce parasite pendant une saisie ne détruise rien.
+La sonde du lot 0 est jouée et close : une mesure, pas une vérification — c'est elle qui a
+fait tomber le chiffrage de 2,5-3,5 j à 2-3 j pour la souris. La seconde passe vérifie le
+geste lui-même et n'a pas encore été jouée ; son point le plus important n'est pas que le
+retour marche, c'est qu'un coup de pouce parasite pendant une saisie ne détruise rien.
 
 ## Contexte
 
