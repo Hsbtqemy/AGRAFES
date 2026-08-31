@@ -73,10 +73,12 @@ jobs:
           node node_modules/pilote/journal.mjs exporter site \
             --web "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/"
 
+      # Pages doit être activé sur le dépôt, source « GitHub Actions ». Fait une fois le
+      # 2026-08-31 par l'API du compte. `enablement: true` a été essayé d'abord et échoue :
+      # le jeton d'Actions n'a pas le droit de CRÉER un site Pages — « Resource not
+      # accessible by integration ». Le laisser aurait donné un workflow rouge à chaque
+      # passage si Pages venait à être désactivé, au lieu d'une erreur qui dit quoi faire.
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5.0.0
-        # Active Pages au premier passage plutôt que d'exiger un réglage manuel.
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3.0.1
         with:
