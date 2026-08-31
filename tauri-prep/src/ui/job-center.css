@@ -1,4 +1,13 @@
-.job-center { background: #f0f5ff; border-bottom: 1px solid #c8d8f5; display: none; }
+/* `sticky` et non `static` : le bandeau est le premier enfant de `.prep-main`, qui est le
+   conteneur de défilement (prep-vnext.css, `overflow-y: auto`). Sans position, il se peignait
+   tout en haut du contenu défilant et sortait de l'écran dès qu'on défilait — or les boutons
+   qui lancent un travail long vivent au fond des écrans, donc on était toujours défilé au
+   moment où il apparaissait. Signalé en QA le 31 août 2026 : « j'ai lancé, je n'ai pas vu le
+   Job Center. » Épinglé, il ne coûte aucun décalage de plus : il occupait déjà sa place dans
+   le flux quand il s'affichait, il cesse seulement de filer vers le haut. Troisième défaut de
+   visibilité de ce composant, après celui où il se cachait lui-même (248857d). */
+.job-center { background: #f0f5ff; border-bottom: 1px solid #c8d8f5; display: none;
+  position: sticky; top: 0; z-index: 30; }
 .jc-inner { max-width: 900px; margin: 0 auto; padding: 0.35rem 1.25rem; display: flex;
   flex-direction: column; gap: 0.25rem; }
 .jc-section-title { font-size: 0.68rem; text-transform: uppercase; color: var(--color-muted);
