@@ -4183,6 +4183,13 @@ button.prep-matrix-remove-choice:hover {
    défile aussi horizontalement, jamais la page entière. */
 .prep-acts-hub-doc-list {
   overflow: auto;
+  /* La gouttière est réservée MÊME quand la liste ne défile pas. Sans ça, le filtre
+     Segmentation — une seule ligne sur ce corpus, donc pas de barre — rendait au
+     tableau les ~15 px que la barre occupait sous tous les autres filtres. Le tableau
+     étant en `table-layout: fixed` avec une seule colonne élastique, ces pixels
+     allaient entièrement au titre : tout ce qui est à sa droite glissait. Trouvé en
+     QA le 31 août, sur l'item « les colonnes ne bougent pas d'un filtre à l'autre ». */
+  scrollbar-gutter: stable;
   height: clamp(320px, 52vh, 620px);
 }
 /* Dès que la liste défile, l'en-tête doit rester : c'est lui qui porte les noms de
