@@ -2,7 +2,7 @@
 passe: Retour en arrière — le geste
 chantier: NAV-01
 duree: 12 min
-derniere: —
+derniere: 2026-08-31
 ---
 
 # QA — le retour en arrière au bouton de souris
@@ -52,14 +52,14 @@ décidé au cadrage du lot, pas un défaut à signaler.
 
 ### À l'ouverture et aux bords
 
-- [ ] Rouvrir l'application : elle s'ouvre sur le mode quitté, et un premier appui sur « précédent » ne l'éjecte nulle part
-- [ ] Appuyer six ou sept fois d'affilée sur « précédent » : on remonte jusqu'au premier écran de la session et l'application reste vivante — jamais de page blanche ni de fermeture
-- [ ] Cliquer dix fois le même onglet déjà actif, puis un appui : on revient à l'écran précédent d'un seul cran, pas après dix appuis
+- [x] Rouvrir l'application : elle s'ouvre sur le mode quitté, et un premier appui sur « précédent » ne l'éjecte nulle part
+- [x] Appuyer six ou sept fois d'affilée sur « précédent » : on remonte jusqu'au premier écran de la session et l'application reste vivante — jamais de page blanche ni de fermeture
+- [x] Cliquer dix fois le même onglet déjà actif, puis un appui : on revient à l'écran précédent d'un seul cran, pas après dix appuis
 
 ### Ce qui ne doit pas bouger
 
 - [x] Les raccourcis `Ctrl+1/2/3/0` sautent toujours d'un mode à l'autre, et le geste les remonte comme le reste
 - [x] Le défilement horizontal de la matrice au pad fonctionne normalement et ne déclenche aucun retour
-- [ ] Un travail long lancé dans Constituer, puis un retour d'onglet ou de sous-vue : le bandeau du Job Center reste visible et sa progression continue d'avancer
-- [ ] Le même travail, puis un retour qui **change de mode** : il va jusqu'au bout côté moteur et produit ses résultats, même si son suivi affiché a disparu
-- [ ] Changer de base pendant la session, puis un appui : rien ne rouvre l'ancienne base
+- [x] Un travail long lancé dans Constituer, puis un retour d'onglet ou de sous-vue : le bandeau du Job Center reste visible et sa progression continue d'avancer
+- [x] Le même travail, puis un retour qui **change de mode** : il va jusqu'au bout côté moteur et produit ses résultats, même si son suivi affiché a disparu
+- [x] Changer de base pendant la session, puis un appui : rien ne rouvre l'ancienne base

@@ -5,7 +5,7 @@ statut: interrompu
 
 # NAV-01 — aucun retour en arrière, et deux raisons empilées
 
-**Arrêté sur** — lot 1 posé et testé (`navHistory.ts`, les quatre accroches branchées, 20 tests), le geste souris marche ; reste la QA dans le shell et les gestes du pad, 31 août 2026.
+**Arrêté sur** — lot 1 livré sur `refonte` et validé en QA (18/18) : le geste souris marche dans les deux sens, à travers les quatre niveaux. Restent les gestes du pad et trois arbitrages, 31 août 2026.
 
 ## Reste
 
@@ -21,7 +21,7 @@ statut: interrompu
 - [ ] Glissé du pad sous macOS : `setAllowsBackForwardNavigationGestures(true)` par `objc2`, sachant que ce code ne sera compilé par aucune CI avant un tag `v*`
 - [ ] Décider si un retour clavier accompagne le geste : `_installKeyboardShortcuts` (`shell.ts:3622`) tient déjà `Ctrl+1/2/3/0` pour sauter entre modes, et tout ajout doit apparaître dans le panneau `Ctrl+/`
 - [x] Écrire la passe de QA du geste — `qa/retour-arriere-geste.md`
-- [ ] **La jouer** : la pile est vérifiée par 20 tests unitaires, mais rien n'a encore été mesuré dans le shell en marche
+- [x] **La jouer** — 18 cases sur 18 dans le shell en marche. Elle n'a rien trouvé sur le geste lui-même, mais deux défauts **préexistants** en chemin : le bandeau de sortie d'onglet qui décalait la topbar, et le Job Center qui filait hors de l'écran au défilement
 - [x] Les tests de la pile : 20 cas dans `navHistory.test.ts` (ordre d'application, dédoublonnage, niveau qui refuse, entrée étrangère, garde, cycle de vie)
 
 ## QA
