@@ -217,12 +217,18 @@ et le dit maintenant en tête.
 
 ## QA
 
-- qa/actions-tri-etat.md — **à écrire**. Le modèle à trois états n'a aucune passe : ni
-  les cases, ni leur péremption, ni les deux nombres des cartes n'ont été vus tourner.
-  Tout est couvert par tests (29 moteur, 31 front) et par mesure en base, pas à l'œil —
-  c'est-à-dire dans l'état exact où « action d'abord » était avant sa passe, qui a
-  trouvé deux vrais défauts. Points de départ mesurés : les cartes doivent afficher
-  56·2 / 58 / 37·21 / 52·6, et **aucune coche n'existe** dans le corpus.
+- qa/actions-tri-etat.md — **écrite le 31 août, jamais jouée**, 53 items en huit zones.
+  Le modèle à trois états est couvert par 60 tests (29 moteur, 31 front) et par mesure en
+  base, mais n'a été vu tourner par personne — l'état exact où « action d'abord » était
+  avant sa passe, qui a trouvé deux vrais défauts. Points de départ mesurés : les cartes
+  doivent afficher 56·2 / 58 / 37·21 / 52·6, et **aucune coche n'existe** dans le corpus.
+  Chaque item est ancré sur un document vérifié en base — `#375` pour une case vide et
+  une case « en cours », `#377` pour une coche faible, `#368` pour une coche forte,
+  `#364` pour la périmer — parce que cinq items de la passe précédente, écrits d'après
+  les tests unitaires plutôt que d'après ce que le corpus permet, se sont révélés
+  injouables. Elle écrit dans la base (`doc_step_status`) et son dernier bloc nettoie.
+  Un point à juger et non à cocher y est posé : tant qu'aucune coche n'existe, les quatre
+  filtres annoncent les 58 documents et ne retirent aucune ligne.
 - qa/actions-action-dabord.md — **jouée en entier** le 31 août, 71 sur 71, puis
   **invalidée le même jour** sur trois zones par le tri-état. La passe le dit en tête,
   zone par zone ; les cases restent cochées, elles disent ce qui a été vu ce jour-là. Elle vérifie ce
