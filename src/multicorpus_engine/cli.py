@@ -873,6 +873,7 @@ def cmd_segment(args: argparse.Namespace) -> None:
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .segmenter import resegment_document
+    from .services.segment_service import make_resegment_recorder
 
     db_path = Path(args.db).resolve()
     if not db_path.exists():
@@ -890,12 +891,18 @@ def cmd_segment(args: argparse.Namespace) -> None:
     log, log_path = setup_run_logger(db_path, run_id)
 
     try:
+        # Même recorder que les deux chemins sidecar. Sans lui, une resegmentation
+        # lancée en Mode A détruisait les unités du document ET ses liens
+        # d'alignement sans laisser la moindre trace : ni annulation possible, ni
+        # ligne `resegment` dans `prep_action_history`. `action_id` faisait déjà
+        # partie du rapport rendu — il valait simplement toujours null.
         report = resegment_document(
             conn=conn,
             doc_id=args.doc_id,
             lang=getattr(args, "lang", "und"),
             pack=getattr(args, "pack", "auto"),
             run_logger=log,
+            record_action=make_resegment_recorder(conn),
         )
         stats = report.to_dict()
         update_run_stats(conn, run_id, stats)

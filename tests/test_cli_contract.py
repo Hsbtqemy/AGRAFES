@@ -322,6 +322,60 @@ def test_cli_curate_records_an_undoable_action(tmp_path: Path) -> None:
         conn.close()
 
 
+def test_cli_segment_records_an_undoable_action(tmp_path: Path) -> None:
+    """Le dernier chemin d'écriture muet (ACT-01).
+
+    Les deux chemins sidecar de la segmentation passent `make_resegment_recorder`,
+    la CLI n'en passait aucun : une resegmentation en Mode A détruisait les unités
+    du document — et ses liens d'alignement — sans laisser de trace. `action_id`
+    figurait déjà dans le rapport rendu, il valait simplement toujours null.
+    """
+    db_path = tmp_path / "segment.db"
+    docx_path = tmp_path / "src.docx"
+    docx_path.write_bytes(
+        make_docx(["[1] Première phrase. Deuxième phrase.", "[2] Une seule ici."])
+    )
+
+    for cmd in (
+        ["init-project", "--db", str(db_path)],
+        ["import", "--db", str(db_path), "--mode", "docx_numbered_lines",
+         "--language", "fr", "--path", str(docx_path), "--title", "Segment"],
+    ):
+        proc = _run_cli(cmd)
+        assert proc.returncode == 0, proc.stderr
+
+    conn = sqlite3.connect(str(db_path))
+    doc_id = conn.execute("SELECT doc_id FROM documents").fetchone()[0]
+    avant = conn.execute(
+        "SELECT COUNT(*) FROM units WHERE doc_id = ? AND unit_type = 'line'", (doc_id,)
+    ).fetchone()[0]
+    conn.close()
+
+    proc = _run_cli(["segment", "--db", str(db_path), "--doc-id", str(doc_id), "--lang", "fr"])
+    assert proc.returncode == 0, proc.stderr
+    payload = _parse_single_json(proc.stdout)
+    assert payload["units_output"] > avant, "la resegmentation doit avoir découpé"
+    assert payload["action_id"] is not None
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT action_type, doc_id FROM prep_action_history WHERE action_id = ?",
+            (payload["action_id"],),
+        ).fetchone()
+        assert row is not None and row[0] == "resegment"
+        assert row[1] == doc_id
+        # Ce sont les instantanés des unités détruites qui rendent l'annulation exacte :
+        # `_undo_resegment` les réinsère AVEC leur unit_id d'origine.
+        snaps = conn.execute(
+            "SELECT COUNT(*) FROM prep_action_unit_snapshots WHERE action_id = ?",
+            (payload["action_id"],),
+        ).fetchone()[0]
+        assert snaps == avant
+    finally:
+        conn.close()
+
+
 def test_serve_token_label_redacts_literal_secret() -> None:
     """SEC-07: a literal --token value must never be persisted verbatim in
     runs.params; only the mode keyword or the placeholder 'custom' is stored."""
