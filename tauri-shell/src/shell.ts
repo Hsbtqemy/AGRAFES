@@ -25,6 +25,8 @@ import type { ShellContext } from "./context.ts";
 import { isCloudSyncedPath } from "./cloudSync.ts";
 import { setHtml, raw as rawHtml, safeHtml } from "../../tauri-prep/src/lib/safeHtml.ts";
 import { clampAnchoredMenu } from "../../shared/anchorMenu.ts";
+import { install as navInstall, registerLevel as navRegisterLevel, sync as navSync }
+  from "../../tauri-prep/src/lib/navHistory.ts";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 
@@ -1593,6 +1595,21 @@ export async function initShell(): Promise<void> {
 
   _buildHeader();
   _installKeyboardShortcuts();
+
+  // NAV-01 — le niveau le plus englobant de la pile, puis son démarrage. L'ordre compte :
+  // appliquer un mode remonte le module Constituer, ce qui détruit et recrée les niveaux
+  // en dessous (onglet, sous-vue, couche). Un onglet appliqué avant son mode serait écrasé
+  // par le remontage.
+  navRegisterLevel("mode", {
+    order: 10,
+    read: () => _currentMode,
+    apply: (v) => _setMode(v as Mode),
+  });
+  // Le DÉMARRAGE de la pile, lui, attend la première navigation (plus bas, après
+  // `_setMode(startMode)`) : install pose l'entrée de départ, et `_currentMode` vaut encore
+  // « home » ici. Installée maintenant, la pile prendrait « home » pour point de départ
+  // alors que l'utilisateur ouvre l'application sur le mode qu'il avait quitté — le
+  // premier retour l'éjecterait vers un écran où il n'est jamais passé.
   // Close DB menu and support menu when clicking outside
   document.addEventListener("click", _closeDbMenu);
   document.addEventListener("click", _closeSupportMenu);
@@ -1641,6 +1658,10 @@ export async function initShell(): Promise<void> {
   // du module se coalescera/réutilisera ce démarrage. (_initDb gère ses erreurs.)
   if (_currentDbPath) await _initDb(_currentDbPath);
   await _setMode(startMode);
+  // NAV-01 — la pile démarre ici : l'entrée de départ porte le mode réellement ouvert, et
+  // Prep, monté par le `_setMode` ci-dessus, a déjà enregistré ses propres niveaux. Le
+  // premier retour n'a donc rien à remonter, ce qui est le comportement voulu à l'ouverture.
+  navInstall();
   await _initDeepLinkRuntimeListener();
 
   // ── Show crash recovery banner if previous session crashed ───────────────────
@@ -2685,6 +2706,10 @@ async function _setMode(mode: Mode, opts?: { force?: boolean }): Promise<void> {
   } finally {
     _navigating = false;
     _shellNavReady = true;
+    // NAV-01 — dans le `finally` et non en fin de `try` : le mode « home » sort par un
+    // `return` anticipé, et une erreur de chargement laisse quand même le mode changé.
+    // C'est le seul endroit que TOUS les chemins traversent.
+    navSync();
   }
 }
 
