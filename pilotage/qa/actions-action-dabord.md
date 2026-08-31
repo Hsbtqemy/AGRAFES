@@ -87,22 +87,22 @@ carte `Voir les 57` puis `Tout afficher`, en-têtes `N° · Titre · Langue · R
 
 ### Les quatre cartes
 
-- [ ] Les cartes affichent 57 / 1 / 37 / 53 à faire, dans l'ordre Curation · Segmentation · Alignement · Annotation
-- [ ] Aucune carte ne porte plus « Étape 1 », « Étape 2 », « Étape 3 » ni « Optionnel »
-- [ ] La carte de tête « Traitement de corpus » a disparu, et la page ne commence plus par elle
-- [ ] Il n'y a qu'UN bouton d'actualisation sur la page, dans l'en-tête « Documents du corpus »
-- [ ] `↺ Actualiser` recharge la liste ET rafraîchit les quatre compteurs
-- [ ] La carte Alignement a bien trois boutons : le filtre, `Ouvrir →`, et `Contrôle`
-- [ ] `Ouvrir →` d'une carte entre dans l'espace sans présélectionner de document
+- [x] Les cartes affichent 57 / 1 / 37 / 53 à faire, dans l'ordre Curation · Segmentation · Alignement · Annotation
+- [x] Aucune carte ne porte plus « Étape 1 », « Étape 2 », « Étape 3 » ni « Optionnel »
+- [x] La carte de tête « Traitement de corpus » a disparu, et la page ne commence plus par elle
+- [x] Il n'y a qu'UN bouton d'actualisation sur la page, dans l'en-tête « Documents du corpus »
+- [x] `↺ Actualiser` recharge la liste ET rafraîchit les quatre compteurs
+- [x] La carte Alignement a bien trois boutons : le filtre, `Ouvrir →`, et `Contrôle`
+- [x] `Ouvrir →` d'une carte entre dans l'espace sans présélectionner de document
 
 ### Le filtre et la liste
 
-- [ ] Cliquer `Voir les 57` sur Curation réduit la liste à 57 lignes et la carte s'entoure d'un liseré
-- [ ] Le bandeau annonce « Curation — 57 documents sur 58 » et propose « Tout afficher »
-- [ ] Le bouton de la carte active devient « Tout afficher » ; les trois autres cartes restent cliquables
-- [ ] Re-cliquer la carte active rend les 58 lignes et fait disparaître le bandeau
-- [ ] « Tout afficher » du bandeau a le même effet que re-cliquer la carte
-- [ ] Passer d'un filtre à l'autre sans repasser par « tout » remplace le filtre, ne les cumule pas
+- [x] Cliquer `Voir les 57` sur Curation réduit la liste à 57 lignes et la carte s'entoure d'un liseré
+- [x] Le bandeau annonce « Curation — 57 documents sur 58 » et propose « Tout afficher »
+- [x] Le bouton de la carte active devient « Tout afficher » ; les trois autres cartes restent cliquables
+- [x] Re-cliquer la carte active rend les 58 lignes et fait disparaître le bandeau
+- [x] « Tout afficher » du bandeau a le même effet que re-cliquer la carte
+- [x] Passer d'un filtre à l'autre sans repasser par « tout » remplace le filtre, ne les cumule pas
 - [ ] Sous filtre Segmentation, une seule ligne reste : `9_CI-TrFr-2021_Aligné_UTF8.txt`
 - [ ] La numérotation N° repart de 1 sous filtre — c'est le rang affiché, pas le rang dans le corpus
 
