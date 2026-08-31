@@ -39,14 +39,16 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 - [x] Décider ce que devient la carte de tête « Traitement de corpus » — supprimée, avec
       ses trois règles CSS devenues mortes. Son unique bouton a rejoint l'en-tête de la
       carte Documents
-- [ ] **Jouer la passe `qa/actions-action-dabord.md`** — écrite le 31 août (50 points,
-      7 zones), pas encore jouée. Rien n'a été VU tourner : tout est vérifié par tests
-      (1295 vitest prep, 79 shell, 34 pytest du service) et par mesure en base, pas à
-      l'œil. **Le sidecar doit être reconstruit avant** — celui en place date du 28 août
-      et ignore les deux champs neufs ; sans ça la passe mesure un binaire périmé et
-      annonce « 58 à faire » partout. Le préambule de la passe porte la commande et le
-      contrôle `/health` (le `contract_version` servi doit être au moins 1.6.85 — le
-      dépôt est passé à 1.6.86 le même jour avec FTS-01)
+- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 67 points en 8 zones, **19 joués**
+      au 31 août (les quatre cartes, le filtre et la liste, le début du tri). Le reste n'a
+      pas été VU tourner : il est couvert par tests (1295 vitest prep, 79 shell, 34 pytest
+      du service) et par mesure en base, pas à l'œil. Le préambule porte la reconstruction
+      du sidecar et le contrôle `/health` — à relire à chaque rejeu plutôt qu'à faire de
+      mémoire. Un item a été **remplacé en cours de passe** : « le tri accentue et
+      minuscule pareil » était invérifiable sur ce corpus (aucune paire de titres, langues
+      ou rôles ne collationne égale en différant à l'octet — mesuré) et déjà prouvé par
+      `docSort.test.ts` ; à sa place, les trois rangs où le comparateur du dépôt diverge
+      d'un `<` naïf sur les 58 vrais titres
 - [x] **Le chemin asynchrone de la curation n'enregistre rien** — trouvé en chemin, puis
       **corrigé** (contrat 1.6.87), et il n'était pas seul. En énumérant les appelants
       plutôt qu'en corrigeant celui qu'on regardait : **trois** chemins appliquent la
@@ -106,12 +108,14 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 
 ## QA
 
-- qa/actions-action-dabord.md — écrite, **jamais jouée**. Elle vérifie ce qu'aucun test
-  unitaire ne prouve : que l'état affiché correspond au document en base, que le filtre et
-  la vue hiérarchie se composent sans se contredire, et que la colonne de gestes tient à
-  l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas estimés —
-  57/1/37/53 sur les cartes, 17 pastilles « Index périmé », une seule ligne « Rien à
-  faire » (`#416`), 6 documents dont le geste Alignement doit refuser.
+- qa/actions-action-dabord.md — **en cours**, 19 points sur 67 au 31 août. Elle vérifie ce
+  qu'aucun test unitaire ne prouve : que l'état affiché correspond au document en base, que
+  le filtre et la vue hiérarchie se composent sans se contredire, et que la colonne de
+  gestes tient à l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas
+  estimés — 57/1/37/53 sur les cartes, 17 pastilles « Index périmé », une seule ligne
+  « Rien à faire » (`#416`), 6 documents dont le geste Alignement doit refuser. La jouer a
+  déjà servi : elle a fait tomber un item invérifiable, remplacé par trois rangs de tri
+  mesurés sur les vrais titres.
 
 ## Contexte
 

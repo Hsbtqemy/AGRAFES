@@ -92,6 +92,15 @@ Le maximum de pastilles mesuré sur ce corpus est **4** (17 documents) : aucun �
 doit apparaître aujourd'hui. Il apparaîtra le jour où un document cumulera les quatre
 étapes ET un index périmé — `9_CI-TrFr-2021_Aligné_UTF8.txt` en est à un pas.
 
+**Les trois rangs attendus au tri par titre** viennent d'une comparaison, sur les 58 vrais
+titres, entre le comparateur du dépôt (`Intl.Collator("fr", { sensitivity: "base",
+numeric: true })`, `shared/docSort.ts`) et un `<` naïf sur la chaîne. Ce sont les trois
+seules positions où les deux divergent : elles attrapent donc un appelant qui aurait été
+câblé sans passer par `compareDocsByTitle`. Ne pas chercher à vérifier l'insensibilité à
+la casse ou aux accents à l'œil — **aucune** paire de titres, langues ou rôles de ce
+corpus ne collationne égale en différant à l'octet (mesuré), et `docSort.test.ts` la
+prouve déjà. C'est ce que l'item précédent demandait, en vain.
+
 ### Les quatre cartes
 
 - [x] Les cartes affichent 57 / 1 / 37 / 53 à faire, dans l'ordre Curation · Segmentation · Alignement · Annotation
@@ -107,19 +116,21 @@ doit apparaître aujourd'hui. Il apparaîtra le jour où un document cumulera le
 - [x] Cliquer `Voir les 57` sur Curation réduit la liste à 57 lignes et la carte s'entoure d'un liseré
 - [x] Le bandeau annonce « Curation — 57 documents sur 58 » et propose « Tout afficher »
 - [x] Le bouton de la carte active devient « Tout afficher » ; les trois autres cartes restent cliquables
-- [ ] Re-cliquer la carte active rend les 58 lignes ; le bandeau RESTE et repasse à « 58 documents »
+- [x] Re-cliquer la carte active rend les 58 lignes ; le bandeau RESTE et repasse à « 58 documents »
 - [x] « Tout afficher » du bandeau a le même effet que re-cliquer la carte
 - [x] Passer d'un filtre à l'autre sans repasser par « tout » remplace le filtre, ne les cumule pas
-- [ ] Sous filtre Segmentation, une seule ligne reste : `9_CI-TrFr-2021_Aligné_UTF8.txt`
-- [ ] La numérotation N° repart de 1 sous filtre — c'est le rang affiché, pas le rang dans le corpus
+- [x] Sous filtre Segmentation, une seule ligne reste : `9_CI-TrFr-2021_Aligné_UTF8.txt`
+- [x] La numérotation N° repart de 1 sous filtre — c'est le rang affiché, pas le rang dans le corpus
 
 ### Le tri
 
-- [ ] Cliquer « Titre » trie de A à Z ; re-cliquer inverse
-- [ ] L'indicateur passe de ⇅ à ↑ puis ↓, et les autres colonnes retombent toutes à ⇅
-- [ ] « Unités » se trie en nombre : 1518 vient après 897, jamais avant
-- [ ] « À faire » en descendant met en tête les documents à quatre pastilles
-- [ ] Le tri accentue et minuscule pareil : « abricot » et « Abricot » ne se séparent pas
+- [x] Cliquer « Titre » trie de A à Z ; re-cliquer inverse
+- [x] L'indicateur passe de ⇅ à ↑ puis ↓, et les autres colonnes retombent toutes à ⇅
+- [x] « Unités » se trie en nombre : 1518 vient après 897, jamais avant
+- [x] « À faire » en descendant met en tête les documents à quatre pastilles
+- [ ] Trié par titre croissant, `[1] hi rend=italicxhiscriptalert(1).txt` est la PREMIÈRE ligne
+- [ ] Aux rangs 4 et 5, `9_CI-TrFr-2021_Aligné_UTF8.txt` vient AVANT `9-CI-OrEn-Obs-2022_Non Aligné.docx`
+- [ ] Aux rangs 11 et 12, `Coe-House_ES.docx` vient AVANT `Coe-House-AL_EN.docx`
 - [ ] Changer de filtre garde le tri en place
 - [ ] En hiérarchie, trier ne sort aucun enfant de sous son parent
 - [ ] Le tri s'actionne au clavier : Tab jusqu'à un en-tête, puis Entrée
