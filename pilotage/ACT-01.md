@@ -70,10 +70,14 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       à trois états par document et par capacité, dont **deux sont dérivés gratuitement**
       (`[ ]` aucune trace, `[/]` une trace mais rien de conclu) et un seul se stocke
       (`[X]`, posé par l'utilisateur seul). La **signature de péremption est tranchée**
-      (mesure du 31 août : une coche sur trois serait démentie par la suite du travail ;
-      le compte d'unités est aveugle 1 fois sur 6 ; et 36 documents sur 58 n'ont aucun
-      historique, d'où deux signatures et non une). Restent deux décisions avant tout
-      ticket : le sort de `workflow_status`, et si la case absorbe le bouton d'ouverture
+      (mesure du 31 août, **une seule base et de travail** — les taux y sont indicatifs,
+      seuls les mécanismes tiennent). Ce qui est établi : une resegmentation peut rendre
+      le même compte d'unités, donc cette signature-là est aveugle par construction ; et
+      36 documents sur 58 n'ont aucun historique, angle mort qui se referme (83 % le
+      30 juin, 62 % le 27 août) mais que le chemin asynchrone de la curation empêchera
+      de disparaître. D'où deux signatures, la seconde transitoire. Restent deux décisions
+      avant tout ticket : le sort de `workflow_status`, et si la case absorbe le bouton
+      d'ouverture
 - [ ] **`fts_readable` n'est pas documenté dans `SIDECAR_API_CONTRACT.md`** — trouvé en
       ajoutant les deux champs voisins, qui y sont maintenant. Le champ date de 1.6.84
       (FTS-01) ; le test `test_contract_docs_sync` ne l'exige pas, d'où l'oubli. Une ligne

@@ -141,10 +141,12 @@ Environ **une coche sur trois** finirait par être démentie par la suite du tra
 signature n'est donc pas un ornement : sans elle, un tiers des `[X]` deviennent des
 mensonges silencieux.
 
-**La signature par compte d'unités est disqualifiée.** Sur les 12 resegmentations
-enregistrées, **2 rendent exactement le même nombre d'unités** — 16 %. Une fois sur six,
-le découpage change sous la coche sans qu'elle bronche. Pour un signal dont le seul
-métier est l'honnêteté, c'est rédhibitoire.
+**La signature par compte d'unités est disqualifiée — par le mécanisme, pas par le
+taux.** Sur les 12 resegmentations enregistrées, 2 rendent exactement le même nombre
+d'unités. Le rapport « 2 sur 12 » ne vaut rien statistiquement à cet effectif, et il ne
+sert pas ici : ce qui disqualifie, c'est que le cas **existe et soit observable**. Un
+découpage peut changer entièrement sous la coche sans que le compte bronche. Pour un
+signal dont le seul métier est l'honnêteté, une seule occurrence suffit.
 
 **« Rien » est disqualifiée aussi**, par le premier tableau : laisser le `[X]` survivre à
 tout, c'est accepter qu'un tiers d'entre eux mentent.
@@ -153,6 +155,25 @@ tout, c'est accepter qu'un tiers d'entre eux mentent.
 quatre capacités : sous « toute action postérieure périme », renommer un rôle annulerait
 tout ce qui était validé sur le document. Le périmètre doit être **par capacité**, pas
 par document.
+
+### Ce que cette mesure ne prouve PAS
+
+Elle porte sur **une seule base, la copie de travail** — et il n'existe pas de jeu
+indépendant pour recouper : les autres fichiers du dossier sont des instantanés du même
+corpus, pas d'autres corpus. Il faut donc trier ce qui tient de ce qui est indicatif.
+
+| résultat | portée |
+|---|---|
+| `set_role` périme des capacités sans rapport | **structurel** — c'est la table de correspondance action → capacité, pas un comptage |
+| une resegmentation peut rendre le même compte d'unités | **structurel** — le cas est observé, donc possible ; le taux n'est pas la question |
+| l'angle mort de l'historique | **structurel**, et transitoire (voir ci-dessous) |
+| taux de retour 26 – 41 % | **indicatif seulement** — c'est le comportement d'une personne sur un corpus, dans une base *de travail* où l'on expérimente plus qu'en usage réel. À re-mesurer sur un corpus mené de bout en bout avant d'en tirer une règle |
+
+La conclusion « rien » est disqualifiée s'appuie sur le seul chiffre indicatif du
+tableau. Elle est donc la plus fragile des trois : si le taux de retour réel s'avérait
+très bas, un `[X]` définitif redeviendrait défendable. Ce qui ne bouge pas, en revanche,
+c'est qu'une coche définitive **ne peut pas dire** qu'elle ne sait rien — et c'est
+l'argument qui la condamne, indépendamment du taux.
 
 ### Ce que la mesure déplace
 
@@ -167,6 +188,22 @@ connues : `prep_action_history` est *forward-only* depuis le 7 mai 2026 ; le che
 et une préparation antérieure n'a laissé aucune trace. L'activité est en outre très
 concentrée — le document le plus actif porte 124 actions, soit 47 % de tout l'historique,
 pour une médiane de 3.
+
+**Mais l'angle mort se referme, et c'est mesurable.** Comparaison de deux instantanés du
+même corpus — un avant/après de la même population, ce à quoi des instantanés servent
+légitimement :
+
+| instantané | documents | avec historique | angle mort |
+|---|---|---|---|
+| `corpus_agrafes.db` (30 juin) | 53 | 9 | 83 % |
+| `corpus_agrafes.WORKCOPY.db` (27 août) | 58 | 22 | 62 % |
+
+Vingt et un points en deux mois. L'angle mort n'est donc pas une propriété du modèle
+mais un **artefact de transition** : il se résorbe à mesure que le travail passe par des
+chemins qui enregistrent. Ce qui change la nature du repli dérivé — c'est une béquille
+datée, pas une seconde signature permanente. Et ce qui donne son prix au constat ouvert
+d'ACT-01 : tant que le chemin asynchrone de la curation n'enregistre rien, une part de
+l'angle mort ne se refermera jamais toute seule.
 
 ### Ce que la mesure recommande
 
@@ -199,9 +236,11 @@ qu'il était illisible (FTS-01).
       Trois issues : il se retire ; il se dérive des quatre cases (« validé » = les
       quatre à `[X]` ) ; il reste indépendant, et on documente pourquoi.
 - [x] **La signature de péremption** — tranchée par la mesure du 31 août (§5) :
-      historique **scopé par capacité**, plus un repli dérivé pour les 62 % de documents
-      que l'historique ignore, et un `[X]` qui dit sur quoi il se fonde. Le compte
-      d'unités seul et « rien » sont écartés, chiffres à l'appui.
+      historique **scopé par capacité**, plus un repli dérivé tant que l'angle mort n'est
+      pas résorbé, et un `[X]` qui dit sur quoi il se fonde. Le compte d'unités seul est
+      écarté par le mécanisme ; « rien » l'est parce qu'une coche définitive ne peut pas
+      dire qu'elle ne sait rien. Les taux mesurés sont **indicatifs** — une seule base, de
+      travail, sans jeu de recoupement (§5, « ce que cette mesure ne prouve pas »).
 - [ ] **La case remplace-t-elle le bouton d'ouverture ?** Les colonnes « À faire » et
       « Ouvrir » disent déjà la même chose deux fois — quatre capacités en état, puis
       les quatre mêmes en gestes, pour 30 rem à elles deux. Une case cliquable qui
