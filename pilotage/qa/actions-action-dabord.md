@@ -151,6 +151,7 @@ cumulera cinq états.
 - [x] La carte de tête « Traitement de corpus » a disparu, et la page ne commence plus par elle
 - [x] Il n'y a qu'UN bouton d'actualisation sur la page, dans l'en-tête « Documents du corpus »
 - [x] `↺ Actualiser` recharge la liste ET rafraîchit les quatre compteurs
+- [ ] En vue 🌿 Hiérarchie, `↺ Actualiser` garde l'arbre — et le bouton dit toujours `📋 Liste`
 - [x] La carte Alignement a bien trois boutons : le filtre, `Ouvrir →`, et `Contrôle`
 - [x] `Ouvrir →` d'une carte entre dans l'espace sans présélectionner de document
 
@@ -231,9 +232,9 @@ cumulera cinq états.
 
 ### Les cas creux
 
-- [ ] Sur un corpus vide, les cartes disent « aucun document » et leurs filtres sont inertes
-- [ ] Sur un corpus vide, la liste dit « Aucun document importé. »
-- [ ] Une carte sans reste affiche « tout à jour » en vert et son bouton « Rien à faire » est inerte
-- [ ] Filtrer, puis traiter le dernier document concerné, laisse « Rien à faire ici : aucun document n'attend cette étape. » et un « Tout afficher » toujours cliquable
+- [x] Sur un corpus vide, les cartes disent « aucun document » et leurs filtres sont inertes
+- [x] Sur un corpus vide, la liste dit « Aucun document importé. »
+- [x] Une carte sans reste affiche « tout à jour » en vert et son bouton « Rien à faire » est inerte
+- [x] Filtrer, puis traiter le dernier document concerné, laisse « Rien à faire ici : aucun document n'attend cette étape. » et un « Tout afficher » toujours cliquable
 - [ ] Sidecar coupé puis `↺ Actualiser` : le bandeau d'erreur apparaît et les compteurs ne se remettent pas à zéro en silence
 - [ ] Sidecar coupé puis ⇄ sur une ligne : le message parle de relations indisponibles, PAS d'absence de famille

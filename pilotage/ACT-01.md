@@ -39,15 +39,14 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 - [x] Décider ce que devient la carte de tête « Traitement de corpus » — supprimée, avec
       ses trois règles CSS devenues mortes. Son unique bouton a rejoint l'en-tête de la
       carte Documents
-- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 70 points en 8 zones, **57 joués**
-      au 31 août : six zones closes, la tenue à l'écran à mi-chemin, les cas creux pas
-      entamés. Le reste n'a pas été VU tourner : il est couvert par tests (1295 vitest
-      prep, 79 shell, 34 pytest du service) et par mesure en base, pas à l'œil. Le
+- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 71 points en 8 zones, **67 joués**
+      au 31 août : cinq zones closes, les trois autres à un ou deux points près. Le
       préambule porte la reconstruction du sidecar, le contrôle `/health`, et depuis ce
       rejeu les **quatre manipulations** de la zone « Tenue à l'écran » — à relire plutôt
-      qu'à refaire de mémoire. **Quatre endroits ont été réécrits en cours de passe**,
-      chacun sur une question de l'utilisateur, et chacun demandait quelque chose qui ne se
-      voit pas :
+      qu'à refaire de mémoire. Le rejeu a payé : **deux vrais défauts**, ci-dessous, que
+      les 1328 tests prep ne pouvaient pas voir. **Quatre endroits ont été réécrits en
+      cours de passe**, chacun sur une question de l'utilisateur, et chacun demandait
+      quelque chose qui ne se voit pas :
       · « le tri accentue et minuscule pareil » — aucune paire de titres, langues ou rôles
       de ce corpus ne collationne égale en différant à l'octet (mesuré), et
       `docSort.test.ts` le prouvait déjà ; remplacé par les trois rangs où le comparateur
@@ -121,6 +120,21 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       `scrollbar-gutter: stable`, une ligne. Gardé par
       `ui/__tests__/actionsHubLayout.test.ts`, qui lit `app.css` faute de pouvoir lire ça
       dans le DOM, et vérifié RED sur l'ancienne feuille
+- [x] **`↺ Actualiser` faisait mentir le bouton Hiérarchie** — deuxième défaut trouvé par
+      la passe, corrigé le 31 août. Le hub a trois préférences d'affichage — le filtre, le
+      tri, la vue hiérarchie — et la troisième seule ne survivait pas au rechargement : le
+      bouton passe par `setConn`, qui remettait `_hubHierarchyView` à `false`. Rien ne
+      repeignait le bouton, dont le libellé n'était touché que dans la bascule : la liste
+      redevenait plate pendant qu'il annonçait `📋 Liste` avec `aria-pressed="true"`, et
+      le cliquer renvoyait dans la hiérarchie — l'inverse de sa promesse. Corrigé au bon
+      niveau plutôt qu'au symptôme : la vue hiérarchie **survit** au rechargement comme
+      ses deux sœurs (ses relations, vidées par `setConn`, sont reprises dans `_loadDocs`,
+      avec repli à plat si elles ne se lisent pas), et la peinture du bouton sort dans
+      `_paintHierarchyBtn` pour que l'écart ne puisse plus se creuser. Trois tests,
+      vérifiés RED. **Le premier passait d'abord sur le code fautif** : `setConn` lance
+      `_loadDocs` sans l'attendre, donc guetter « l'arbre est là » juste après observait
+      le DOM d'AVANT. Les trois sont désormais ancrés sur un document que seule la seconde
+      connexion sert — tant qu'il n'est pas rendu, le rechargement n'a pas eu lieu
 - [ ] **`multicorpus segment` reste muet, lui** — dernier chemin d'écriture sans trace,
       trouvé en énumérant les appelants pour le lot ci-dessus. Les deux chemins sidecar de
       la segmentation passent `make_resegment_recorder(conn)` (`sidecar.py:9601` ; le job
@@ -140,7 +154,7 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 
 ## QA
 
-- qa/actions-action-dabord.md — **en cours**, 57 points sur 70 au 31 août. Elle vérifie ce
+- qa/actions-action-dabord.md — **en cours**, 67 points sur 71 au 31 août. Elle vérifie ce
   qu'aucun test unitaire ne prouve : que l'état affiché correspond au document en base, que
   le filtre et la vue hiérarchie se composent sans se contredire, et que la colonne de
   gestes tient à l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas
