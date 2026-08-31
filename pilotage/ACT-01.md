@@ -143,18 +143,26 @@ qui n'enregistre rien, et une ligne de doc qui revient à FTS-01.
       `_loadDocs` sans l'attendre, donc guetter « l'arbre est là » juste après observait
       le DOM d'AVANT. Les trois sont désormais ancrés sur un document que seule la seconde
       connexion sert — tant qu'il n'est pas rendu, le rechargement n'a pas eu lieu
-- [ ] **`multicorpus segment` reste muet, lui** — dernier chemin d'écriture sans trace,
-      trouvé en énumérant les appelants pour le lot ci-dessus. Les deux chemins sidecar de
-      la segmentation passent `make_resegment_recorder(conn)` (`sidecar.py:9601` ; le job
-      `kind=segment` le passe aussi), la CLI n'en passe aucun (`cli.py:893-899`) : une
-      resegmentation en Mode A n'est pas annulable et n'écrit pas la ligne `resegment` sur
-      laquelle la signature de péremption du `[X]` Segmentation doit se fonder. Pas corrigé
-      ici pour ne pas empiler deux extractions dans le même lot : `make_resegment_recorder`
-      est une fermeture de ~60 lignes qui vit dans `sidecar.py` et prend un `calibrate_to`
-      — la sortir vers `services/` demande le protocole service/adapter complet et son
-      propre test RED, pas un paramètre de plus. Vérifié au passage que `lift-markers`
-      n'est **pas** une asymétrie : il n'est un type d'action annulable nulle part
-      (`ALLOWED_ACTION_TYPES`, `action_history.py:26`)
+- [x] **`multicorpus segment` reste muet, lui** — dernier chemin d'écriture sans trace,
+      **corrigé le 31 août**. Les deux chemins sidecar de la segmentation passaient
+      `make_resegment_recorder(conn)`, la CLI n'en passait aucun : une resegmentation en
+      Mode A détruisait les unités du document **et ses liens d'alignement** sans laisser
+      la moindre trace — ni annulation possible, ni ligne `resegment` sur laquelle la
+      signature de péremption du `[X]` Segmentation puisse se fonder. `action_id` figurait
+      déjà dans le rapport rendu, il valait simplement toujours `null`.
+      Le recorder est **déplacé verbatim** dans `services/segment_service.py` : la CLI ne
+      pouvait pas l'atteindre là où il était, et l'importer depuis le module du serveur
+      HTTP aurait été prendre le problème à l'envers. `sidecar.py` le **réexporte** — huit
+      appels d'ici et deux tests le nomment `sidecar.make_resegment_recorder`, le nom
+      public ne bouge pas — et perd 95 lignes nettes au passage. Aucun changement de fil :
+      contrat inchangé, `openapi.json` et le snapshot ne bougent pas.
+      Deux tests. Celui de bout en bout (`test_cli_contract.py`) vérifié RED sur l'ancienne
+      CLI ; et un garde d'**identité** dans `tests/services/test_segment_service.py`, parce
+      que le mode de panne de tout ce chantier n'est pas un comportement faux mais une
+      **recopie** : un second `def make_resegment_recorder` dans `sidecar.py` rouvrirait le
+      trou sans casser un seul test de comportement.
+      Vérifié au passage que `lift-markers` n'est **pas** une asymétrie : il n'est un type
+      d'action annulable nulle part (`ALLOWED_ACTION_TYPES`, `action_history.py:26`)
 - [ ] **`fts_readable` n'est pas documenté dans `SIDECAR_API_CONTRACT.md`** — trouvé en
       ajoutant les deux champs voisins, qui y sont maintenant. Le champ date de 1.6.84
       (FTS-01) ; le test `test_contract_docs_sync` ne l'exige pas, d'où l'oubli. Une ligne

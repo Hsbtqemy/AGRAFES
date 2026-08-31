@@ -213,10 +213,18 @@ construisent le même recorder, `services/curate_service.apply_recorder`). Le ra
 vaut au-delà de ce cas : avant de bâtir sur la résorption de l'angle mort, vérifier
 qu'aucune mutation ne reste muette — et les compter, pas se fier à la première trouvée.
 
-Il en reste **une**, connue et tracée dans `pilotage/ACT-01.md` : `multicorpus segment`
-n'écrit pas la ligne `resegment` que ses deux jumeaux sidecar écrivent. Tant qu'elle est
-là, la signature du `[X]` Segmentation a un trou par Mode A — à fermer avant le ticket,
-pas après.
+Il en restait **une**, `multicorpus segment`, qui n'écrivait pas la ligne `resegment` que
+ses deux jumeaux sidecar écrivent : la signature du `[X]` Segmentation aurait eu un trou
+par Mode A. Fermée le 31 août, en déplaçant le recorder dans
+`services/segment_service.py` — la CLI ne pouvait pas l'atteindre là où il vivait.
+
+**Le préalable est donc levé**, et l'énumération a été faite au code plutôt qu'estimée.
+Curation : `POST /curate`, le job `kind=curate`, la CLI — trois, tous enregistrent
+maintenant. Segmentation : quatre handlers sidecar (`_handle_segment`,
+`_handle_family_segment`, `_handle_segment_apply_propagated`, le job `kind=segment`) qui
+enregistraient déjà, plus la CLI qui vient de s'y joindre. Et `lift-markers` n'est une
+asymétrie d'aucune sorte : il n'est un type d'action annulable nulle part. La signature
+par l'historique peut donc se bâtir dessus.
 
 ### Ce que la mesure recommande
 
