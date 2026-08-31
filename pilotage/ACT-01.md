@@ -39,15 +39,15 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 - [x] Décider ce que devient la carte de tête « Traitement de corpus » — supprimée, avec
       ses trois règles CSS devenues mortes. Son unique bouton a rejoint l'en-tête de la
       carte Documents
-- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 69 points en 8 zones, **43 joués**
-      au 31 août : quatre zones closes (cartes, filtre et liste, tri, état par ligne) et
-      les gestes de la ligne à un item près. Le reste — hiérarchie sous filtre, tenue à
-      l'écran, cas creux — n'a pas été VU tourner : il est couvert par tests (1295 vitest
+- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 70 points en 8 zones, **57 joués**
+      au 31 août : six zones closes, la tenue à l'écran à mi-chemin, les cas creux pas
+      entamés. Le reste n'a pas été VU tourner : il est couvert par tests (1295 vitest
       prep, 79 shell, 34 pytest du service) et par mesure en base, pas à l'œil. Le
-      préambule porte la reconstruction du sidecar et le contrôle `/health` — à relire à
-      chaque rejeu plutôt qu'à faire de mémoire. **Trois endroits ont été réécrits en cours
-      de passe**, chacun sur une question de l'utilisateur, et chacun demandait quelque
-      chose qui ne se voit pas :
+      préambule porte la reconstruction du sidecar, le contrôle `/health`, et depuis ce
+      rejeu les **quatre manipulations** de la zone « Tenue à l'écran » — à relire plutôt
+      qu'à refaire de mémoire. **Quatre endroits ont été réécrits en cours de passe**,
+      chacun sur une question de l'utilisateur, et chacun demandait quelque chose qui ne se
+      voit pas :
       · « le tri accentue et minuscule pareil » — aucune paire de titres, langues ou rôles
       de ce corpus ne collationne égale en différant à l'octet (mesuré), et
       `docSort.test.ts` le prouvait déjà ; remplacé par les trois rangs où le comparateur
@@ -59,8 +59,16 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       vérifiait après coup, or après coup les deux mondes rendent la même image si la
       famille précédente est celle qu'on verrait ; ce qui tranche est **si le clic
       déplace**, donc « l'écran reste sur le hub ».
-      Leçon, une fois de plus : un item écrit de tête plutôt que mesuré coûte le temps de
-      celui qui joue la passe
+      · « l'infobulle liste tous les états, séparés par des points médians » — redondante
+      par construction sur ce corpus : le maximum est 4 pastilles et `MAX_ROW_BADGES` vaut
+      4, donc jamais de `+N` et l'infobulle répète le visible ; reformulée sur ce qui reste
+      vérifiable, qu'elle apparaisse en survolant **une pastille**.
+      **La cause commune est identifiée** : ces items ont été écrits en relisant les tests,
+      pas en regardant ce que le corpus permet de voir — « abricot »/« Abricot » vient
+      littéralement d'`actionsHubState.test.ts:139-141`. D'où des items qui décrivent un
+      mécanisme interne (un séparateur, une insensibilité de collation) au lieu d'un geste.
+      Un item de QA se dérive du corpus, pas de la suite de tests : sinon il ne peut que
+      redire ce qui est déjà prouvé, ou demander l'invisible
 - [x] **Le chemin asynchrone de la curation n'enregistre rien** — trouvé en chemin, puis
       **corrigé** (contrat 1.6.87), et il n'était pas seul. En énumérant les appelants
       plutôt qu'en corrigeant celui qu'on regardait : **trois** chemins appliquent la
@@ -120,7 +128,7 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 
 ## QA
 
-- qa/actions-action-dabord.md — **en cours**, 43 points sur 69 au 31 août. Elle vérifie ce
+- qa/actions-action-dabord.md — **en cours**, 57 points sur 70 au 31 août. Elle vérifie ce
   qu'aucun test unitaire ne prouve : que l'état affiché correspond au document en base, que
   le filtre et la vue hiérarchie se composent sans se contredire, et que la colonne de
   gestes tient à l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas

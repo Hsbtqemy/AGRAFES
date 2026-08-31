@@ -118,6 +118,32 @@ déplacé**. Donc : cliquer `⇄` sur `#422`, et constater qu'on est toujours de
 (`_activeSubView` étant persisté en `localStorage`, une mauvaise navigation survivrait en
 plus à la fermeture.)
 
+**La zone « Tenue à l'écran » se joue en quatre manipulations**, pas item par item :
+
+1. **Plein écran, hors filtre, trier par « À faire » ↓.** Les 17 documents à quatre
+   pastilles remontent en tête et `#416` (« Rien à faire ») tombe en queue : le plus grand
+   écart de contenu possible, sur une même colonne. Puis trier par **Titre ↑** —
+   `#428 [1] hi rend=italicxhiscriptalert(1).txt` passe en première ligne, c'est le plus
+   long titre du corpus (39 caractères). Les bords de « À faire » et « Ouvrir » ne doivent
+   pas bouger d'une ligne à l'autre.
+2. **Faire défiler la liste.** 58 lignes dans une boîte de `clamp(320px, 52vh, 620px)` :
+   elle défile forcément, et l'en-tête doit rester collé avec ses indicateurs de tri.
+3. **Basculer Curation (57 lignes) ↔ Segmentation (1 ligne).** Le pire écart possible.
+4. **Réduire la fenêtre progressivement.** Les cartes passent de 4 à 2 colonnes à 1300 px,
+   puis à 1 colonne à 760 px.
+
+L'élision du titre n'est **pas observable en plein écran** : les six colonnes fixes pèsent
+49,8 rem (≈ 800 px) et tout le reste va au titre — avec un plus long titre à 39 caractères,
+il y a large. Elle apparaît dans la manipulation 4, et ce qu'elle prouve est l'ordre des
+deux : le titre cède **avant** que le tableau ne déborde.
+
+L'infobulle de « À faire » est, elle, **redondante tant qu'aucun document ne dépasse
+4 pastilles** — le maximum du corpus, égal à `MAX_ROW_BADGES` : il n'y a jamais de `+N`,
+donc elle répète ce qui est déjà lisible. Ce qui reste vérifiable est qu'elle apparaisse en
+survolant **une pastille** et pas seulement le blanc de la cellule (l'attribut est posé sur
+la cellule, pas sur les `<span>`). Elle ne servira vraiment que le jour où un document
+cumulera cinq états.
+
 ### Les quatre cartes
 
 - [x] Les cartes affichent 57 / 1 / 37 / 53 à faire, dans l'ordre Curation · Segmentation · Alignement · Annotation
@@ -175,31 +201,32 @@ plus à la fermeture.)
 - [x] Revenir à « Tout afficher » (les items suivants ont besoin des quatre icônes)
 - [x] ⇄ sur `#364 Beigbeder-Francs_EN.docx` ouvre la matrice sur la famille de `#416`, pas sur `#364`
 - [x] ⇄ sur `#422 Hagena_Apfel_AL` refuse par un message parlant de famille, et n'ouvre PAS la matrice
-- [ ] Ce refus laisse l'écran SUR le hub : le message s'y affiche, on ne bascule pas dans la matrice
+- [x] Ce refus laisse l'écran SUR le hub : le message s'y affiche, on ne bascule pas dans la matrice
 
 ### La vue hiérarchie sous filtre
 
-- [ ] `🌿 Hiérarchie` bascule le libellé en `📋 Liste` et l'arbre s'indente
-- [ ] En hiérarchie, les lignes portent le même état et les mêmes gestes qu'en liste plate
-- [ ] Appliquer un filtre en hiérarchie garde l'arbre : les enfants restent sous leur parent
-- [ ] Un parent hors filtre dont un enfant est retenu reste affiché, grisé, boutons inertes
-- [ ] Un parent grisé n'est pas atteignable à la tabulation
-- [ ] Aucune famille entièrement hors filtre ne laisse d'en-tête de section orpheline
-- [ ] La section « Parent absent du corpus » ne se met pas à compter des parents simplement masqués
-- [ ] Basculer liste ↔ hiérarchie sans changer de filtre montre le même nombre de documents concernés
+- [x] `🌿 Hiérarchie` bascule le libellé en `📋 Liste` et l'arbre s'indente
+- [x] En hiérarchie, les lignes portent le même état et les mêmes gestes qu'en liste plate
+- [x] Appliquer un filtre en hiérarchie garde l'arbre : les enfants restent sous leur parent
+- [x] Un parent hors filtre dont un enfant est retenu reste affiché, grisé, boutons inertes
+- [x] Un parent grisé n'est pas atteignable à la tabulation
+- [x] Aucune famille entièrement hors filtre ne laisse d'en-tête de section orpheline
+- [x] La section « Parent absent du corpus » ne se met pas à compter des parents simplement masqués
+- [x] Basculer liste ↔ hiérarchie sans changer de filtre montre le même nombre de documents concernés
 
 ### Tenue à l'écran
 
-- [ ] La colonne « Ouvrir » ne se replie jamais : les quatre boutons restent sur une ligne
-- [ ] Un titre long ne comprime pas les colonnes « À faire » et « Ouvrir »
-- [ ] Toutes les lignes ont exactement la même hauteur, y compris celles à quatre pastilles
-- [ ] Aucune cellule ne se replie : ni un titre long, ni les pastilles, ni l'en-tête « Langue »
-- [ ] Un titre trop long est élidé par des points de suspension, et son infobulle le rend entier
-- [ ] L'infobulle de la colonne « À faire » liste tous les états, séparés par des points médians
+- [x] La colonne « Ouvrir » ne se replie jamais : les quatre boutons restent sur une ligne
+- [x] Un titre long ne comprime pas les colonnes « À faire » et « Ouvrir »
+- [x] Toutes les lignes ont exactement la même hauteur, y compris celles à quatre pastilles
+- [x] Aucune cellule ne se replie : ni un titre long, ni les pastilles, ni l'en-tête « Langue »
+- [x] Un titre trop long est élidé par des points de suspension, et son infobulle le rend entier
+- [ ] Survoler une PASTILLE (pas le blanc de la cellule) fait apparaître l'infobulle : `Curation · Alignement · Annotation · Index périmé`
 - [ ] La carte Documents garde la même hauteur d'un filtre à l'autre — c'est son contenu qui défile
 - [ ] L'en-tête de colonnes reste visible quand on fait défiler la liste
 - [ ] Les colonnes ne bougent pas d'un filtre à l'autre : seule la hauteur du contenu change
 - [ ] En réduisant la fenêtre, les cartes passent à 2 puis 1 colonne sans que le tableau déborde horizontalement
+- [ ] En réduisant encore, le titre s'élide AVANT que le tableau ne déborde — jamais l'inverse
 - [ ] Le tableau ne provoque aucun défilement horizontal de la page entière
 
 ### Les cas creux
