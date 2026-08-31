@@ -24,6 +24,10 @@ import { setHtml, raw } from "../lib/safeHtml.ts";
 import { escHtml as _escHtml } from "../lib/diff.ts";
 import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
+import {
+  HUB_STEPS, STEP_LABEL, docBadges, docsForStep, stepCounts,
+} from "../lib/actionsHubState.ts";
+import type { HubStep } from "../lib/actionsHubState.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AlignMatrixView } from "./AlignMatrixView.ts";
 import { TextCanvasView } from "./TextCanvasView.ts";
@@ -84,6 +88,8 @@ export class ActionsScreen {
 
   // Hub hierarchy view
   private _hubHierarchyView = false;
+  // ACT-01 — capacité choisie dans les cartes ; null = tout le corpus.
+  private _hubFilter: HubStep | null = null;
   private _allRelations: DocRelationRecord[] = [];
   private _allRelationsLoaded = false;
   // Log + busy
@@ -263,15 +269,19 @@ export class ActionsScreen {
     root.classList.add(`actions-sub-${view}`);
   }
 
-  /** Stable class method — replaces captured closure pattern for seg mode switching. */
+  /**
+   * Le hub — ACT-01. Les quatre cartes sont des FILTRES : chacune annonce combien
+   * de documents elle concerne encore, et réduit la liste à ceux-là. « Ouvrir → »
+   * garde son ancien rôle : entrer dans l'espace sans document désigné.
+   */
   private _renderHubPanel(root: HTMLElement): HTMLElement {
     const el = document.createElement("div");
     el.className = "prep-acts-hub";
     el.setAttribute("role", "main");
-    el.setAttribute("aria-label", "Vue synth\u00e8se Actions");
+    el.setAttribute("aria-label", "Vue synthèse Actions");
     setHtml(el, raw(actionsHubTemplate()));
-    // Workflow card primary buttons → navigate to sub-view
-    el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-wf-btn").forEach((btn) => {
+    // « Ouvrir → » (et « Contrôle ») : navigation sans document désigné.
+    el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-wf-btn[data-target]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const target = btn.dataset.target ?? "";
         // R6.5-A/C + retrait Seg tranche 5 : « Annotation », « Curation », « Segmentation »
@@ -283,15 +293,22 @@ export class ActionsScreen {
       });
     });
 
-    // Refresh doc list
-    el.querySelector<HTMLButtonElement>("#act-hub-refresh-btn")?.addEventListener("click", () => {
-      void this._loadDocs();
+    // Les quatre filtres. Re-cliquer la carte active rend la liste entière.
+    el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-wf-filter").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const step = btn.dataset.step as HubStep | undefined;
+        if (step) this._setHubFilter(this._hubFilter === step ? null : step);
+      });
     });
-    // Refresh + propagate to sub-views (Curation, Segmentation, Align, Annotation)
-    // via setConn(this._conn) — l'entrée canonique qui re-tire les docs et
-    // ré-émet aux extracted views.
-    el.querySelector<HTMLButtonElement>("#act-hub-refresh-corpus-btn")?.addEventListener("click", () => {
+    el.querySelector<HTMLButtonElement>("#act-hub-filter-clear")
+      ?.addEventListener("click", () => this._setHubFilter(null));
+
+    // Un seul bouton d'actualisation (il y en avait deux) : le plus fort des deux —
+    // setConn re-tire les documents ET ré-émet aux sous-vues (Curation, Segmentation,
+    // Alignement, Annotation). Sans connexion, il recharge au moins la liste.
+    el.querySelector<HTMLButtonElement>("#act-hub-refresh-btn")?.addEventListener("click", () => {
       if (this._conn) this.setConn(this._conn);
+      else void this._loadDocs();
     });
 
     // Hierarchy toggle
@@ -308,7 +325,64 @@ export class ActionsScreen {
     protoBtn.addEventListener("click", () => this._switchSubViewDOM(root, "texte"));
     el.appendChild(protoBtn);
 
+    // Peindre les cartes tout de suite : sur un corpus vide elles doivent dire
+    // « aucun document », pas rester muettes en attendant un chargement.
+    this._paintHubCards(el);
+
     return el;
+  }
+
+  /** Change la capacité filtrante et re-peint cartes + liste. */
+  private _setHubFilter(step: HubStep | null): void {
+    this._hubFilter = step;
+    this._paintHubCards();
+    this._renderDocList();
+  }
+
+  /**
+   * Peint les compteurs des cartes, l'état pressé des filtres et le bandeau de filtre.
+   * `scope` sert au premier rendu, quand le panneau n'est pas encore dans `_root`.
+   */
+  private _paintHubCards(scope?: HTMLElement): void {
+    const find = <T extends HTMLElement>(sel: string): T | null =>
+      scope ? scope.querySelector<T>(sel) : this._q<T>(sel);
+    const counts = stepCounts(this._docs);
+    const total = this._docs.length;
+
+    for (const step of HUB_STEPS) {
+      const remaining = counts[step];
+      const countEl = find<HTMLElement>(`#act-hub-count-${step}`);
+      if (countEl) {
+        countEl.textContent = total === 0 ? "aucun document"
+          : remaining === 0 ? "tout à jour"
+          : `${remaining} à faire`;
+        countEl.classList.toggle("prep-acts-hub-wf-count--done", total > 0 && remaining === 0);
+      }
+      const filterBtn = find<HTMLButtonElement>(`#act-hub-filter-${step}`);
+      if (filterBtn) {
+        const active = this._hubFilter === step;
+        // « Rien à faire » n'a de sens que sur un corpus non vide : sans documents,
+        // ce n'est pas que l'étape est finie, c'est qu'il n'y a rien à quoi l'appliquer.
+        filterBtn.textContent = active ? "Tout afficher"
+          : total === 0 ? "Aucun document"
+          : remaining === 0 ? "Rien à faire"
+          : `Voir les ${remaining}`;
+        filterBtn.disabled = !active && remaining === 0;
+        filterBtn.setAttribute("aria-pressed", String(active));
+        filterBtn.classList.toggle("prep-acts-hub-wf-filter--on", active);
+      }
+      find<HTMLElement>(`.prep-acts-hub-wf-card[data-step="${step}"]`)
+        ?.classList.toggle("prep-acts-hub-wf-card--on", this._hubFilter === step);
+    }
+
+    const strip = find<HTMLElement>("#act-hub-filter-strip");
+    const label = find<HTMLElement>("#act-hub-filter-label");
+    if (strip) strip.hidden = this._hubFilter === null;
+    if (label && this._hubFilter !== null) {
+      const shown = docsForStep(this._docs, this._hubFilter).length;
+      label.textContent =
+        `${STEP_LABEL[this._hubFilter]} — ${shown} document${shown > 1 ? "s" : ""} sur ${total}`;
+    }
   }
 
   private _prependBackBtn(panel: HTMLElement, root: HTMLElement): void {
@@ -590,6 +664,9 @@ export class ActionsScreen {
     if (!this._conn) return;
     try {
       this._docs = await listDocuments(this._conn);
+      // Les cartes AVANT la liste : elles portent les comptes dont le filtre
+      // courant dépend, et un filtre devenu vide doit se voir sur la carte.
+      this._paintHubCards();
       this._renderDocList();
       this._setButtonsEnabled(true);
       this._alignPanel?.refreshDocs();
@@ -603,96 +680,247 @@ export class ActionsScreen {
     }
   }
 
+  /**
+   * La liste — ACT-01. Elle ne se contente plus de nommer les documents : chaque
+   * ligne dit ce qu'il reste à y faire et porte le geste pour le faire. Sous filtre,
+   * elle se réduit aux documents que la capacité choisie concerne encore, et la
+   * colonne d'ouverture se ramène au seul geste demandé.
+   */
   private _renderDocList(): void {
     const el = this._q("#act-doc-list");
     if (!el) return;
     if (this._docs.length === 0) {
-      el.innerHTML = '<p class="empty-hint">Aucun document importé.</p>';
+      el.innerHTML = '<p class="empty-hint">Aucun document import&#233;.</p>';
+      return;
+    }
+    const shown = docsForStep(this._docs, this._hubFilter);
+    if (shown.length === 0) {
+      // Sous filtre uniquement : la liste complète n'est jamais vide ici.
+      el.innerHTML = '<p class="empty-hint">Rien &#224; faire ici : aucun document n&rsquo;attend cette &#233;tape.</p>';
       return;
     }
     if (this._hubHierarchyView) {
-      this._renderHubHierarchyList(el);
+      this._renderHubHierarchyList(el, shown);
       return;
     }
     const table = document.createElement("table");
-    table.className = "prep-meta-table";
-    table.innerHTML = `<thead><tr><th>N°</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>`;
+    table.className = "prep-meta-table prep-acts-hub-table";
+    table.appendChild(this._docTableHead());
     const tbody = document.createElement("tbody");
-    this._docs.forEach((doc, idx) => {
-      const tr = document.createElement("tr");
-      for (const text of [String(idx + 1), doc.title, doc.language, doc.doc_role ?? "—", String(doc.unit_count)]) {
-        const td = document.createElement("td");
-        td.textContent = text;
-        tr.appendChild(td);
-      }
-      tbody.appendChild(tr);
-    });
+    // La numérotation suit ce qui est affiché : sous filtre, « 1 » est la première
+    // ligne visible, pas le rang du document dans le corpus entier.
+    shown.forEach((doc, idx) => tbody.appendChild(this._docRow(doc, idx + 1)));
     table.appendChild(tbody);
     el.innerHTML = "";
     el.appendChild(table);
   }
 
+  /** En-tête commun aux deux vues (liste plate et hiérarchie). */
+  private _docTableHead(): HTMLTableSectionElement {
+    const thead = document.createElement("thead");
+    const tr = document.createElement("tr");
+    for (const label of ["N°", "Titre", "Langue", "Rôle", "Unités", "À faire", "Ouvrir"]) {
+      const th = document.createElement("th");
+      th.textContent = label;
+      tr.appendChild(th);
+    }
+    thead.appendChild(tr);
+    return thead;
+  }
+
+  /**
+   * Une ligne. `titleTd` permet à la vue hiérarchie de fournir sa propre cellule
+   * de titre (indentation + badge de relation) sans dupliquer le reste.
+   */
+  private _docRow(doc: DocumentRecord, rowNum: number, titleTd?: HTMLTableCellElement): HTMLTableRowElement {
+    const tr = document.createElement("tr");
+    tr.className = "prep-meta-doc-row";
+    tr.dataset.docId = String(doc.doc_id);
+
+    const cell = (text: string): HTMLTableCellElement => {
+      const td = document.createElement("td");
+      td.textContent = text;
+      return td;
+    };
+
+    tr.appendChild(cell(String(rowNum)));
+    tr.appendChild(titleTd ?? cell(doc.title));
+    tr.appendChild(cell(doc.language));
+    tr.appendChild(cell(doc.doc_role ?? "—"));
+    tr.appendChild(cell(String(doc.unit_count)));
+
+    // « À faire » — vide veut dire quelque chose ici : les quatre capacités sont
+    // passées et l'index est à jour. Le dire en toutes lettres plutôt que par un blanc.
+    const stateTd = document.createElement("td");
+    stateTd.className = "prep-acts-hub-state-cell";
+    const badges = docBadges(doc);
+    if (badges.length === 0) {
+      const none = document.createElement("span");
+      none.className = "prep-acts-hub-badge prep-acts-hub-badge--none";
+      none.textContent = "Rien à faire";
+      stateTd.appendChild(none);
+    } else {
+      for (const badge of badges) {
+        const span = document.createElement("span");
+        span.className = `prep-acts-hub-badge prep-acts-hub-badge--${badge.kind}`;
+        span.textContent = badge.label;
+        stateTd.appendChild(span);
+      }
+    }
+    tr.appendChild(stateTd);
+
+    // « Ouvrir » — sous filtre, le seul geste demandé ; sinon les quatre.
+    const actionsTd = document.createElement("td");
+    actionsTd.className = "prep-acts-hub-row-actions";
+    if (this._hubFilter !== null) {
+      const step = this._hubFilter;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "prep-acts-hub-row-btn prep-acts-hub-row-btn--primary";
+      btn.textContent = `${STEP_LABEL[step]} →`;
+      btn.title = `Ouvrir ${STEP_LABEL[step]} sur « ${doc.title} »`;
+      btn.addEventListener("click", () => void this._openStepOnDoc(step, doc.doc_id));
+      actionsTd.appendChild(btn);
+    } else {
+      for (const step of HUB_STEPS) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "prep-acts-hub-row-btn";
+        btn.textContent = ActionsScreen.STEP_ICON[step];
+        // L'icône seule ne se lit pas : le nom part dans le title ET dans aria-label.
+        btn.title = `${STEP_LABEL[step]} — « ${doc.title} »`;
+        btn.setAttribute("aria-label", `${STEP_LABEL[step]} sur ${doc.title}`);
+        btn.addEventListener("click", () => void this._openStepOnDoc(step, doc.doc_id));
+        actionsTd.appendChild(btn);
+      }
+    }
+    tr.appendChild(actionsTd);
+    return tr;
+  }
+
+  /** Mêmes glyphes que l'arbre de navigation (app.ts), pour ne pas inventer un second alphabet. */
+  private static readonly STEP_ICON: Record<HubStep, string> = {
+    curation: "◇", segmentation: "⌥", alignement: "⇄", annotation: "◎",
+  };
+
+  /**
+   * Ouvre une capacité SUR un document. Les trois couches du canvas acceptent déjà
+   * un docId ; l'alignement, lui, se travaille par famille — il faut donc remonter
+   * du document à sa racine, ce qui demande les relations. Elles ne sont chargées
+   * qu'ici, au clic, et non à chaque affichage du hub.
+   */
+  private async _openStepOnDoc(step: HubStep, docId: number): Promise<void> {
+    if (step === "curation") { this.openCurationLayer(docId); return; }
+    if (step === "segmentation") { this.openSegmentLayer(docId); return; }
+    if (step === "annotation") { this.openAnnotationLayer(docId); return; }
+    // Ne pas confondre les deux raisons de ne pas savoir. Sans relations lues, on
+    // ignore la famille du document ; dire « il n'en a pas » serait affirmer ce
+    // qu'on n'a pas pu vérifier.
+    if (!(await this._ensureRelations())) {
+      this._showToast?.("Relations indisponibles : impossible de retrouver la famille de ce document.", true);
+      return;
+    }
+    const rootId = this._familyRootFor(docId);
+    if (rootId === null) {
+      // Document hors famille : la matrice n'a aucune famille à ouvrir. Le dire,
+      // plutôt que d'y entrer sur la famille précédemment sélectionnée.
+      this._showToast?.(
+        "Ce document n'appartient à aucune famille : rattachez-le dans Documents pour l'aligner.",
+        true,
+      );
+      return;
+    }
+    this.openAlignmentOnFamily(rootId, "matrix");
+  }
+
+  /** Charge les relations une fois pour toutes (partagé avec la vue hiérarchie). */
+  private async _ensureRelations(): Promise<boolean> {
+    if (this._allRelationsLoaded) return true;
+    if (!this._conn) return false;
+    try {
+      this._allRelations = await getAllDocRelations(this._conn);
+      this._allRelationsLoaded = true;
+      return true;
+    } catch (err) {
+      this._log(`Erreur chargement relations : ${err instanceof SidecarError ? err.message : String(err)}`, true);
+      return false;
+    }
+  }
+
+  /** Racine de la famille d'un document (lui-même s'il est parent), ou null s'il est isolé.
+   *  Pur : suppose les relations déjà chargées (`_ensureRelations`). */
+  private _familyRootFor(docId: number): number | null {
+    const isFamilyLink = (t: string): boolean => t === "translation_of" || t === "excerpt_of";
+    const asChild = this._allRelations.find(
+      (rel) => rel.doc_id === docId && isFamilyLink(rel.relation_type),
+    );
+    if (asChild) return asChild.target_doc_id;
+    const isParent = this._allRelations.some(
+      (rel) => rel.target_doc_id === docId && isFamilyLink(rel.relation_type),
+    );
+    return isParent ? docId : null;
+  }
+
   private async _toggleHubHierarchyView(): Promise<void> {
     this._hubHierarchyView = !this._hubHierarchyView;
-    const btn = this._q<HTMLButtonElement>("#act-hub-hierarchy-btn");
-    if (btn) {
+    const paint = (): void => {
+      const btn = this._q<HTMLButtonElement>("#act-hub-hierarchy-btn");
+      if (!btn) return;
       btn.setAttribute("aria-pressed", String(this._hubHierarchyView));
       btn.classList.toggle("btn-active", this._hubHierarchyView);
       btn.textContent = this._hubHierarchyView ? "📋 Liste" : "🌿 Hiérarchie";
-    }
-    if (this._hubHierarchyView && this._conn && !this._allRelationsLoaded) {
-      try {
-        this._allRelations = await getAllDocRelations(this._conn);
-        this._allRelationsLoaded = true;
-      } catch (err) {
-        this._log(`Erreur chargement relations : ${err instanceof SidecarError ? err.message : String(err)}`, true);
-        this._hubHierarchyView = false;
-        if (btn) { btn.setAttribute("aria-pressed", "false"); btn.classList.remove("btn-active"); btn.textContent = "🌿 Hiérarchie"; }
-        return;
-      }
+    };
+    paint();
+    if (this._hubHierarchyView && !(await this._ensureRelations())) {
+      this._hubHierarchyView = false;
+      paint();
+      return;
     }
     this._renderDocList();
   }
 
-  private _renderHubHierarchyList(el: HTMLElement): void {
+  /**
+   * Vue hiérarchie. L'arbre est bâti sur TOUS les documents même sous filtre : les
+   * catégories qu'il produit (« Sans famille », « Parent absent du corpus ») portent
+   * sur le corpus, et les calculer sur un sous-ensemble les rendrait fausses — un
+   * parent simplement masqué par le filtre serait déclaré absent. Le filtre agit
+   * donc au rendu : une ligne qui ne correspond pas est omise, sauf si elle est le
+   * parent d'une ligne retenue, auquel cas elle reste en contexte, sans geste.
+   */
+  private _renderHubHierarchyList(el: HTMLElement, shown: DocumentRecord[]): void {
     el.innerHTML = "";
+    const keep = new Set(shown.map((d) => d.doc_id));
     const { roots, standalone, orphans } = buildMetadataTree(this._docs, this._allRelations);
 
     const table = document.createElement("table");
-    table.className = "prep-meta-table";
-    table.innerHTML = `<thead><tr><th>N°</th><th>Titre</th><th>Langue</th><th>Rôle</th><th>Unités</th></tr></thead>`;
+    table.className = "prep-meta-table prep-acts-hub-table";
+    table.appendChild(this._docTableHead());
     const tbody = document.createElement("tbody");
 
-    let _rowNum = 0;
-    const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string): void => {
-      _rowNum++;
-      const tr = document.createElement("tr");
-      tr.className = "prep-meta-doc-row";
-      if (depth > 0) tr.classList.add("prep-tree-child");
-
+    let rowNum = 0;
+    /** `context` = affichée pour situer un enfant retenu, mais hors filtre elle-même. */
+    const appendRow = (doc: DocumentRecord, depth = 0, relationLabel?: string, context = false): void => {
+      rowNum++;
+      const titleTd = document.createElement("td");
+      titleTd.className = "col-title tree-title-cell";
+      titleTd.style.paddingLeft = `${0.5 + depth * 1.4}rem`;
       const indent = depth > 0 ? `<span class="prep-tree-connector" aria-hidden="true">└</span>` : "";
       const relBadge = relationLabel
         ? `<span class="prep-tree-rel-badge">${_escHtml(relationLabel)}</span>`
         : "";
-
-      const titleTd = document.createElement("td");
-      titleTd.className = "col-title tree-title-cell";
-      titleTd.style.paddingLeft = `${0.5 + depth * 1.4}rem`;
       setHtml(titleTd, raw(`${indent}${relBadge}`));
       const titleSpan = document.createElement("span");
       titleSpan.textContent = doc.title;
       titleTd.appendChild(titleSpan);
 
-      const idTd = document.createElement("td"); idTd.textContent = String(_rowNum);
-      const langTd = document.createElement("td"); langTd.textContent = doc.language;
-      const roleTd = document.createElement("td"); roleTd.textContent = doc.doc_role ?? "—";
-      const unitsTd = document.createElement("td"); unitsTd.textContent = String(doc.unit_count);
-
-      tr.appendChild(idTd);
-      tr.appendChild(titleTd);
-      tr.appendChild(langTd);
-      tr.appendChild(roleTd);
-      tr.appendChild(unitsTd);
+      const tr = this._docRow(doc, rowNum, titleTd);
+      if (depth > 0) tr.classList.add("prep-tree-child");
+      if (context) {
+        tr.classList.add("prep-acts-hub-row--context");
+        // Une ligne de contexte n'est pas un geste offert : elle ne doit pas non plus
+        // être atteignable au clavier.
+        tr.querySelectorAll<HTMLButtonElement>("button").forEach((b) => { b.disabled = true; });
+      }
       tbody.appendChild(tr);
     };
 
@@ -700,7 +928,7 @@ export class ActionsScreen {
       const tr = document.createElement("tr");
       tr.className = "prep-tree-section-header";
       const td = document.createElement("td");
-      td.colSpan = 5;
+      td.colSpan = 7;
       td.className = "prep-tree-section-label";
       td.textContent = `${label} `;
       const countSpan = document.createElement("span");
@@ -711,21 +939,22 @@ export class ActionsScreen {
       tbody.appendChild(tr);
     };
 
-    if (roots.length > 0) {
-      for (const node of roots) {
-        appendRow(node.doc);
-        for (const child of node.children) {
-          appendRow(child.doc, 1, child.relationLabel);
-        }
-      }
+    for (const node of roots) {
+      const keptChildren = node.children.filter((c) => keep.has(c.doc.doc_id));
+      const keepRoot = keep.has(node.doc.doc_id);
+      if (!keepRoot && keptChildren.length === 0) continue;
+      appendRow(node.doc, 0, undefined, !keepRoot);
+      for (const child of keptChildren) appendRow(child.doc, 1, child.relationLabel);
     }
-    if (standalone.length > 0) {
-      if (roots.length > 0) appendSectionHeader("Sans famille", standalone.length);
-      for (const doc of standalone) appendRow(doc);
+    const keptStandalone = standalone.filter((d) => keep.has(d.doc_id));
+    if (keptStandalone.length > 0) {
+      if (roots.length > 0) appendSectionHeader("Sans famille", keptStandalone.length);
+      for (const doc of keptStandalone) appendRow(doc);
     }
-    if (orphans.length > 0) {
-      appendSectionHeader("Parent absent du corpus", orphans.length);
-      for (const doc of orphans) appendRow(doc);
+    const keptOrphans = orphans.filter((d) => keep.has(d.doc_id));
+    if (keptOrphans.length > 0) {
+      appendSectionHeader("Parent absent du corpus", keptOrphans.length);
+      for (const doc of keptOrphans) appendRow(doc);
     }
 
     table.appendChild(tbody);

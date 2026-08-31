@@ -3832,18 +3832,6 @@ button.prep-matrix-remove-choice:hover {
 /* ─── Hub view ───────────────────────────────────────────────────────────── */
 .prep-acts-hub { padding: 20px 0 0; }
 
-/* Head-card (CTA bar at top of hub) */
-.prep-acts-hub-head-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-  background: var(--prep-card-bg, #fff);
-  border: 1px solid var(--prep-line, #dde3ea);
-  border-radius: 8px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
 .prep-acts-hub-head-left { flex: 1 1 220px; min-width: 0; }
 .prep-acts-hub-head-left h1 {
   font-size: 1.1rem;
@@ -3891,20 +3879,6 @@ button.prep-matrix-remove-choice:hover {
 .prep-acts-hub-head-link-accent:hover { background: var(--prep-accent-dark, #0c4a46); }
 
 /* ─── Hub workspace vNext ────────────────────────────────────────────────── */
-/* Head title + desc overrides (h2 replaces h1) */
-.prep-acts-hub-head-title {
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin: 0 0 4px;
-  color: var(--prep-text, #1a2533);
-}
-.prep-acts-hub-head-desc {
-  font-size: 0.82rem;
-  color: var(--prep-muted, #4f5d6d);
-  margin: 0;
-  line-height: 1.45;
-}
-
 /* Docs card header: title left, hierarchy toggle right */
 .prep-acts-hub-docs-header {
   display: flex;
@@ -3940,15 +3914,6 @@ button.prep-matrix-remove-choice:hover {
 .prep-acts-hub-wf-icon {
   font-size: 1.4rem;
   line-height: 1;
-}
-
-.prep-acts-hub-wf-step {
-  font-size: 0.73rem;
-  font-weight: 600;
-  color: var(--prep-accent, #0f766e);
-  background: rgba(15, 118, 110, 0.09);
-  border-radius: 20px;
-  padding: 2px 10px;
 }
 
 .prep-acts-hub-wf-title {
@@ -4028,6 +3993,119 @@ button.prep-matrix-remove-choice:hover {
 /* Responsive: 2-col at medium widths, 1-col narrow */
 @media (max-width: 1050px) { .prep-acts-hub-workspace { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px)  { .prep-acts-hub-workspace { grid-template-columns: 1fr; } }
+
+/* ─── ACT-01 : la page Actions, « action d'abord » ────────────────────────────
+   Les cartes ne sont plus des étapes numérotées mais quatre filtres ; la liste
+   porte l'état par document et le geste qui va avec. Le vocabulaire visuel des
+   pastilles reprend celui du bandeau d'état du canvas (.prep-canvas-chip) : même
+   information, même couleur, d'un écran à l'autre. */
+
+/* En-tête de la carte Documents : titre à gauche, outils à droite. */
+.prep-acts-hub-docs-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* Bandeau de filtre — n'apparaît que sous filtre (attribut hidden). */
+.prep-acts-hub-filter-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--prep-accent, #0f766e) 30%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--prep-accent, #0f766e) 7%, transparent);
+  font-size: 0.8rem;
+}
+.prep-acts-hub-filter-label { font-weight: 600; color: var(--prep-accent-dark, #0c4a46); }
+.prep-acts-hub-filter-clear {
+  margin-left: auto;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--prep-accent, #0f766e);
+  font: inherit;
+  font-size: 0.76rem;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+.prep-acts-hub-filter-clear:hover { background: color-mix(in srgb, var(--prep-accent, #0f766e) 12%, transparent); }
+
+/* Compteur de restants — il a pris la place de « Étape 1 / 2 / 3 ». */
+.prep-acts-hub-wf-count {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--prep-accent, #0f766e);
+  background: rgba(15, 118, 110, 0.09);
+  border-radius: 20px;
+  padding: 2px 10px;
+}
+.prep-acts-hub-wf-count--done { color: #166534; background: #f0fdf4; }
+
+/* Carte dont le filtre est actif. */
+.prep-acts-hub-wf-card--on {
+  border-color: var(--prep-accent, #0f766e);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--prep-accent, #0f766e) 18%, transparent);
+}
+.prep-acts-hub-wf-filter--on { background: var(--prep-accent-dark, #0c4a46); }
+.prep-acts-hub-wf-btn:disabled { opacity: 0.45; cursor: default; }
+.prep-acts-hub-wf-btn:disabled:hover { background: var(--prep-accent, #0f766e); }
+.prep-acts-hub-wf-btn--secondary:disabled:hover { background: transparent; }
+
+/* Colonne « À faire ». Surtout PAS `display: flex` sur la cellule : un `td` qui
+   n'est plus `table-cell` sort de la grille du tableau, et les colonnes se
+   redistribuent. L'espacement passe donc par les pastilles elles-mêmes. */
+.prep-acts-hub-state-cell { line-height: 1.9; }
+.prep-acts-hub-badge {
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+}
+.prep-acts-hub-badge--todo { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
+.prep-acts-hub-badge--warn { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+.prep-acts-hub-badge--none { border-color: #86efac; background: #f0fdf4; color: #166534; }
+
+/* Colonne « Ouvrir » — les quatre gestes, ou le seul geste filtré. */
+.prep-acts-hub-row-actions { white-space: nowrap; }
+.prep-acts-hub-row-btn {
+  border: 1px solid color-mix(in srgb, var(--prep-accent, #0f766e) 35%, transparent);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--prep-accent, #0f766e);
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.1;
+  padding: 3px 7px;
+  margin-right: 3px;
+  cursor: pointer;
+}
+.prep-acts-hub-row-btn:hover { background: color-mix(in srgb, var(--prep-accent, #0f766e) 12%, transparent); }
+.prep-acts-hub-row-btn:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 1px; }
+.prep-acts-hub-row-btn:disabled { opacity: 0.35; cursor: default; }
+.prep-acts-hub-row-btn:disabled:hover { background: transparent; }
+.prep-acts-hub-row-btn--primary {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 11px;
+  background: var(--prep-accent, #0f766e);
+  color: #fff;
+  border-color: var(--prep-accent-dark, #0c4a46);
+}
+.prep-acts-hub-row-btn--primary:hover { background: var(--prep-accent-dark, #0c4a46); }
+
+/* Ligne montrée seulement pour situer un enfant retenu par le filtre. */
+.prep-acts-hub-row--context { opacity: 0.5; }
+
+/* La colonne des gestes ne doit pas se laisser comprimer par les titres longs :
+   sans cette borne, `table-layout: auto` la réduit et les boutons se replient. */
+.prep-acts-hub-table th:last-child,
+.prep-acts-hub-table td:last-child { width: 1%; white-space: nowrap; }
 
 /* ─── Sub-view back button ───────────────────────────────────────────────── */
 .prep-acts-view-back { padding: 8px 0 12px; }

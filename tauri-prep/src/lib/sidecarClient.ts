@@ -89,6 +89,18 @@ export interface DocumentRecord {
    * (indexer.stale_doc_ids), pas un flag persisté.
    */
   fts_stale?: boolean;
+  /**
+   * ACT-01 — date ISO du dernier apply de curation NON annulé ayant modifié ce
+   * document (dérivé de `prep_action_history`, pas une colonne). Absent/null =
+   * la curation n'a jamais rien changé ici. Contrat 1.6.85.
+   */
+  curated_at?: string | null;
+  /**
+   * ACT-01 — nombre de liens d'alignement touchant ce document, comme pivot ou
+   * comme cible. 0 = jamais aligné. Couvre aussi les documents hors famille, que
+   * `GET /families` ignore. Contrat 1.6.85.
+   */
+  aligned_count?: number;
 }
 
 export interface DocumentPreviewLine {
