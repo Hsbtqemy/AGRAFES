@@ -521,3 +521,103 @@ describe("hub Actions — le tri de la liste (ACT-01)", () => {
     ]);
   });
 });
+
+/**
+ * Les trois préférences d'affichage du hub — filtre, tri, vue hiérarchie — ne
+ * survivaient pas pareil à `↺ Actualiser`. Le bouton passe par `setConn`, qui
+ * remettait `_hubHierarchyView` à `false` sans repeindre le bouton : la liste
+ * redevenait plate pendant que le bouton continuait d'annoncer « 📋 Liste » avec
+ * `aria-pressed="true"`. Le cliquer renvoyait dans la hiérarchie, l'inverse de ce
+ * qu'il promettait. Trouvé en QA le 31 août.
+ *
+ * Piège de rédaction, tombé dedans une fois : `setConn` lance `_loadDocs` sans
+ * l'attendre, donc guetter « l'arbre est là » juste après peut observer le DOM
+ * D'AVANT le rechargement — le test passe alors sur le code fautif. Chaque
+ * vérification est donc ancrée sur un document que SEULE la seconde connexion
+ * sert : tant qu'il n'est pas à l'écran, le rechargement n'a pas eu lieu.
+ */
+describe("hub Actions — l'actualisation ne fait pas mentir le bouton Hiérarchie", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  /** Le témoin de rechargement : #14, absent de la première connexion. */
+  const TEMOIN = {
+    doc_id: 14, title: "Ellendige", language: "nl", doc_role: "cible", unit_count: 100,
+  };
+  const RELATIONS_2 = [...FAMILY, { doc_id: 14, target_doc_id: 11, relation_type: "translation_of" }];
+
+  function connWith(docs: unknown[], relations: Relation[], relationsFail = false): Conn {
+    return {
+      get: vi.fn(async (path: string) => {
+        if (path.startsWith("/documents")) return { documents: docs, count: docs.length };
+        if (path.startsWith("/doc_relations/all")) {
+          if (relationsFail) throw new Error("relations indisponibles");
+          return { relations };
+        }
+        if (path.startsWith("/models")) return { models: [], active: null };
+        return {};
+      }),
+      post: vi.fn(async () => ({})),
+    } as unknown as Conn;
+  }
+
+  const hierBtn = (root: HTMLElement): HTMLButtonElement =>
+    root.querySelector<HTMLButtonElement>("#act-hub-hierarchy-btn")!;
+
+  const treeShown = (root: HTMLElement): boolean =>
+    root.querySelector("#act-doc-list tr.prep-tree-child") !== null;
+
+  async function enterHierarchy(root: HTMLElement): Promise<void> {
+    hierBtn(root).click();
+    await vi.waitFor(() => expect(treeShown(root)).toBe(true));
+  }
+
+  /** Recharge, et n'en revient que lorsque le témoin #14 est rendu. */
+  async function refreshAndWait(
+    view: ActionsScreen, root: HTMLElement, relationsFail = false,
+  ): Promise<void> {
+    view.setConn(connWith([...DOCS, TEMOIN], RELATIONS_2, relationsFail));
+    await vi.waitFor(() => {
+      expect(root.querySelector('#act-doc-list tbody tr[data-doc-id="14"]')).not.toBeNull();
+    });
+  }
+
+  it("garde la vue hiérarchie après un rechargement, comme le filtre et le tri", async () => {
+    const { view, root } = await mountWithDocs(FAMILY);
+    await enterHierarchy(root);
+    await refreshAndWait(view, root);
+
+    expect(treeShown(root)).toBe(true);          // relations rechargées, arbre reconstruit
+    expect(hierBtn(root).textContent).toBe("📋 Liste");
+    expect(hierBtn(root).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("le bouton dit toujours l'état réel de la vue", async () => {
+    const { view, root } = await mountWithDocs(FAMILY);
+    const agrees = (): void => {
+      const tree = treeShown(root);
+      expect(hierBtn(root).getAttribute("aria-pressed")).toBe(String(tree));
+      expect(hierBtn(root).textContent).toBe(tree ? "📋 Liste" : "🌿 Hiérarchie");
+    };
+
+    agrees();
+    await enterHierarchy(root);
+    agrees();
+    await refreshAndWait(view, root);
+    agrees();
+    hierBtn(root).click();                        // retour à la liste plate
+    await vi.waitFor(() => expect(treeShown(root)).toBe(false));
+    agrees();
+  });
+
+  it("retombe à plat, bouton compris, si les relations ne se lisent plus", async () => {
+    const { view, root } = await mountWithDocs(FAMILY);
+    await enterHierarchy(root);
+    await refreshAndWait(view, root, true);       // /doc_relations/all échoue
+
+    expect(treeShown(root)).toBe(false);
+    expect(hierBtn(root).textContent).toBe("🌿 Hiérarchie");
+    expect(hierBtn(root).getAttribute("aria-pressed")).toBe("false");
+  });
+});

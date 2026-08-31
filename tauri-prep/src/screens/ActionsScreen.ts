@@ -536,7 +536,10 @@ export class ActionsScreen {
     this._docs = [];
     this._allRelations = [];
     this._allRelationsLoaded = false;
-    this._hubHierarchyView = false;
+    // `_hubHierarchyView` n'est PAS remis à plat ici : c'est une préférence
+    // d'affichage, au même titre que le filtre et le tri, qui survivent tous deux.
+    // Les relations, elles, sont bien vidées — `_loadDocs` les recharge si la vue en
+    // a besoin.
     if (!conn) {
       this._lastErrorMsg = null;
     }
@@ -683,6 +686,13 @@ export class ActionsScreen {
     if (!this._conn) return;
     try {
       this._docs = await listDocuments(this._conn);
+      // La vue hiérarchie survit au rechargement, mais ses relations ont été vidées :
+      // les reprendre ici, et retomber à plat si elles ne se lisent pas plutôt que de
+      // rendre un arbre sans arêtes.
+      if (this._hubHierarchyView && !(await this._ensureRelations())) {
+        this._hubHierarchyView = false;
+      }
+      this._paintHierarchyBtn();
       // Les cartes AVANT la liste : elles portent les comptes dont le filtre
       // courant dépend, et un filtre devenu vide doit se voir sur la carte.
       this._paintHubCards();
@@ -950,19 +960,27 @@ export class ActionsScreen {
     return isParent ? docId : null;
   }
 
+  /**
+   * Le bouton dit l'état de la vue, d'où qu'on vienne — la bascule ou un rechargement.
+   * Peint depuis un seul endroit : quand la peinture vivait dans la seule bascule, un
+   * `↺ Actualiser` remettait la liste à plat et laissait le bouton annoncer
+   * « 📋 Liste ». Le cliquer renvoyait alors dans la hiérarchie, l'inverse de ce qu'il
+   * promettait. Trouvé en QA le 31 août.
+   */
+  private _paintHierarchyBtn(): void {
+    const btn = this._q<HTMLButtonElement>("#act-hub-hierarchy-btn");
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", String(this._hubHierarchyView));
+    btn.classList.toggle("btn-active", this._hubHierarchyView);
+    btn.textContent = this._hubHierarchyView ? "📋 Liste" : "🌿 Hiérarchie";
+  }
+
   private async _toggleHubHierarchyView(): Promise<void> {
     this._hubHierarchyView = !this._hubHierarchyView;
-    const paint = (): void => {
-      const btn = this._q<HTMLButtonElement>("#act-hub-hierarchy-btn");
-      if (!btn) return;
-      btn.setAttribute("aria-pressed", String(this._hubHierarchyView));
-      btn.classList.toggle("btn-active", this._hubHierarchyView);
-      btn.textContent = this._hubHierarchyView ? "📋 Liste" : "🌿 Hiérarchie";
-    };
-    paint();
+    this._paintHierarchyBtn();
     if (this._hubHierarchyView && !(await this._ensureRelations())) {
       this._hubHierarchyView = false;
-      paint();
+      this._paintHierarchyBtn();
       return;
     }
     this._renderDocList();
