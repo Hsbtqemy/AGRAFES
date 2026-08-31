@@ -3888,12 +3888,13 @@ button.prep-matrix-remove-choice:hover {
 }
 .prep-acts-hub-docs-header .prep-acts-hub-docs-title { margin: 0; }
 
-/* 3-column workflow grid */
+/* 3-column workflow grid — EN TÊTE de la page depuis ACT-01 : on choisit une
+   capacité, puis un document. La marge est donc dessous, pas dessus. */
 .prep-acts-hub-workspace {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  margin-top: 16px;
+  margin: 0 0 20px;
 }
 
 /* Workflow card — extends .card */

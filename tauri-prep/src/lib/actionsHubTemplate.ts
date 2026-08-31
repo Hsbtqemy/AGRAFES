@@ -4,6 +4,13 @@
  * ACT-01 — « action d'abord » : les quatre cartes ne sont plus les étapes numérotées d'un
  * pipeline mais quatre FILTRES. Chacune annonce combien de documents elle concerne encore
  * et réduit la liste à ceux-là ; on choisit ensuite un document dans la liste réduite.
+ *
+ * L'ORDRE DES DEUX BLOCS PORTE LE GESTE, il n'est pas cosmétique : les cartes d'abord,
+ * la liste ensuite. La page se lit alors comme on la manipule — « que veux-tu faire »,
+ * puis « voici les documents concernés ». L'écran d'origine posait la liste au-dessus et
+ * les actions en dessous ; garder cet ordre en changeant le geste ferait lire la page à
+ * l'envers de ce qu'elle demande. Un test verrouille la position relative.
+ *
  * La numérotation « Étape 1 / 2 / 3 / Optionnel » a disparu : elle décrivait un ordre que
  * DESIGN_peritext_conventions §0 contredit — les documents arrivent à n'importe quel
  * stade et les capacités sont indépendantes. Le compte de restants prend sa place, et
@@ -15,22 +22,6 @@
  */
 export function actionsHubTemplate(): string {
   return `
-      <section class="card prep-acts-hub-docs-card">
-        <div class="prep-acts-hub-docs-header">
-          <h2 class="prep-acts-hub-docs-title">Documents du corpus</h2>
-          <div class="prep-acts-hub-docs-tools">
-            <button id="act-hub-refresh-btn" class="btn btn-secondary btn-sm"
-              title="Re-charger la liste des documents et propager aux sous-vues (Curation, Segmentation, Alignement, Annotation)">&#8634; Actualiser</button>
-            <button id="act-hub-hierarchy-btn" class="btn btn-secondary btn-sm"
-              aria-pressed="false" title="Basculer vue hi&eacute;rarchie / liste">&#127807; Hi&eacute;rarchie</button>
-          </div>
-        </div>
-        <p id="act-hub-filter-strip" class="prep-acts-hub-filter-strip" aria-live="polite" hidden>
-          <span id="act-hub-filter-label" class="prep-acts-hub-filter-label"></span>
-          <button type="button" id="act-hub-filter-clear" class="prep-acts-hub-filter-clear">Tout afficher</button>
-        </p>
-        <div id="act-doc-list" class="prep-acts-hub-doc-list"></div>
-      </section>
       <div class="prep-acts-hub-workspace">
         <div class="card prep-acts-hub-wf-card" data-step="curation">
           <div class="prep-acts-hub-wf-top">
@@ -87,5 +78,21 @@ export function actionsHubTemplate(): string {
           </div>
         </div>
       </div>
+      <section class="card prep-acts-hub-docs-card">
+        <div class="prep-acts-hub-docs-header">
+          <h2 class="prep-acts-hub-docs-title">Documents du corpus</h2>
+          <div class="prep-acts-hub-docs-tools">
+            <button id="act-hub-refresh-btn" class="btn btn-secondary btn-sm"
+              title="Re-charger la liste des documents et propager aux sous-vues (Curation, Segmentation, Alignement, Annotation)">&#8634; Actualiser</button>
+            <button id="act-hub-hierarchy-btn" class="btn btn-secondary btn-sm"
+              aria-pressed="false" title="Basculer vue hi&eacute;rarchie / liste">&#127807; Hi&eacute;rarchie</button>
+          </div>
+        </div>
+        <p id="act-hub-filter-strip" class="prep-acts-hub-filter-strip" aria-live="polite" hidden>
+          <span id="act-hub-filter-label" class="prep-acts-hub-filter-label"></span>
+          <button type="button" id="act-hub-filter-clear" class="prep-acts-hub-filter-clear">Tout afficher</button>
+        </p>
+        <div id="act-doc-list" class="prep-acts-hub-doc-list"></div>
+      </section>
     `;
 }

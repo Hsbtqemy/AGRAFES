@@ -139,6 +139,34 @@ describe("hub Actions — les cartes filtrent la liste (ACT-01)", () => {
   });
 });
 
+describe("hub Actions — l'ordre des blocs porte le geste (ACT-01)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = "";
+  });
+
+  it("les quatre cartes viennent AVANT la liste dans le DOM", async () => {
+    // « Action d'abord » se lit dans l'ordre de la page, pas seulement dans le code :
+    // choisir une capacité, PUIS un document. L'écran d'origine posait la liste
+    // au-dessus et les actions en dessous ; garder cet ordre ferait lire la page à
+    // l'envers du geste qu'elle demande. Rien d'autre ne tient cette position.
+    const { root } = await mountWithDocs();
+    const cards = root.querySelector(".prep-acts-hub-workspace")!;
+    const list = root.querySelector(".prep-acts-hub-docs-card")!;
+    expect(cards.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+  });
+
+  it("la liste et son bandeau de filtre restent solidaires, sous les cartes", async () => {
+    const { root } = await mountWithDocs();
+    const list = root.querySelector(".prep-acts-hub-docs-card")!;
+    // Le bandeau annonce le filtre appliqué À CETTE liste : le séparer d'elle
+    // rendrait l'annonce flottante.
+    expect(list.querySelector("#act-hub-filter-strip")).not.toBeNull();
+    expect(list.querySelector("#act-doc-list")).not.toBeNull();
+  });
+});
+
 describe("hub Actions — la liste porte l'état et le geste (ACT-01)", () => {
   beforeEach(() => {
     localStorage.clear();
