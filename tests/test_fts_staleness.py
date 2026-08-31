@@ -111,3 +111,68 @@ def test_empty_doc_is_never_stale(db_conn, tmp_path):
     )
     db_conn.commit()
     assert stale_doc_ids(db_conn) == set()
+
+# ── index illisible : « rien a reindexer » vs « je ne peux pas savoir » (FTS-01) ──
+
+
+def _retirer_declaration_fts(conn: sqlite3.Connection) -> None:
+    """Retire la table virtuelle du schema en laissant ses cinq tables d'ombre.
+
+    C'est l'empreinte exacte relevee sur deux instantanes du corpus (30 juin et
+    17 aout 2026) : les tables `fts_units_*` sont toutes la, `integrity_check`
+    repond `ok`, et pourtant toute lecture de `fts_units` leve `no such table`.
+    C'est la panne qui passe inapercue a un controle naif.
+    """
+    conn.execute("PRAGMA writable_schema = ON")
+    conn.execute("DELETE FROM sqlite_master WHERE type = 'table' AND name = 'fts_units'")
+    conn.execute("PRAGMA writable_schema = OFF")
+    conn.commit()
+
+
+def test_index_readable_on_healthy_corpus(indexed_corpus, db_conn):
+    from multicorpus_engine.indexer import index_readable
+
+    assert index_readable(db_conn) is True
+
+
+def test_broken_index_is_not_reported_as_up_to_date(indexed_corpus, db_conn, tmp_path):
+    """Le piege que ce lot corrige, assere en trois temps."""
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.indexer import index_readable, stale_doc_ids
+
+    _retirer_declaration_fts(db_conn)
+    db_conn.close()
+    conn = get_connection(tmp_path / "test.db")  # le schema est en cache : il faut rouvrir
+
+    # 1. les cinq tables d'ombre ont survecu, donc rien ne saute aux yeux
+    ombres = [
+        r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE name LIKE 'fts_units_%'"
+        )
+    ]
+    assert len(ombres) == 5
+    # 2. l'integrite SQLite reste bonne : un controle naif ne voit rien
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    # 3. et `stale_doc_ids` rend un ensemble VIDE, comme sur un index a jour
+    assert stale_doc_ids(conn) == set()
+    # C'est pour cela qu'il faut un second signal : sans lui, l'ecran affichait
+    # « index a jour » sur une base dont l'index n'existe plus.
+    assert index_readable(conn) is False
+    conn.close()
+
+
+def test_list_documents_says_when_the_index_cannot_be_read(indexed_corpus, db_conn, tmp_path):
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.services.documents_service import list_documents
+
+    assert list_documents(db_conn)["fts_readable"] is True
+
+    _retirer_declaration_fts(db_conn)
+    db_conn.close()
+    conn = get_connection(tmp_path / "test.db")
+    payload = list_documents(conn)
+    assert payload["fts_readable"] is False
+    # Les documents restent listes : on signale, on ne casse pas l'ecran.
+    assert payload["count"] == 2
+    assert all(d["fts_stale"] is False for d in payload["documents"])
+    conn.close()

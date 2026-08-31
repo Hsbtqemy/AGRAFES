@@ -17,6 +17,7 @@ import { completionTier } from "../lib/completionTier.ts";
 import type { Conn } from "../lib/sidecarClient.ts";
 import {
   listDocuments,
+  listDocumentsWithIndexHealth,
   updateDocument,
   bulkUpdateDocuments,
   deleteDocuments,
@@ -307,7 +308,9 @@ export class MetadataScreen {
     this._isBusy = true;
     this._refreshRuntimeState();
     try {
-      this._docs = await listDocuments(this._conn);
+      const paquet = await listDocumentsWithIndexHealth(this._conn);
+      this._docs = paquet.documents;
+      this._ftsReadable = paquet.ftsReadable;
       this._lastErrorMsg = null;
       this._lastRefreshAt = Date.now();
     } catch (err) {
@@ -320,12 +323,19 @@ export class MetadataScreen {
     this._renderDocList();
   }
 
+  /**
+   * Faux seulement sur un `fts_readable: false` explicite du sidecar : un index
+   * illisible ne se déduit pas de l'absence de document périmé, qui vaut aussi
+   * pour un index parfaitement à jour (FTS-01).
+   */
+  private _ftsReadable = true;
+
   /** Met à jour le bouton unique « Mettre à jour l'index » (HANDOFF F4). */
   private _refreshIndexButton(): void {
     const btn = this._root.querySelector<HTMLButtonElement>("#meta-reindex-btn");
     if (!btn) return;
     const staleCount = this._docs.filter(d => d.fts_stale).length;
-    const st = indexButtonState(staleCount);
+    const st = indexButtonState(staleCount, this._ftsReadable);
     btn.textContent = st.label;
     btn.title = st.title;
     btn.disabled = st.disabled || this._isBusy || !this._conn;

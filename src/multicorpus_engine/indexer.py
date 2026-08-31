@@ -224,6 +224,31 @@ def update_index(
     return stats
 
 
+def index_readable(conn: sqlite3.Connection) -> bool:
+    """Can the FTS index be read at all?
+
+    Distinguishes *nothing to reindex* from *cannot tell* — a distinction the
+    product got wrong in the only place it mattered. :func:`stale_doc_ids`
+    swallows ``sqlite3.Error`` and returns an empty set, so a **broken** index
+    was indistinguishable from a **fresh** one, and the screen answered the
+    user's question with a green "✓ Index à jour".
+
+    Measured on the corpus snapshots kept from the 25 August incident: both
+    documented failure modes returned zero stale documents — pages corrupted
+    (``database disk image is malformed``) and declaration removed while the
+    five shadow tables survive (``no such table: fts_units``). See FTS-01.
+
+    A single row is enough: both failures raise on the first read, and no
+    corruption is known that lets one row through and fails on the rest.
+    """
+    try:
+        conn.execute("SELECT rowid FROM fts_units LIMIT 1").fetchone()
+        return True
+    except sqlite3.Error as exc:
+        logger.warning("index_readable: FTS index unusable (%s)", exc)
+        return False
+
+
 def stale_doc_ids(conn: sqlite3.Connection) -> set[int]:
     """Return the set of doc_ids whose FTS index is stale.
 

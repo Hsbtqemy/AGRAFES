@@ -31,7 +31,27 @@ export interface IndexButtonState {
  * État du bouton unique « Mettre à jour l'index » à partir du nombre de
  * documents dont l'index FTS est périmé. Pur.
  */
-export function indexButtonState(staleCount: number): IndexButtonState {
+export function indexButtonState(staleCount: number, ftsReadable = true): IndexButtonState {
+  // **Avant tout le reste.** `staleCount` vient de `fts_stale`, dérivé d'une requête
+  // qui échoue en silence quand l'index est cassé : sur une base abîmée il vaut zéro,
+  // exactement comme sur une base à jour. Sans ce garde, l'écran affichait « ✓ Index à
+  // jour » sur les deux instantanés corrompus du corpus (FTS-01, mesuré le 28 août).
+  //
+  // Le bouton est **inactif** à dessein : `POST /index` passe par DELETE/INSERT sur la
+  // table même qu'on ne peut plus toucher, et les six voies SQL mesurées le 25 août
+  // échouent toutes. Proposer un clic qui mourra vaut moins que ne rien proposer.
+  if (!ftsReadable) {
+    return {
+      label: "⚠ Index illisible",
+      title:
+        "L'index de recherche ne peut pas être lu — il est corrompu, ou sa table a "
+        + "disparu du schéma. La recherche est hors service, mais AUCUN texte n'est "
+        + "perdu : l'index se refabrique intégralement depuis les unités. "
+        + "Reconstruire depuis ce bouton ne suffirait pas ; la base doit être réparée.",
+      disabled: true,
+      stale: true,
+    };
+  }
   if (staleCount <= 0) {
     return {
       label: "✓ Index à jour",

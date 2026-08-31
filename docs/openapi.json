@@ -1735,6 +1735,10 @@
                   "$ref": "#/components/schemas/DocumentRecord"
                 },
                 "type": "array"
+              },
+              "fts_readable": {
+                "description": "false when the FTS index cannot be read at all (corrupted pages, or virtual table dropped from the schema) — distinct from zero stale documents (FTS-01)",
+                "type": "boolean"
               }
             },
             "required": [
@@ -4542,8 +4546,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.83",
-    "x-contract-version": "1.6.83"
+    "version": "1.6.84",
+    "x-contract-version": "1.6.84"
   },
   "openapi": "3.0.3",
   "paths": {

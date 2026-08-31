@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.83"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.84"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -245,6 +245,16 @@ API_VERSION = CONTRACT_VERSION
 #         duplicate (pivot,target) link is refused. Logic in
 #         services/align_links_service.set_pivot. Additive enum+field → no new route →
 #         snapshot unchanged; openapi moves (version); .md action list updated.
+# 1.6.84: GET /documents gagne `fts_readable` (booleen, additif) — FTS-01. La liste
+#         portait deja `fts_stale` par document, derive de units <-> fts_units, mais
+#         `stale_doc_ids` avale sqlite3.Error et rend un ensemble vide : un index
+#         CASSE etait donc indistinguable d'un index A JOUR, et l'ecran repondait
+#         « index a jour » au moment precis ou il fallait alerter. Mesure sur les
+#         instantanes du 25 aout : les deux pannes connues (pages corrompues ; table
+#         virtuelle retiree du schema, tables d'ombre intactes) rendaient zero document
+#         perime. `fts_readable: false` dit « je ne peux pas savoir » la ou l'absence de
+#         document perime disait « rien a faire ». Champ additif sur route existante ->
+#         snapshot inchange ; openapi bouge.
 # 1.6.83: /webdav/probe distingue deux refus que 1.6.81 confondait (SD-01). Un fichier
 #         non sonde rendait `skipped-no-probe`, que le format se decrive lui-meme (TEI,
 #         CoNLL-U : rien a deduire, mais le document s'importe tres bien) ou que son
@@ -4477,6 +4487,7 @@ def openapi_spec() -> dict[str, Any]:
                                     "items": {"$ref": "#/components/schemas/DocumentRecord"},
                                 },
                                 "count": {"type": "integer"},
+                                "fts_readable": {"type": "boolean", "description": "false when the FTS index cannot be read at all (corrupted pages, or virtual table dropped from the schema) — distinct from zero stale documents (FTS-01)"},
                             },
                         },
                     ]

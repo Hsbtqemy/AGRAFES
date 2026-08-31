@@ -1155,6 +1155,25 @@ export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
   return res.documents;
 }
 
+/**
+ * `GET /documents` **avec** l'état de lisibilité de l'index (contrat 1.6.84).
+ *
+ * `fts_stale` par document ne suffit pas à décider quoi afficher : il est dérivé
+ * d'une requête qui échoue en silence quand l'index est cassé, donc zéro document
+ * périmé veut dire « rien à réindexer » **ou** « je ne peux pas savoir ». Voir FTS-01.
+ */
+export async function listDocumentsWithIndexHealth(
+  conn: Conn,
+): Promise<{ documents: DocumentRecord[]; ftsReadable: boolean }> {
+  const res = (await conn.get("/documents")) as {
+    documents: DocumentRecord[];
+    fts_readable?: boolean;
+  };
+  // Un sidecar antérieur à 1.6.84 n'envoie pas le champ. L'absence de réponse n'est
+  // pas une alarme : on ne crie au feu que sur un `false` explicite.
+  return { documents: res.documents, ftsReadable: res.fts_readable !== false };
+}
+
 /** A single text unit (line) returned by GET /units. */
 export interface UnitRecord {
   unit_id: number;

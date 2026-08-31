@@ -16,7 +16,7 @@ import json
 import sqlite3
 from typing import Any, Optional
 
-from ..indexer import stale_doc_ids
+from ..indexer import index_readable, stale_doc_ids
 from ..runs import utcnow_iso
 from .errors import BadRequestError, NotFoundError, ValidationError
 from .validation import Field, validate
@@ -127,6 +127,10 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
     """
     rows = conn.execute(_LIST_SQL).fetchall()
     stale_ids = stale_doc_ids(conn)  # derived, no persisted flag
+    # `stale_ids` vide veut dire deux choses opposées — rien à réindexer, ou index
+    # illisible, `stale_doc_ids` avalant l'erreur SQL. Sans ce second signal, une base
+    # abîmée s'affichait « ✓ Index à jour » (FTS-01).
+    fts_readable = index_readable(conn)
     documents = [
         {
             "doc_id": r[0], "title": r[1], "language": r[2], "doc_role": r[3],
@@ -141,7 +145,7 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
         }
         for r in rows
     ]
-    return {"documents": documents, "count": len(documents)}
+    return {"documents": documents, "count": len(documents), "fts_readable": fts_readable}
 
 
 _STATS_LINE_SQL = """

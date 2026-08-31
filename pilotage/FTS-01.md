@@ -11,10 +11,30 @@ la **cause** reste inconnue.
 
 ## Reste
 
+- [x] **L'écran affichait « ✓ Index à jour » sur une base dont l'index est cassé** — trouvé
+      et corrigé le 28 août, ce constat ne figurait dans aucun des dix items et il est le
+      plus aigu de la fiche : les deux pannes documentées produisaient une pastille
+      **verte**. Cause : `fts_stale` est dérivé par `stale_doc_ids`, qui avale
+      `sqlite3.Error` et rend un ensemble vide — un index **cassé** était donc
+      indistinguable d'un index **à jour**. Mesuré en rejouant la fonction sur vos
+      instantanés : `PRE-REBUILD` du 25/08 (pages corrompues) → 0 périmé ;
+      `PRE-FTS-REPAIR` du 17/08 (déclaration absente) → 0 périmé ; `WORKCOPY.db` saine →
+      17 périmés, correctement. Correctif : `index_readable(conn)` dans `indexer.py`,
+      `fts_readable` sur `GET /documents` (contrat **1.6.84**, champ additif, snapshot
+      inchangé), troisième état du bouton — « ⚠ Index illisible », **inactif à dessein**
+      puisque `POST /index` ne peut pas réparer, et dont l'infobulle dit qu'aucun texte
+      n'est perdu. Trois tests moteur, dont un qui assère le piège en trois temps
+      (cinq tables d'ombre survivantes, `integrity_check` à `ok`, zéro périmé), et
+      cinq tests front
+- [x] **La base de travail n'a pas récidivé** — mesuré le 28 août, trois jours après la
+      reconstruction : `WORKCOPY.db` a sa déclaration, ses cinq tables d'ombre, et
+      `fts_units` se lit. En revanche l'index **retarde** de 21 532 lignes sur 69 440 —
+      c'est normal (aucun trigger, seul `indexer.py` remplit), c'est signalé, et
+      personne n'a cliqué. À ne pas confondre avec une panne lors du prochain diagnostic
 - [ ] Établir si la disparition de la **déclaration** de `fts_units` est un accident ou une réparation manuelle passée — mesuré le 25 août : `corpus_agrafes.db` et `corpus_agrafes.RECOVERED.db` (30 juin) et `corpus_agrafes.WORKCOPY.PRE-FTS-REPAIR.db` (17 août) portent les **cinq tables d'ombre** (`fts_units_content`, `_data`, `_idx`, `_docsize`, `_config`) mais **pas** la table virtuelle `fts_units`, alors que la migration 002 y est appliquée ; leur intégrité SQLite est par ailleurs `ok`. C'est exactement l'empreinte d'un retrait par `PRAGMA writable_schema` sans recréation — soit quelqu'un l'a fait, soit quelque chose le fait
 - [ ] Distinguer les deux pannes dans tout diagnostic futur : *déclaration absente* rend `OperationalError: no such table: fts_units`, *pages corrompues* rend `DatabaseError: database disk image is malformed` — la première laisse `integrity_check` à `ok` et passe donc inaperçue à un contrôle naïf
 - [ ] Trouver ce qui corrompt `fts_units` — deux occurrences en huit jours (17 août, trace `corpus_agrafes.WORKCOPY.PRE-FTS-REPAIR.db` ; 25 août, `…PRE-REBUILD-2026-08-25.db`), aucune explication ; pistes non explorées : arrêt brutal du sidecar pendant une écriture FTS, deux sidecars sur la même base, antivirus ou synchronisation sur le dossier `Documents`, une écriture FTS hors transaction
-- [ ] Vérifier si les corruptions de pages ont la même signature — sur celle du 25 août, `integrity_check` ne signalait que `fts_units_data` et `fts_units_content` (« invalid page number », 101 lignes de rapport) ; comparer avec la base du 17 août, encore sur disque, dirait si c'est le même mécanisme ou deux accidents distincts
+- [ ] Vérifier si les corruptions de pages ont la même signature — sur celle du 25 août, `integrity_check` ne signalait que `fts_units_data` et `fts_units_content` (« invalid page number », 101 lignes de rapport) ; comparer avec la base du 17 août **ne le dira pas** : vérifié le 28 août, elle n'a aucune corruption de pages, c'est l'autre panne (déclaration absente, `integrity_check` à `ok`). Il n'existe donc qu'**une seule** corruption de pages sur disque, et rien à quoi la comparer — cet item attend une récidive, il n'est pas actionnable aujourd'hui
 - [ ] Corriger le masquage de l'erreur dans `services/units_service.py` : l'écriture FTS est enveloppée dans un `try/except: pass` (l. 375-387), donc une base malformée ne casse pas là mais **quatre instructions plus loin**, sur `UPDATE alignment_links` (l. 390) — un lecteur du traceback cherche du côté de l'alignement alors que le problème est l'index
 - [ ] Rattraper `sqlite3.DatabaseError` dans l'adaptateur `_handle_units_update_text` (`sidecar.py:5805`), qui ne connaît que `BadRequestError` et `NotFoundError` : aujourd'hui une base abîmée se présente à l'utilisateur comme « internal error », sans un mot sur ce qui est abîmé ni sur ce qu'il faudrait faire
 - [ ] Décider d'un contrôle d'intégrité au démarrage du sidecar : `PRAGMA quick_check(1)` sur la base ouverte coûte peu et dirait tout de suite ce que trois heures d'enquête ont établi le 25 août ; à trancher — au démarrage seulement, ou aussi avant une écriture ?

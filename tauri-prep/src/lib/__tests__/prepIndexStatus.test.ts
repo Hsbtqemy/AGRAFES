@@ -63,3 +63,39 @@ describe("auto-reindex opt-in (localStorage)", () => {
     expect(isAutoReindexEnabled()).toBe(false);
   });
 });
+
+describe("indexButtonState — index illisible", () => {
+  it("ne dit pas « à jour » quand l'index ne peut pas être lu", () => {
+    // Le piège corrigé : `staleCount` vaut 0 sur une base cassée comme sur une base
+    // à jour, parce que la requête de dérivation échoue en silence. Mesuré sur les
+    // deux instantanés corrompus du corpus (FTS-01).
+    const st = indexButtonState(0, false);
+    expect(st.label).not.toContain("à jour");
+    expect(st.label).toContain("illisible");
+    expect(st.stale).toBe(true);
+  });
+
+  it("n'offre pas un clic qui échouerait", () => {
+    // `POST /index` passe par DELETE/INSERT sur la table même qu'on ne peut plus
+    // toucher : les six voies SQL mesurées le 25 août échouent toutes.
+    expect(indexButtonState(0, false).disabled).toBe(true);
+  });
+
+  it("rassure sur ce qui n'est pas perdu", () => {
+    // L'index se refabrique depuis `units.text_norm` : aucune donnée n'est en jeu,
+    // et c'est la première chose que veut savoir quelqu'un qui voit une alarme.
+    expect(indexButtonState(0, false).title).toContain("AUCUN texte n'est perdu");
+  });
+
+  it("l'emporte sur le compte de documents périmés", () => {
+    // Un index illisible rend le compte de périmés dénué de sens : on ne va pas
+    // proposer de réindexer 12 documents dans une table qu'on ne peut pas ouvrir.
+    expect(indexButtonState(12, false).label).toContain("illisible");
+  });
+
+  it("se tait quand l'index est lisible — comportement inchangé", () => {
+    expect(indexButtonState(0, true).label).toBe("✓ Index à jour");
+    expect(indexButtonState(0).label).toBe("✓ Index à jour");
+    expect(indexButtonState(3, true).label).toContain("3 documents");
+  });
+});
