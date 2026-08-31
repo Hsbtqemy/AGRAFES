@@ -108,6 +108,16 @@ Les deux items sur `⇄` demandent donc de **repasser par « Tout afficher »** 
 n'existe pas sous filtre. Et sous le filtre Alignement, `#364` ne serait de toute façon
 pas là : il porte 1227 liens, le filtre ne liste que le « à faire » (mesuré).
 
+**Le refus d'Alignement se juge À L'INSTANT du clic, pas après.** Une implémentation
+naïve appellerait quand même `openAlignmentOnFamily`, qui bascule dans la matrice
+(`_switchSubViewDOM(root, "matrice")`) sur la famille **précédemment sélectionnée** :
+rien à l'écran ne dirait que ce n'est pas celle du document refusé. Aller vérifier après
+coup quelle famille est ouverte ne tranche pas — si la précédente était Beigbeder, le
+défaut et son absence rendent la même image. Ce qui les sépare est **si le clic vous a
+déplacé**. Donc : cliquer `⇄` sur `#422`, et constater qu'on est toujours devant la liste.
+(`_activeSubView` étant persisté en `localStorage`, une mauvaise navigation survivrait en
+plus à la fermeture.)
+
 ### Les quatre cartes
 
 - [x] Les cartes affichent 57 / 1 / 37 / 53 à faire, dans l'ordre Curation · Segmentation · Alignement · Annotation
@@ -160,12 +170,12 @@ pas là : il porte 1227 liens, le filtre ne liste que le « à faire » (mesuré
 - [x] ◇ ouvre le canvas sur la couche Curation, positionné sur CE document, pas sur le précédent
 - [x] ⌥ ouvre la couche Segmentation sur ce document, ◎ la couche Annotation
 - [x] Revenir au hub après un geste retrouve le filtre tel qu'il était
-- [ ] Sous le filtre Curation, la colonne Ouvrir n'offre plus qu'un bouton en toutes lettres : `Curation →`
-- [ ] Sous le filtre Segmentation, ce même bouton dit `Segmentation →` — le libellé suit la carte active
-- [ ] Revenir à « Tout afficher » (les items suivants ont besoin des quatre icônes)
-- [ ] ⇄ sur `#364 Beigbeder-Francs_EN.docx` ouvre la matrice sur la famille de `#416`, pas sur `#364`
-- [ ] ⇄ sur `#422 Hagena_Apfel_AL` refuse par un message parlant de famille, et n'ouvre PAS la matrice
-- [ ] Ce refus ne laisse pas la matrice sur la famille consultée juste avant
+- [x] Sous le filtre Curation, la colonne Ouvrir n'offre plus qu'un bouton en toutes lettres : `Curation →`
+- [x] Sous le filtre Segmentation, ce même bouton dit `Segmentation →` — le libellé suit la carte active
+- [x] Revenir à « Tout afficher » (les items suivants ont besoin des quatre icônes)
+- [x] ⇄ sur `#364 Beigbeder-Francs_EN.docx` ouvre la matrice sur la famille de `#416`, pas sur `#364`
+- [x] ⇄ sur `#422 Hagena_Apfel_AL` refuse par un message parlant de famille, et n'ouvre PAS la matrice
+- [ ] Ce refus laisse l'écran SUR le hub : le message s'y affiche, on ne bascule pas dans la matrice
 
 ### La vue hiérarchie sous filtre
 
