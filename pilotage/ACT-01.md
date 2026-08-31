@@ -63,6 +63,15 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       « ce texte a-t-il été modifié par la curation », et trompeuse si on la lit « ce
       document a-t-il été relu ». À décider : garder tel quel, ou ne compter la curation
       que sur les documents importés après la migration 019
+- [ ] **L'état par étape n'a qu'une couche, l'automatique** — cadré le 31 août dans
+      `docs/DESIGN_step_status_tristate.md`, rien de codé. Une segmentation appliquée mais
+      insatisfaisante rend le même écran qu'une réussie : le jugement de l'utilisateur n'a
+      nulle part où se poser, et rien ne survit à la fermeture. Modèle proposé : une case
+      à trois états par document et par capacité, dont **deux sont dérivés gratuitement**
+      (`[ ]` aucune trace, `[/]` une trace mais rien de conclu) et un seul se stocke
+      (`[X]`, posé par l'utilisateur seul). Trois décisions à trancher avant tout ticket :
+      le sort de `workflow_status`, la signature de péremption d'un `[X]`, et si la case
+      absorbe le bouton d'ouverture
 - [ ] **`fts_readable` n'est pas documenté dans `SIDECAR_API_CONTRACT.md`** — trouvé en
       ajoutant les deux champs voisins, qui y sont maintenant. Le champ date de 1.6.84
       (FTS-01) ; le test `test_contract_docs_sync` ne l'exige pas, d'où l'oubli. Une ligne
