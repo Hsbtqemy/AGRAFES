@@ -1,80 +1,137 @@
 ---
 chantier: ACT-01
-statut: à venir
+statut: interrompu
 ---
 
 # ACT-01 — la page Actions : une liste de documents qui ne sert à rien
 
-**Point de départ** — demande de refonte de la présentation, écran mesuré au code, aucune ligne écrite, 26 août 2026.
+**Arrêté sur** — refonte « action d'abord » écrite et testée, non commitée, 31 août 2026.
+Reste la vérification à l'écran et trois constats trouvés en chemin.
 
 ## Reste
 
-- [ ] **Trancher le geste central de la page** — choisit-on d'abord un document puis une action, ou d'abord une action puis un document ? Aujourd'hui la page pose les deux côte à côte sans les relier, et c'est de là que vient l'impression que la liste ne sert à rien
-- [ ] **Rendre la liste de documents vivante** — `#act-doc-list` n'apparaît qu'une fois dans l'écran, à la ligne qui la remplit (`ActionsScreen.ts:607`). Aucun écouteur, aucune sélection, aucun lien : les lignes portent une classe `prep-meta-doc-row` que personne n'écoute. Elle ne peut RIEN transmettre aux quatre cartes
-- [ ] **Ajouter l'état par étape sur chaque ligne** — c'est ce qui donnerait un intérêt à la présence des documents dans cette fenêtre : voir d'un coup d'œil ce qui reste à faire, et sur quoi. Trois des quatre étapes sont gratuites (voir le tableau de coût ci-dessous)
-- [ ] **La curation est la seule étape sans état par document** — décider si on en crée un (le moteur ne stocke rien : `docs_curated` est un champ de *réponse* de `CurateResponse`, pas un état), ou si la carte Curation reste sans témoin pendant que les trois autres en ont un. Une colonne vide sur quatre est pire qu'un choix assumé
-- [ ] Décider du sort des **deux vues** de la liste (liste plate / hiérarchie, `#act-hub-hierarchy-btn`) : elles affichent les mêmes cinq colonnes, la seconde ajoutant l'indentation et un badge de relation. Si la refonte ajoute de l'état, vérifier qu'il tient dans les deux, ou n'en garder qu'une
-- [ ] Décider si les cartes gardent leur numérotation « Étape 1 / 2 / 3 / Optionnel » — elle décrit un pipeline, alors que `DESIGN_peritext_conventions` §0 pose l'inverse : les documents arrivent à n'importe quel stade et les capacités sont indépendantes. Une liste qui montrerait l'état réel rendrait cette numérotation soit inutile, soit fausse
-- [ ] Vérifier le doublon d'actualisation : deux boutons de rechargement coexistent, `#act-hub-refresh-corpus-btn` en tête et `#act-hub-refresh-btn` sur la carte des documents
-- [ ] Décider ce que devient la carte de tête « Traitement de corpus » si les documents et les actions fusionnent — elle ne porte qu'un titre, une phrase et un bouton
+- [x] **Trancher le geste central de la page** — tranché : **action d'abord**. Les quatre
+      cartes ne sont plus des étapes mais des filtres ; cliquer une carte réduit la liste
+      aux documents que la capacité concerne encore, et on choisit ensuite un document
+      dans la liste réduite. Re-cliquer la carte active, ou « Tout afficher », rend la
+      liste entière
+- [x] **Rendre la liste de documents vivante** — chaque ligne porte désormais son
+      `data-doc-id` et une colonne de gestes qui ouvre la capacité **sur ce document**
+      (`openCurationLayer(docId)` / `openSegmentLayer` / `openAnnotationLayer`, qui
+      acceptaient déjà un `docId`). Hors filtre, les quatre gestes ; sous filtre, le seul
+      demandé
+- [x] **Ajouter l'état par étape sur chaque ligne** — colonne « À faire », vocabulaire et
+      couleurs repris du bandeau d'état du canvas (`.prep-canvas-chip`), pour que les deux
+      écrans disent la même chose de la même façon. `fts_stale` y figure comme anomalie,
+      pas comme étape
+- [x] **La curation est la seule étape sans état par document** — tranché : état créé
+      côté moteur, **sans migration**. La trace existait déjà (voir « Ce que la mesure a
+      corrigé »). `GET /documents` gagne `curated_at` et `aligned_count`, contrat 1.6.85
+- [x] Décider du sort des **deux vues** de la liste — les deux sont gardées et partagent
+      le même constructeur de ligne (`_docRow`), donc le même état et les mêmes gestes.
+      Sous filtre, l'arbre reste bâti sur **tous** les documents — sinon un parent masqué
+      par le filtre serait déclaré « absent du corpus » — et le filtre agit au rendu ; un
+      parent hors filtre dont un enfant est retenu reste affiché en contexte, sans geste
+- [x] Décider si les cartes gardent leur numérotation « Étape 1 / 2 / 3 / Optionnel » —
+      retirée. Le compte de restants a pris sa place et donne son travail à la carte
+- [x] Vérifier le doublon d'actualisation — un seul bouton reste, celui qui propage aux
+      sous-vues (`setConn`), le plus fort des deux
+- [x] Décider ce que devient la carte de tête « Traitement de corpus » — supprimée, avec
+      ses trois règles CSS devenues mortes. Son unique bouton a rejoint l'en-tête de la
+      carte Documents
+- [ ] **Vérifier à l'écran** — passe `qa/actions-action-dabord.md` à écrire et à jouer
+      dans le shell. Rien n'a encore été vu tourner : tout est vérifié par tests
+      (1295 vitest prep, 79 shell, 34 pytest du service) et par mesure en base, pas à l'œil
+- [ ] **Le chemin asynchrone de la curation n'enregistre rien** — trouvé en chemin, hors
+      périmètre, non corrigé. `POST /jobs/enqueue kind=curate` appelle `curate_document` /
+      `curate_all_documents` **sans** `record_action` (`sidecar.py:9998-10009`), là où
+      `POST /curate` le passe (`sidecar.py:4100-4110`). Conséquence double : une curation
+      lancée par ce chemin n'est **pas annulable** (Mode A) et n'apparaîtra pas dans
+      `curated_at`. Le front vivant n'emprunte que le chemin synchrone (`CurationPane`
+      appelle `curate()`), donc l'écran est juste aujourd'hui — mais le trou est réel
+- [ ] **`curated_at` dira « 57 à faire » sur le corpus réel, et c'est exact au sens
+      strict** — vérifié en faisant tourner `list_documents` sur la base de travail en
+      lecture seule : 1 document sur 58 porte un `curated_at`. Trois raisons cumulées, à
+      trancher : `prep_action_history` est **forward-only** (migration 019 — une curation
+      antérieure n'a laissé aucune trace) ; le chemin asynchrone n'enregistre rien (item
+      ci-dessus) ; un apply sans effet n'écrit pas de ligne. La carte est donc juste sur
+      « ce texte a-t-il été modifié par la curation », et trompeuse si on la lit « ce
+      document a-t-il été relu ». À décider : garder tel quel, ou ne compter la curation
+      que sur les documents importés après la migration 019
+- [ ] **`fts_readable` n'est pas documenté dans `SIDECAR_API_CONTRACT.md`** — trouvé en
+      ajoutant les deux champs voisins, qui y sont maintenant. Le champ date de 1.6.84
+      (FTS-01) ; le test `test_contract_docs_sync` ne l'exige pas, d'où l'oubli. Une ligne
+      à ajouter sous `GET /documents`, à porter par FTS-01 plutôt qu'ici
 
 ## QA
 
-Aucune passe pour l'instant : l'écran change de forme avant de se vérifier. Une passe
-deviendra utile quand la liste portera de l'état — elle vérifiera que l'état affiché
-correspond au document (un document non segmenté ne doit pas s'annoncer segmenté), ce
-qui est mesurable en base, contrairement à l'impression d'utilité.
+- qa/actions-action-dabord.md — **pas encore écrite.** Elle vérifiera ce qui ne se prouve
+  pas par un test unitaire : que l'état affiché correspond au document en base (un
+  document non segmenté ne doit pas s'annoncer segmenté), que le filtre et la vue
+  hiérarchie se composent sans se contredire, et que la colonne de gestes ne se replie pas
+  sur un titre long.
 
 ## Contexte
 
-**Ce que la page présente.** Six blocs, empilés verticalement
-(`tauri-prep/src/lib/actionsHubTemplate.ts`) :
+### Ce que la mesure a corrigé dans le cadrage initial
 
-| bloc | ligne | contenu |
-|---|---|---|
-| carte de tête « Traitement de corpus » | `:9` | titre, une phrase, un bouton Actualiser |
-| carte « Documents du corpus » | `:21` | la liste, + Actualiser + bascule Hiérarchie |
-| carte Curation — « Étape 1 » | `:32` | icône, titre, description, bouton Ouvrir |
-| carte Segmentation — « Étape 2 » | `:43` | idem |
-| carte Alignement — « Étape 3 » | `:54` | idem + un second bouton, Contrôle |
-| carte Annotation — « Optionnel » | `:66` | idem |
+Trois constats, tous mesurés sur `corpus_agrafes.WORKCOPY.db` (58 documents) ou lus au
+code, ont changé le chantier avant qu'une ligne soit écrite.
 
-Les documents sont donc AU-DESSUS, les actions EN DESSOUS, dans un conteneur séparé
-(`prep-acts-hub-workspace`). Rien ne circule de l'un à l'autre.
+**Le tableau de coût de la fiche était faux sur une ligne.** Il annonçait Segmentation
+comme « front pur » via `segmented` de `GET /families`. Mais `segmented` vaut *« le
+document a au moins une unité `line` »* (`sidecar.py:7378`) — vrai de tout document
+importé : **57 sur 58**. Et `seg_count` est le même compte que `unit_count`, déjà à
+l'écran en colonne « Unités ». Ce témoin aurait peint « fait » sur 57 lignes sur 58. Le
+segmenteur supprime puis réinsère des unités `line` (`segmenter.py:789-797`) : **rien
+n'est persisté** qui sépare un texte brut d'un texte découpé. Le seuil retenu est donc
+celui qu'utilise déjà le bandeau du canvas — `unit_count ≤ 1` — et non `segmented`.
 
-**Ce que la liste affiche, et ce qu'elle fait.** Cinq colonnes — N°, Titre, Langue, Rôle,
-Unités — identiques dans les deux vues (`ActionsScreen.ts:620` pour la liste plate,
-`:663` pour la hiérarchie). Et elle ne fait **rien** : les cellules sont construites en
-`textContent`, la ligne reçoit une classe, et aucun écouteur n'est posé. On peut lire, pas
-cliquer. C'est la réponse mécanique à « on ne voit pas trop l'intérêt que ce soit présent
-dans cette fenêtre » : ce n'est pas une impression, la liste est inerte.
+**La curation avait déjà son état, dans une table que la fiche ne regardait pas.**
+`prep_action_history` (migration 019) porte `doc_id NOT NULL`, `performed_at`,
+`action_type='curation_apply'` et `reverted`, avec l'index `idx_prep_action_doc_type` déjà
+posé. Elle est écrite **par le moteur**, sur les deux portées : `curate_all_documents`
+rappelle le même recorder par document, donc une curation corpus-large crédite chaque
+document séparément (`curation.py:400-417`). C'est exactement ce que
+`curation_apply_history` (migration 007) ne sait pas faire — son `doc_id` est NULL dès la
+portée « tout le corpus » — et elle n'est écrite qu'à la demande du front : **1 ligne**
+dans la base de travail, contre **5** dans l'autre. D'où : pas de migration, un champ
+dérivé, mesuré à 0,6 ms.
 
-**Ce qu'on pourrait afficher, et ce que ça coûte.** Mesuré sur les types déjà servis, pas
-estimé — c'est le point qui commande le découpage en tranches.
+**`GET /families` ne pouvait pas porter l'alignement.** Il ne connaît que les documents en
+famille ; **6 sur 58** sont isolés et y seraient simplement absents, donc muets. D'où
+`aligned_count` servi par `/documents`, dérivé de `alignment_links` dans les deux sens,
+mesuré à 3,2 ms sur 14 577 liens.
 
-| étape | état disponible | d'où | coût |
-|---|---|---|---|
-| Segmentation | `segmented` (booléen) + `seg_count` | `FamilyChildEntry`, servi dans `FamilyRecord.children` | **front pur** |
-| Alignement | `aligned_to_parent` (booléen) | idem | **front pur** |
-| Annotation | `annotation_status` (`missing`/`annotated`) + `token_count` | `DocumentRecord`, déjà chargé | **front pur** |
-| Curation | **aucun** | — | moteur : rien n'est stocké |
+Répartition mesurée des états, qui a décidé de ce qui méritait une colonne : brut 1/58,
+annoté 5/58, aligné 21/58, validé 31/58, borne posée 6/58, hiérarchie ¶ 6/58 — contre
+`segmented` à 57/58.
 
-`getFamilies` est déjà appelé ailleurs dans Prep : les trois premières colonnes ne
-demandent aucune route nouvelle, aucune migration, aucun artefact de contrat. Le
-déséquilibre est donc net et il faut le trancher explicitement, sans quoi la refonte
-livrera trois témoins et un trou.
+### Ce qui a été écrit
 
-**Ce que `DocumentRecord` porte déjà et que l'écran jette.** Au-delà des cinq colonnes :
-`workflow_status` (draft/review/validated), `validated_at`, `resource_type`,
-`text_start_n` (la borne début-de-texte), `fts_stale` (l'index de recherche est périmé
-pour ce document), auteur, traducteur, titre d'œuvre, date, éditeur, notes. L'écran en
-affiche cinq et laisse le reste. `fts_stale` est le plus parlant des oubliés : c'est un
-état qui appelle une action, et il n'est visible nulle part ici.
+| fichier | rôle |
+|---|---|
+| `services/documents_service.py` | `curated_at` + `aligned_count`, dérivés, jamais d'exception si les tables manquent |
+| `sidecar_contract.py` + `docs/openapi.json` | contrat 1.6.85 (snapshot des chemins inchangé : champs additifs) |
+| `docs/SIDECAR_API_CONTRACT.md` | les deux champs documentés sous `GET /documents` |
+| `lib/actionsHubState.ts` | **neuf** — le modèle en fonctions pures : `stepState`, `docsForStep`, `stepCounts`, `docBadges` |
+| `lib/actionsHubTemplate.ts` | réécrit : carte de tête retirée, cartes-filtres, bandeau de filtre |
+| `screens/ActionsScreen.ts` | `_paintHubCards`, `_setHubFilter`, `_docRow`, `_openStepOnDoc`, `_familyRootFor`, `_ensureRelations` |
+| `ui/app.css` | pastilles, cartes-filtres, colonne de gestes ; 3 règles mortes retirées |
+| tests | `actionsHubState.test.ts` (14), `ActionsScreen.hubFilter.test.ts` (9), `test_documents_service.py` (+7) |
 
-**Une précaution tirée d'un cas voisin.** Un écran peu utilisé n'est pas un écran sans
-valeur — l'usage faible peut venir d'un blocage en amont. Ici la mesure dit précisément
-où est le blocage : la liste ne porte ni état ni interaction, donc rien n'invite à s'en
-servir. C'est un défaut d'écran, pas un défaut de besoin.
+### Coût mesuré, attribué
 
-Pas de champ `audit:` : aucun audit ne porte cet écran, les mesures ci-dessus en sont la
-seule source.
+`GET /documents` sur la base réelle (58 documents) : `_derived_doc_state` (les deux
+champs neufs) coûte **3,7 ms**, contre **140 ms** pour `stale_doc_ids`, préexistant. Les
+états rendus correspondent exactement aux mesures faites en base avant d'écrire :
+1 document curé, 21 alignés, 1 brut, 5 annotés.
+
+### Un point resté ouvert par construction
+
+L'alignement se travaille **par famille**, pas par document : le geste d'une ligne doit
+donc remonter du document à sa racine de famille, ce qui demande `getAllDocRelations`.
+L'appel est fait **au clic** et non à chaque affichage du hub. Un document isolé n'a
+aucune famille à ouvrir : la ligne le dit par un toast plutôt que d'entrer dans la matrice
+sur la famille précédemment sélectionnée. C'est le seul des quatre gestes qui puisse
+refuser.
