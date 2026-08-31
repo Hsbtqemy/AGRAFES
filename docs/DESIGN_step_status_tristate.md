@@ -4,9 +4,13 @@
 > du 2026-08-31. Rattache à [`pilotage/ACT-01.md`](../pilotage/ACT-01.md) (la page Actions,
 > livrée sans ce modèle) et à [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md)
 > §0 (les capacités sont indépendantes, les documents arrivent à n'importe quel stade).
-> **Deux décisions restent ouvertes**, listées en §6 — elles doivent être tranchées avant
-> qu'un ticket soit ouvert. La troisième, la signature de péremption, a été tranchée le
-> 31 août par la mesure de la §5.
+> **Les trois décisions de la §6 sont réglées** (31 août) : la signature de péremption par
+> la mesure de la §5, le sort de `workflow_status` par une mesure en base et une règle de
+> code, et la troisième — la case absorbe-t-elle le bouton d'ouverture — **reportée hors de
+> cette note**, parce qu'elle porte sur le partage entre ce qu'une ligne montre et ce
+> qu'elle permet, et se pose identiquement dans Documents. Le préalable moteur est levé :
+> les chemins d'écriture des quatre capacités enregistrent tous (§5). **Un ticket peut être
+> ouvert.**
 
 ## 0. Le défaut que ça corrige
 
@@ -250,24 +254,51 @@ qu'il était illisible (FTS-01).
 
 ## 6. Les décisions
 
-- [ ] **`workflow_status` survit-il à côté ?** Il est manuel, au grain du document
-      entier, et porte `validated_at` + `validated_run_id`. Deux vocabulaires de
-      validation qui coexistent finissent par diverger — comme les deux tables de
-      curation l'ont fait (`curation_apply_history` face à `prep_action_history`).
-      Trois issues : il se retire ; il se dérive des quatre cases (« validé » = les
-      quatre à `[X]` ) ; il reste indépendant, et on documente pourquoi.
+- [x] **`workflow_status` survit-il à côté ?** — **oui, et la frontière est écrite**
+      (tranché le 31 août). Il est manuel, au grain du document entier, et porte
+      `validated_at` + `validated_run_id`. La crainte était la divergence de deux
+      vocabulaires, comme les deux tables de curation l'ont fait. La mesure a montré
+      qu'aucune des deux autres issues n'était payable : **31 documents sur 58 sont
+      `validated`**, 27 `draft`, et `validated_at` est renseigné sur les 31. Le retirer
+      perd 31 validations datées ; le *dériver* des quatre cases les ferait toutes
+      repasser à non-validé au premier jour, aucune case n'existant encore.
+
+      **La frontière.** `workflow_status` répond à *« ce document est-il bon à servir ? »* —
+      un jugement d'ensemble, que son auteur pose une fois. Les quatre cases répondent à
+      *« cette capacité est-elle faite sur ce document ? »* — un avancement, par capacité.
+      Les deux sont manuels et peuvent se contredire sans que ce soit une incohérence : on
+      peut juger un document bon à servir sans avoir annoté, et avoir tout coché sur un
+      document qu'on ne veut pas encore publier.
+
+      **Ce qui empêche la dérive n'est pas la doc, c'est une règle de code** : ni l'un ni
+      l'autre ne s'écrit à partir de l'autre. Aucune case ne modifie `workflow_status`,
+      aucun changement de `workflow_status` ne coche ou décoche une case. C'est
+      exactement ce que les deux tables de curation n'avaient pas — l'une était écrite par
+      le front, l'autre par le moteur, pour la même chose.
+
+      **Trouvé au passage** : `validated_run_id` n'est renseigné sur **aucun** des 58
+      documents. La moitié du couple est morte depuis toujours ; à traiter ailleurs, ce
+      n'est pas ce chantier.
 - [x] **La signature de péremption** — tranchée par la mesure du 31 août (§5) :
       historique **scopé par capacité**, plus un repli dérivé tant que l'angle mort n'est
       pas résorbé, et un `[X]` qui dit sur quoi il se fonde. Le compte d'unités seul est
       écarté par le mécanisme ; « rien » l'est parce qu'une coche définitive ne peut pas
       dire qu'elle ne sait rien. Les taux mesurés sont **indicatifs** — une seule base, de
       travail, sans jeu de recoupement (§5, « ce que cette mesure ne prouve pas »).
-- [ ] **La case remplace-t-elle le bouton d'ouverture ?** Les colonnes « À faire » et
-      « Ouvrir » disent déjà la même chose deux fois — quatre capacités en état, puis
-      les quatre mêmes en gestes, pour 30 rem à elles deux. Une case cliquable qui
-      ouvre aussi la capacité les fusionne ; mais un contrôle qui coche ET navigue selon
-      la zone cliquée est un geste ambigu, et le dépôt refuse déjà les gestes ambigus
-      (pas de dialogue natif, confirmation inline explicite).
+- [ ] **La case remplace-t-elle le bouton d'ouverture ?** — **reportée, hors de cette
+      note** (31 août). Les colonnes « À faire » et « Ouvrir » disent déjà la même chose
+      deux fois — quatre capacités en état, puis les quatre mêmes en gestes, pour 30,4 rem
+      à elles deux. Une case cliquable qui ouvre aussi la capacité les fusionne ; mais un
+      contrôle qui coche ET navigue selon la zone cliquée est un geste ambigu, et le dépôt
+      refuse déjà les gestes ambigus (pas de dialogue natif, confirmation inline
+      explicite).
+
+      Elle est reportée parce qu'elle **n'appartient pas à ce modèle** : c'est une question
+      de partage entre ce qu'une ligne montre et ce qu'elle permet, et elle se pose de la
+      même façon dans Documents. La trancher ici la trancherait pour un seul écran.
+      Le modèle tri-état se code sans elle — les cases s'ajoutent, la colonne « Ouvrir »
+      reste ; les fusionner ensuite ne coûte pas plus cher que les avoir fusionnées
+      d'emblée.
 
 ## 7. Ce qui est déjà en place et ne bouge pas
 

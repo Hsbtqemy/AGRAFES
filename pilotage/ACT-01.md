@@ -5,10 +5,10 @@ statut: interrompu
 
 # ACT-01 — la page Actions : une liste de documents qui ne sert à rien
 
-**Arrêté sur** — refonte « action d'abord » livrée et sa passe de QA jouée en entier
-(71/71), 31 août 2026, **non poussée**. Restent quatre décisions ou constats ouverts :
-le sens de « 57 à faire » sur la carte Curation, le modèle tri-état, `multicorpus segment`
-qui n'enregistre rien, et une ligne de doc qui revient à FTS-01.
+**Arrêté sur** — refonte « action d'abord » livrée, passe de QA jouée en entier (71/71),
+décisions tranchées et préalable moteur levé, 31 août 2026, **non poussée**. Il ne reste
+qu'un item ouvert : **coder le modèle tri-état**, dont la note de conception est complète
+et sans décision pendante.
 
 ## Reste
 
@@ -48,9 +48,8 @@ qui n'enregistre rien, et une ligne de doc qui revient à FTS-01.
       les repères mesurés de chaque item. Le rejeu a payé : **deux vrais défauts**,
       ci-dessous, qu'aucun des 1328 tests prep ne pouvait voir — le décalage des colonnes
       sous le filtre Segmentation, et le bouton Hiérarchie qui mentait après une
-      actualisation. **Cinq endroits ont été réécrits en
-      cours de passe**, chacun sur une question de l'utilisateur, et chacun demandait
-      quelque chose qui ne se voit pas :
+      actualisation. **Cinq endroits ont été réécrits en cours de passe**, chacun sur une
+      question de l'utilisateur, et chacun demandait quelque chose qui ne se voit pas :
       · « le tri accentue et minuscule pareil » — aucune paire de titres, langues ou rôles
       de ce corpus ne collationne égale en différant à l'octet (mesuré), et
       `docSort.test.ts` le prouvait déjà ; remplacé par les trois rangs où le comparateur
@@ -91,15 +90,22 @@ qui n'enregistre rien, et une ligne de doc qui revient à FTS-01.
       fermé, et il comptait — la note de conception montre que l'angle mort de l'historique
       se referme de lui-même **sauf** par les chemins muets. Trois tests de bout en bout,
       tous vérifiés RED sur l'ancien code
-- [ ] **`curated_at` dira « 57 à faire » sur le corpus réel, et c'est exact au sens
+- [x] **`curated_at` dira « 57 à faire » sur le corpus réel, et c'est exact au sens
       strict** — vérifié en faisant tourner `list_documents` sur la base de travail en
       lecture seule : 1 document sur 58 porte un `curated_at`. Trois raisons cumulées, à
       trancher : `prep_action_history` est **forward-only** (migration 019 — une curation
       antérieure n'a laissé aucune trace) ; le chemin asynchrone n'enregistre rien (item
       ci-dessus) ; un apply sans effet n'écrit pas de ligne. La carte est donc juste sur
       « ce texte a-t-il été modifié par la curation », et trompeuse si on la lit « ce
-      document a-t-il été relu ». À décider : garder tel quel, ou ne compter la curation
-      que sur les documents importés après la migration 019
+      document a-t-il été relu ». **Tranché le 31 août : garder tel quel.** L'autre issue
+      — ne compter que les documents postérieurs à la migration 019 — a été mesurée avant
+      d'être écartée : elle ramènerait l'assiette à **24 documents sur 58**, et sortirait
+      les 34 autres du compte *et de la liste filtrée*. Une carte qui dit « 23 à faire »
+      en cachant 34 documents ment davantage qu'une carte qui dit « 57 » en n'ayant rien
+      vu. Deux des trois causes ont d'ailleurs disparu depuis : le chemin asynchrone
+      enregistre (item ci-dessus), et l'angle mort se referme de lui-même (83 % le
+      30 juin, 62 % le 27 août). Reste la troisième, un apply sans effet qui n'écrit pas
+      de ligne — c'est exactement ce que le champ prétend dire
 - [ ] **L'état par étape n'a qu'une couche, l'automatique** — cadré le 31 août dans
       `docs/DESIGN_step_status_tristate.md`, rien de codé. Une segmentation appliquée mais
       insatisfaisante rend le même écran qu'une réussie : le jugement de l'utilisateur n'a
@@ -113,9 +119,17 @@ qui n'enregistre rien, et une ligne de doc qui revient à FTS-01.
       36 documents sur 58 n'ont aucun historique, angle mort qui se referme (83 % le
       30 juin, 62 % le 27 août) — mais qui ne pouvait pas se refermer entièrement tant
       qu'un chemin d'écriture restait muet, d'où la correction du chemin asynchrone
-      ci-dessus. D'où deux signatures, la seconde transitoire. Restent deux décisions
-      avant tout ticket : le sort de `workflow_status`, et si la case absorbe le bouton
-      d'ouverture
+      ci-dessus. D'où deux signatures, la seconde transitoire. **Les trois décisions sont
+      réglées et le préalable moteur levé : un ticket peut être ouvert.** `workflow_status`
+      **reste**, avec sa frontière écrite — mesuré 31 `validated` / 27 `draft`, donc le
+      retirer perdrait 31 validations datées et le dériver des cases les ferait toutes
+      tomber au premier jour ; ce qui empêche la dérive n'est pas la doc mais une règle de
+      code, aucun des deux ne s'écrit à partir de l'autre. La troisième — la case
+      absorbe-t-elle le bouton d'ouverture — est **reportée hors de cette note** : elle
+      porte sur le partage entre ce qu'une ligne montre et ce qu'elle permet, et se pose
+      identiquement dans Documents. Le modèle se code sans elle. Trouvé en mesurant :
+      `validated_run_id` n'est renseigné sur **aucun** document, la moitié du couple est
+      morte depuis toujours
 - [x] **Les colonnes glissaient en passant sur le filtre Segmentation** — premier vrai
       défaut trouvé par la passe, corrigé le 31 août. La boîte de la liste est en
       `overflow: auto` sans gouttière réservée : sous les filtres qui laissent beaucoup de
@@ -163,10 +177,12 @@ qui n'enregistre rien, et une ligne de doc qui revient à FTS-01.
       trou sans casser un seul test de comportement.
       Vérifié au passage que `lift-markers` n'est **pas** une asymétrie : il n'est un type
       d'action annulable nulle part (`ALLOWED_ACTION_TYPES`, `action_history.py:26`)
-- [ ] **`fts_readable` n'est pas documenté dans `SIDECAR_API_CONTRACT.md`** — trouvé en
-      ajoutant les deux champs voisins, qui y sont maintenant. Le champ date de 1.6.84
-      (FTS-01) ; le test `test_contract_docs_sync` ne l'exige pas, d'où l'oubli. Une ligne
-      à ajouter sous `GET /documents`, à porter par FTS-01 plutôt qu'ici
+- [x] **`fts_readable` n'est pas documenté dans `SIDECAR_API_CONTRACT.md`** — **c'était
+      déjà faux quand je l'ai écrit.** FTS-01 l'a documenté le 31 août à 10 h 23 (commit
+      `67731b3`), en même temps que `fts_repairable` ; les deux lignes sont sous
+      `GET /documents`. Le constat a été noté d'après une lecture antérieure au commit de
+      l'autre session, et jamais re-vérifié — le défaut que la fiche reproche ailleurs
+      aux backlogs. Rien à faire
 
 ## QA
 
