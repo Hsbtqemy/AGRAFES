@@ -2,7 +2,7 @@
 passe: Sonde — geste de retour
 chantier: NAV-01
 duree: 10 min
-derniere: —
+derniere: 2026-08-31
 ---
 
 # Sonde — ce que le bouton latéral et le pad émettent vraiment
@@ -152,17 +152,20 @@ Le résultat de cette passe se commite : c'est lui qui fige le chiffrage de NAV-
 31 août, elle l'a fait tomber de 2,5-3,5 j à **2-3 j** pour la souris, en supprimant un lot
 entier — et elle a déplacé le geste du pad d'un détecteur JS vers un appel COM.
 
+Les cases ci-dessous n'enregistrent que **ce qui a été observé**. Les résultats contraires
+— le bouton muet, le pad qui navigue — vivent dans la table ci-dessus et non en cases
+vides : pour l'outil, une case vide est une chose à faire, et une case jamais cochable
+laisserait la passe « en vol » indéfiniment.
+
 ### Bouton latéral « précédent » de la souris
 
 - [x] La sonde entend la souris : une ligne `button=0 (clic gauche)` apparaît au premier clic
 - [x] Le bouton latéral émet un événement DOM : au moins une ligne `button=3` ou `button=4` apparaît
 - [x] Le bouton latéral remonte l'historique : une ligne `popstate` apparaît, avec un `sonde` qui décroît
-- [ ] Le bouton latéral ne produit rien du tout : aucune ligne ne s'ajoute aux trois appuis
 
 ### Pad — glissé deux doigts horizontal
 
 - [x] Le glissé n'émet que des lignes `wheel` avec un `deltaX` non nul, sans aucun `popstate`
-- [ ] Le glissé remonte l'historique : une ligne `popstate` apparaît sans `mousedown` qui la précède
 
 ### Blocage — à ne faire que si le bouton a émis un événement DOM
 
