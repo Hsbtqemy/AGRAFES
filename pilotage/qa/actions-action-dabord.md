@@ -14,11 +14,19 @@ module pur, 16 sur l'écran) ; ce qui reste est ce qui ne se voit qu'à l'œil.
 
 ## À faire AVANT d'ouvrir l'application
 
-**Reconstruire le sidecar. Sans ça, la passe entière mesure un binaire périmé.** Celui
-qui est en place date du **28 août** (`sidecar-manifest.json`, `build_time`), donc
-d'avant ACT-01 : il ne connaît ni `curated_at` ni `aligned_count`. Symptôme si on
-l'oublie — les cartes annoncent « 58 à faire » partout et chaque ligne porte les quatre
-pastilles. Ce n'est **pas** un défaut de l'écran.
+**Reconstruire le sidecar, à chaque rejeu, dès que le moteur a bougé depuis la dernière
+construction.** Sans ça la passe entière mesure un binaire périmé. Comparer le
+`build_time` de `tauri-shell/src-tauri/binaries/sidecar-manifest.json` à la date du
+dernier commit touchant `src/multicorpus_engine/` :
+
+```
+python -c "import json;print(json.load(open('tauri-shell/src-tauri/binaries/sidecar-manifest.json'))['build_time'])"
+git log -1 --format=%cI -- src/multicorpus_engine/
+```
+
+Symptôme si on l'oublie, la première fois que cette passe a été écrite : les cartes
+annoncent « 58 à faire » partout et chaque ligne porte les quatre pastilles, parce que le
+binaire ignorait `curated_at` et `aligned_count`. Ce n'est **pas** un défaut de l'écran.
 
 ```
 python scripts/build_sidecar.py --preset shell --format onefile
