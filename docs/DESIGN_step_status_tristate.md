@@ -169,11 +169,11 @@ corpus, pas d'autres corpus. Il faut donc trier ce qui tient de ce qui est indic
 | l'angle mort de l'historique | **structurel**, et transitoire (voir ci-dessous) |
 | taux de retour 26 – 41 % | **indicatif seulement** — c'est le comportement d'une personne sur un corpus, dans une base *de travail* où l'on expérimente plus qu'en usage réel. À re-mesurer sur un corpus mené de bout en bout avant d'en tirer une règle |
 
-La conclusion « rien » est disqualifiée s'appuie sur le seul chiffre indicatif du
-tableau. Elle est donc la plus fragile des trois : si le taux de retour réel s'avérait
-très bas, un `[X]` définitif redeviendrait défendable. Ce qui ne bouge pas, en revanche,
-c'est qu'une coche définitive **ne peut pas dire** qu'elle ne sait rien — et c'est
-l'argument qui la condamne, indépendamment du taux.
+La conclusion « la signature *rien* est disqualifiée » s'appuie sur le seul chiffre
+indicatif du tableau. Elle est donc la plus fragile des trois : si le taux de retour réel
+s'avérait très bas, un `[X]` définitif redeviendrait défendable. Ce qui ne bouge pas, en
+revanche, c'est qu'une coche définitive **ne peut pas dire** qu'elle ne sait rien — et
+c'est l'argument qui la condamne, indépendamment du taux.
 
 ### Ce que la mesure déplace
 
@@ -184,10 +184,10 @@ Le vrai obstacle n'est pas le choix de la signature, c'est sa **couverture** :
 Sur eux, une signature fondée sur l'historique ne peut jamais périmer quoi que ce soit :
 le `[X]` y serait définitif faute de preuve du contraire. Trois causes cumulées, déjà
 connues : `prep_action_history` est *forward-only* depuis le 7 mai 2026 ; le chemin
-**asynchrone** de la curation n'y écrit rien (constat ouvert dans `pilotage/ACT-01.md`) ;
-et une préparation antérieure n'a laissé aucune trace. L'activité est en outre très
-concentrée — le document le plus actif porte 124 actions, soit 47 % de tout l'historique,
-pour une médiane de 3.
+**asynchrone** de la curation n'y écrivait rien — cause **supprimée le 31 août**, contrat
+1.6.87, voir plus bas ; et une préparation antérieure n'a laissé aucune trace. L'activité
+est en outre très concentrée — le document le plus actif porte 124 actions, soit 47 % de
+tout l'historique, pour une médiane de 3.
 
 **Mais l'angle mort se referme, et c'est mesurable.** Comparaison de deux instantanés du
 même corpus — un avant/après de la même population, ce à quoi des instantanés servent
@@ -201,9 +201,22 @@ légitimement :
 Vingt et un points en deux mois. L'angle mort n'est donc pas une propriété du modèle
 mais un **artefact de transition** : il se résorbe à mesure que le travail passe par des
 chemins qui enregistrent. Ce qui change la nature du repli dérivé — c'est une béquille
-datée, pas une seconde signature permanente. Et ce qui donne son prix au constat ouvert
-d'ACT-01 : tant que le chemin asynchrone de la curation n'enregistre rien, une part de
-l'angle mort ne se refermera jamais toute seule.
+datée, pas une seconde signature permanente.
+
+À condition que **tous** les chemins enregistrent, ce qui n'était pas le cas. En
+énumérant les appelants au lieu de corriger celui qu'on avait sous les yeux : trois
+chemins appliquent la curation, et **deux** n'écrivaient aucune ligne — le job
+`POST /jobs kind=curate` et la CLI `multicorpus curate`. Une part de l'angle mort n'aurait
+donc jamais pu se refermer. C'est ce qui a fait passer ce constat d'un détail d'hygiène à
+une **condition de la conception** — corrigé le 31 août (contrat 1.6.87 : les trois
+construisent le même recorder, `services/curate_service.apply_recorder`). Le raisonnement
+vaut au-delà de ce cas : avant de bâtir sur la résorption de l'angle mort, vérifier
+qu'aucune mutation ne reste muette — et les compter, pas se fier à la première trouvée.
+
+Il en reste **une**, connue et tracée dans `pilotage/ACT-01.md` : `multicorpus segment`
+n'écrit pas la ligne `resegment` que ses deux jumeaux sidecar écrivent. Tant qu'elle est
+là, la signature du `[X]` Segmentation a un trou par Mode A — à fermer avant le ticket,
+pas après.
 
 ### Ce que la mesure recommande
 

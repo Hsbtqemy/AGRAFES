@@ -47,13 +47,21 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       annonce « 58 à faire » partout. Le préambule de la passe porte la commande et le
       contrôle `/health` (le `contract_version` servi doit être au moins 1.6.85 — le
       dépôt est passé à 1.6.86 le même jour avec FTS-01)
-- [ ] **Le chemin asynchrone de la curation n'enregistre rien** — trouvé en chemin, hors
-      périmètre, non corrigé. `POST /jobs/enqueue kind=curate` appelle `curate_document` /
-      `curate_all_documents` **sans** `record_action` (`sidecar.py:9998-10009`), là où
-      `POST /curate` le passe (`sidecar.py:4100-4110`). Conséquence double : une curation
-      lancée par ce chemin n'est **pas annulable** (Mode A) et n'apparaîtra pas dans
-      `curated_at`. Le front vivant n'emprunte que le chemin synchrone (`CurationPane`
-      appelle `curate()`), donc l'écran est juste aujourd'hui — mais le trou est réel
+- [x] **Le chemin asynchrone de la curation n'enregistre rien** — trouvé en chemin, puis
+      **corrigé** (contrat 1.6.87), et il n'était pas seul. En énumérant les appelants
+      plutôt qu'en corrigeant celui qu'on regardait : **trois** chemins appliquent la
+      curation, `POST /curate` (qui passait un `record_action`), le job
+      `POST /jobs kind=curate`, et la CLI `multicorpus curate` — les deux derniers n'en
+      passaient aucun. Une curation lancée par la file ou en Mode A n'était donc pas
+      annulable et n'entrait pas dans `curated_at`. Le recorder vit désormais dans
+      `services/curate_service.apply_recorder` et les trois le construisent à l'identique,
+      pour que l'asymétrie ne puisse pas se reformer. Le résultat du job gagne
+      `action_ids` / `action_id`, la sortie CLI gagne `action_ids`, et le job lit
+      `rules_signature` / `apply_context`, que seul le corps synchrone lisait. Rien ne
+      bouge à l'écran (le front n'emprunte que le chemin synchrone) : c'est le trou qui est
+      fermé, et il comptait — la note de conception montre que l'angle mort de l'historique
+      se referme de lui-même **sauf** par les chemins muets. Trois tests de bout en bout,
+      tous vérifiés RED sur l'ancien code
 - [ ] **`curated_at` dira « 57 à faire » sur le corpus réel, et c'est exact au sens
       strict** — vérifié en faisant tourner `list_documents` sur la base de travail en
       lecture seule : 1 document sur 58 porte un `curated_at`. Trois raisons cumulées, à
@@ -74,10 +82,23 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       seuls les mécanismes tiennent). Ce qui est établi : une resegmentation peut rendre
       le même compte d'unités, donc cette signature-là est aveugle par construction ; et
       36 documents sur 58 n'ont aucun historique, angle mort qui se referme (83 % le
-      30 juin, 62 % le 27 août) mais que le chemin asynchrone de la curation empêchera
-      de disparaître. D'où deux signatures, la seconde transitoire. Restent deux décisions
+      30 juin, 62 % le 27 août) — mais qui ne pouvait pas se refermer entièrement tant
+      qu'un chemin d'écriture restait muet, d'où la correction du chemin asynchrone
+      ci-dessus. D'où deux signatures, la seconde transitoire. Restent deux décisions
       avant tout ticket : le sort de `workflow_status`, et si la case absorbe le bouton
       d'ouverture
+- [ ] **`multicorpus segment` reste muet, lui** — dernier chemin d'écriture sans trace,
+      trouvé en énumérant les appelants pour le lot ci-dessus. Les deux chemins sidecar de
+      la segmentation passent `make_resegment_recorder(conn)` (`sidecar.py:9601` ; le job
+      `kind=segment` le passe aussi), la CLI n'en passe aucun (`cli.py:893-899`) : une
+      resegmentation en Mode A n'est pas annulable et n'écrit pas la ligne `resegment` sur
+      laquelle la signature de péremption du `[X]` Segmentation doit se fonder. Pas corrigé
+      ici pour ne pas empiler deux extractions dans le même lot : `make_resegment_recorder`
+      est une fermeture de ~60 lignes qui vit dans `sidecar.py` et prend un `calibrate_to`
+      — la sortir vers `services/` demande le protocole service/adapter complet et son
+      propre test RED, pas un paramètre de plus. Vérifié au passage que `lift-markers`
+      n'est **pas** une asymétrie : il n'est un type d'action annulable nulle part
+      (`ALLOWED_ACTION_TYPES`, `action_history.py:26`)
 - [ ] **`fts_readable` n'est pas documenté dans `SIDECAR_API_CONTRACT.md`** — trouvé en
       ajoutant les deux champs voisins, qui y sont maintenant. Le champ date de 1.6.84
       (FTS-01) ; le test `test_contract_docs_sync` ne l'exige pas, d'où l'oubli. Une ligne
@@ -133,6 +154,7 @@ annoté 5/58, aligné 21/58, validé 31/58, borne posée 6/58, hiérarchie ¶ 6/
 | fichier | rôle |
 |---|---|
 | `services/documents_service.py` | `curated_at` + `aligned_count`, dérivés, jamais d'exception si les tables manquent |
+| `services/curate_service.py` | `apply_recorder` — le recorder d'undo que les **deux** chemins de curation construisent (1.6.87) |
 | `sidecar_contract.py` + `docs/openapi.json` | contrat 1.6.85 (snapshot des chemins inchangé : champs additifs) |
 | `docs/SIDECAR_API_CONTRACT.md` | les deux champs documentés sous `GET /documents` |
 | `lib/actionsHubState.ts` | **neuf** — le modèle en fonctions pures : `stepState`, `docsForStep`, `stepCounts`, `docBadges` |

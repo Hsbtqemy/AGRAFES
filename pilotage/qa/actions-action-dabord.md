@@ -53,9 +53,10 @@ ne pas le comparer à un numéro écrit ici, il vieillit à chaque lot :
 grep ^CONTRACT_VERSION src/multicorpus_engine/sidecar_contract.py
 ```
 
-ACT-01 a livré `1.6.85` ; FTS-01 a poussé à `1.6.86` le même jour. Tout ce qui est
-**inférieur à 1.6.85** signifie que le binaire n'a pas été remplacé : recommencer, ne pas
-jouer la passe.
+ACT-01 a livré `1.6.85`, puis `1.6.87` (le job `curate` enregistre son action) ; FTS-01 a
+poussé `1.6.86` entre les deux. Tout ce qui est **inférieur à 1.6.85** signifie que le
+binaire n'a pas été remplacé : recommencer, ne pas jouer la passe. Entre 1.6.85 et 1.6.87
+la passe mesure la même chose — `1.6.87` ne touche pas `GET /documents`.
 
 ## Base et comptes attendus
 
