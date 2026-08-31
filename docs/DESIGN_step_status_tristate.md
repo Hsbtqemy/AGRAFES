@@ -4,13 +4,11 @@
 > du 2026-08-31. Rattache à [`pilotage/ACT-01.md`](../pilotage/ACT-01.md) (la page Actions,
 > livrée sans ce modèle) et à [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md)
 > §0 (les capacités sont indépendantes, les documents arrivent à n'importe quel stade).
-> **Les trois décisions de la §6 sont réglées** (31 août) : la signature de péremption par
-> la mesure de la §5, le sort de `workflow_status` par une mesure en base et une règle de
-> code, et la troisième — la case absorbe-t-elle le bouton d'ouverture — **reportée hors de
-> cette note**, parce qu'elle porte sur le partage entre ce qu'une ligne montre et ce
-> qu'elle permet, et se pose identiquement dans Documents. Le préalable moteur est levé :
-> les chemins d'écriture des quatre capacités enregistrent tous (§5). **Un ticket peut être
-> ouvert.**
+> **Les trois décisions de la §6 sont tranchées** (31 août) : la signature de péremption
+> par la mesure de la §5 ; le sort de `workflow_status` par une mesure en base et une règle
+> de code ; et la case **n'absorbe pas** le bouton d'ouverture, parce qu'une case énonce un
+> état et ne désigne pas une destination. Le préalable moteur est levé : les chemins
+> d'écriture des quatre capacités enregistrent tous (§5). **Un ticket peut être ouvert.**
 
 ## 0. Le défaut que ça corrige
 
@@ -285,20 +283,20 @@ qu'il était illisible (FTS-01).
       écarté par le mécanisme ; « rien » l'est parce qu'une coche définitive ne peut pas
       dire qu'elle ne sait rien. Les taux mesurés sont **indicatifs** — une seule base, de
       travail, sans jeu de recoupement (§5, « ce que cette mesure ne prouve pas »).
-- [ ] **La case remplace-t-elle le bouton d'ouverture ?** — **reportée, hors de cette
-      note** (31 août). Les colonnes « À faire » et « Ouvrir » disent déjà la même chose
-      deux fois — quatre capacités en état, puis les quatre mêmes en gestes, pour 30,4 rem
-      à elles deux. Une case cliquable qui ouvre aussi la capacité les fusionne ; mais un
-      contrôle qui coche ET navigue selon la zone cliquée est un geste ambigu, et le dépôt
-      refuse déjà les gestes ambigus (pas de dialogue natif, confirmation inline
-      explicite).
+- [x] **La case remplace-t-elle le bouton d'ouverture ?** — **non** (tranché le 31 août).
+      Pas par arbitrage de coûts : par ce que la case **veut dire**. Une case à cocher
+      énonce un état — en cours, fini. Elle ne désigne pas une destination. Enregistrer et
+      se déplacer sont deux verbes différents ; le même contrôle ne peut pas porter les
+      deux sans cesser de signifier quoi que ce soit. C'est plus fort que l'argument du
+      geste ambigu que la note avançait d'abord : ce n'est pas qu'un clic serait difficile
+      à interpréter, c'est qu'on demanderait à une case de faire ce qu'une case ne fait
+      pas.
 
-      Elle est reportée parce qu'elle **n'appartient pas à ce modèle** : c'est une question
-      de partage entre ce qu'une ligne montre et ce qu'elle permet, et elle se pose de la
-      même façon dans Documents. La trancher ici la trancherait pour un seul écran.
-      Le modèle tri-état se code sans elle — les cases s'ajoutent, la colonne « Ouvrir »
-      reste ; les fusionner ensuite ne coûte pas plus cher que les avoir fusionnées
-      d'emblée.
+      **Les deux colonnes restent donc distinctes.** La redondance qu'on leur reproche —
+      quatre capacités en état, puis les quatre mêmes en gestes, 30,4 rem à elles deux —
+      ne disparaît pas pour autant, mais elle change de nature : c'est un problème de
+      **mise en page**, à traiter par la largeur (icônes, colonne d'ouverture resserrée,
+      geste au niveau de la ligne), jamais en fusionnant deux sens dans un seul contrôle.
 
 ## 7. Ce qui est déjà en place et ne bouge pas
 

@@ -124,10 +124,11 @@ et sans décision pendante.
       **reste**, avec sa frontière écrite — mesuré 31 `validated` / 27 `draft`, donc le
       retirer perdrait 31 validations datées et le dériver des cases les ferait toutes
       tomber au premier jour ; ce qui empêche la dérive n'est pas la doc mais une règle de
-      code, aucun des deux ne s'écrit à partir de l'autre. La troisième — la case
-      absorbe-t-elle le bouton d'ouverture — est **reportée hors de cette note** : elle
-      porte sur le partage entre ce qu'une ligne montre et ce qu'elle permet, et se pose
-      identiquement dans Documents. Le modèle se code sans elle. Trouvé en mesurant :
+      code, aucun des deux ne s'écrit à partir de l'autre. La troisième est **non** : la
+      case n'absorbe pas le bouton d'ouverture, et pas pour une raison de coût — une case
+      énonce un état, elle ne désigne pas une destination. Enregistrer et se déplacer sont
+      deux verbes différents. Les deux colonnes restent donc distinctes, et leur redondance
+      de largeur devient un problème de mise en page, jamais de sens. Trouvé en mesurant :
       `validated_run_id` n'est renseigné sur **aucun** document, la moitié du couple est
       morte depuis toujours
 - [x] **Les colonnes glissaient en passant sur le filtre Segmentation** — premier vrai
