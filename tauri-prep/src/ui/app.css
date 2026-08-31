@@ -155,9 +155,10 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 
 /* ── Inline confirm bar (audit-batch-bar) ──────────────────────────────────
    Used by lib/inlineConfirm to show a Confirm/Cancel prompt inside a host
-   container — typically the topbar (#app-pending-confirm, for unsaved-tab
-   switch) or a panel header (#act-seg-confirm-bar). Without CSS the bar was
-   an unstyled div that injected default block content into a flex topbar. */
+   container. Sans CSS, la barre était une div sans style qui injectait du contenu
+   bloc par défaut dans une topbar en flex. Un seul hôte porte cette classe aujourd'hui,
+   #app-pending-confirm (sortie d'onglet avec des modifications non enregistrées) —
+   #act-seg-confirm-bar, que ce commentaire citait, est parti avec SegmentationView. */
 .audit-batch-bar {
   display: flex;
   align-items: center;
@@ -178,6 +179,32 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* NAV-01 — le bandeau « modifications non enregistrées » est hébergé par la topbar, qui
+   est un flex à hauteur fixe et sans retour à la ligne. Posé comme un item de plus, il
+   prenait sa place aux autres : sur une fenêtre large le titre (`flex: 1`) absorbait le
+   coup sans qu'on le voie, mais dès que la fenêtre rétrécit il n'y a plus de mou, et tout
+   le contenu de la barre se décale — signalé en QA le 31 août 2026, sur le geste de retour.
+   Sorti du flux, il pend sous la topbar : il ne déplace plus rien, et il peut s'écrire sur
+   deux lignes au lieu de tronquer la question qu'il pose. La règle est portée par l'ID et
+   non par `.audit-batch-bar` : la classe n'a qu'un hôte aujourd'hui, mais un futur hôte en
+   corps de panneau n'aurait que faire d'un positionnement pensé pour une topbar. */
+.prep-topbar { position: relative; }
+#app-pending-confirm {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 1rem;
+  z-index: 200;
+  margin-left: 0;
+  max-width: min(560px, calc(100% - 2rem));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+#app-pending-confirm .inline-confirm-msg {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+#app-pending-confirm .btn { flex-shrink: 0; }
 
 /* ── Family dialog modal (post-import suggestion) ──────────────────────────
    The JS appends .family-dialog-overlay to <body> with no positioning, so
