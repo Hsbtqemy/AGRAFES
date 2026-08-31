@@ -109,6 +109,18 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       ci-dessus. D'où deux signatures, la seconde transitoire. Restent deux décisions
       avant tout ticket : le sort de `workflow_status`, et si la case absorbe le bouton
       d'ouverture
+- [x] **Les colonnes glissaient en passant sur le filtre Segmentation** — premier vrai
+      défaut trouvé par la passe, corrigé le 31 août. La boîte de la liste est en
+      `overflow: auto` sans gouttière réservée : sous les filtres qui laissent beaucoup de
+      lignes (57, 53, 37, ou les 58 sans filtre) elle défile et la barre prend sa largeur
+      **dans** la boîte ; sous Segmentation — une seule ligne — il n'y a pas de barre et
+      ces ~15 px reviennent au tableau. Comme il est en `table-layout: fixed` avec une
+      **seule** colonne élastique (« Titre »), ils lui vont entièrement : Langue, Rôle,
+      Unités, À faire et Ouvrir glissent tous vers la droite. « N° » ne bougeant pas, le
+      décalage était discret — c'est l'item de la passe qui l'a rendu visible. Correctif :
+      `scrollbar-gutter: stable`, une ligne. Gardé par
+      `ui/__tests__/actionsHubLayout.test.ts`, qui lit `app.css` faute de pouvoir lire ça
+      dans le DOM, et vérifié RED sur l'ancienne feuille
 - [ ] **`multicorpus segment` reste muet, lui** — dernier chemin d'écriture sans trace,
       trouvé en énumérant les appelants pour le lot ci-dessus. Les deux chemins sidecar de
       la segmentation passent `make_resegment_recorder(conn)` (`sidecar.py:9601` ; le job
