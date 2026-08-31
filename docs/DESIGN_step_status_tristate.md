@@ -1,7 +1,8 @@
 # Statut par étape et par document — la case à trois états
 
-> Statut : **modèle proposé, rien de codé** (2026-08-31), issu de la discussion ACT-01
-> du 2026-08-31. Rattache à [`pilotage/ACT-01.md`](../pilotage/ACT-01.md) (la page Actions,
+> Statut : **moteur livré** (2026-08-31, contrat 1.6.88, migration 038) ; le front reste à
+> faire — la colonne « À faire » porte encore quatre pastilles dérivées. Issu de la
+> discussion ACT-01 du 2026-08-31. Rattache à [`pilotage/ACT-01.md`](../pilotage/ACT-01.md) (la page Actions,
 > livrée sans ce modèle) et à [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md)
 > §0 (les capacités sont indépendantes, les documents arrivent à n'importe quel stade).
 > **Les trois décisions de la §6 sont tranchées** (31 août) : la signature de péremption
@@ -84,19 +85,28 @@ Un bit à persister par `(document, capacité)` : « validé, à telle date ». 
 porte que les `[X]`, donc elle reste petite — au plus 4 lignes par document, en pratique
 beaucoup moins.
 
-| artefact | pourquoi |
+| artefact | état |
 |---|---|
-| migration | table `doc_step_status(doc_id, step, validated_at, …)` + index `(doc_id)` ; FK `ON DELETE CASCADE` vers `documents` |
-| route | poser / retirer une validation ; lecture via l'enrichissement de `GET /documents` |
-| `sidecar_contract.py` + `docs/openapi.json` + snapshot | route nouvelle ⇒ les trois artefacts, plus `SIDECAR_API_CONTRACT.md` |
-| front | la colonne « À faire » devient quatre cases ; les comptes des cartes suivent |
+| migration | **fait** — [038](../migrations/038_doc_step_status.sql), `doc_step_status`, FK `ON DELETE CASCADE` vers `documents`, éprouvée par le vrai `POST /documents/delete` |
+| routes | **faites** — `POST /documents/step_status` et `.../clear`, adaptateurs minces sur `services/step_status_service.py` |
+| `sidecar_contract.py` + `docs/openapi.json` + snapshot + `.md` | **faits** — contrat 1.6.88, les quatre artefacts |
+| front | **reste à faire** — la colonne « À faire » devient quatre cases, les comptes des cartes suivent |
+
+**Ce que la lecture coûte, mesuré.** Le pire cas n'arrivera jamais (58 documents × 4
+capacités = 232 coches) mais c'est celui qu'il faut tenir : `GET /documents` passe de
+157,9 ms à **171,3 ms**, soit **+13,5 ms**. La première écriture en coûtait +251, en
+recalculant par coche l'état dérivé que `list_documents` tenait déjà à quelques lignes de
+là ; elle le lui passe désormais. Sans coche, le surcoût est nul — la lecture s'arrête à
+la première requête, qui ne rend rien.
 
 **Une nouvelle table appelle un audit des chemins de SUPPRESSION** : sans
 `ON DELETE CASCADE`, avec `foreign_keys=ON`, une suppression de document lève l'erreur
 *après* avoir détruit des lignes, sans rollback — perte silencieuse. Ce n'est pas
 théorique : la [migration 028](../migrations/028_alignment_cell_status.sql) déclare ses
 deux clés étrangères **sans** cascade, et c'est ce qui a fait tomber `/segment`,
-`/units/merge` et `/prep/undo`. À ne pas reproduire ici.
+`/units/merge` et `/prep/undo`. La 038 déclare donc sa cascade, et le test l'éprouve par
+le **vrai chemin de suppression** (`POST /documents/delete`) plutôt que par un `PRAGMA` —
+un `PRAGMA` dit ce que le schéma déclare, pas ce que la suppression fait.
 
 ## 4. Ce que ça donne à l'écran
 
@@ -111,8 +121,8 @@ La colonne « À faire » — quatre pastilles textuelles bornées à quatre, au
 `aria-checked="mixed"` est le tri-état natif : `[/]` n'a pas besoin d'un bricolage
 d'accessibilité.
 
-Reste à trancher si la case remplace le bouton d'ouverture de la même capacité (une
-colonne au lieu de deux, l'état et le geste au même endroit) ou vit à côté — voir §6.
+La case ne remplace **pas** le bouton d'ouverture (§6) : une case énonce un état, elle ne
+désigne pas une destination. Les deux colonnes restent distinctes.
 
 ## 5. La péremption d'un `[X]`
 

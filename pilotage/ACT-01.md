@@ -7,8 +7,8 @@ statut: interrompu
 
 **Arrêté sur** — refonte « action d'abord » livrée, passe de QA jouée en entier (71/71),
 décisions tranchées et préalable moteur levé, 31 août 2026, **non poussée**. Il ne reste
-qu'un item ouvert : **coder le modèle tri-état**, dont la note de conception est complète
-et sans décision pendante.
+qu'un item ouvert : le **front** du modèle tri-état — son moteur est livré (contrat
+1.6.88, migration 038), la colonne « À faire » porte encore quatre pastilles dérivées.
 
 ## Reste
 
@@ -106,8 +106,10 @@ et sans décision pendante.
       enregistre (item ci-dessus), et l'angle mort se referme de lui-même (83 % le
       30 juin, 62 % le 27 août). Reste la troisième, un apply sans effet qui n'écrit pas
       de ligne — c'est exactement ce que le champ prétend dire
-- [ ] **L'état par étape n'a qu'une couche, l'automatique** — cadré le 31 août dans
-      `docs/DESIGN_step_status_tristate.md`, rien de codé. Une segmentation appliquée mais
+- [ ] **L'état par étape n'a qu'une couche, l'automatique** — **moteur livré le 31 août**
+      (contrat 1.6.88, migration 038) ; le front reste à faire, la colonne « À faire »
+      porte encore quatre pastilles dérivées. Cadré dans
+      `docs/DESIGN_step_status_tristate.md`. Une segmentation appliquée mais
       insatisfaisante rend le même écran qu'une réussie : le jugement de l'utilisateur n'a
       nulle part où se poser, et rien ne survit à la fermeture. Modèle proposé : une case
       à trois états par document et par capacité, dont **deux sont dérivés gratuitement**
@@ -130,7 +132,18 @@ et sans décision pendante.
       deux verbes différents. Les deux colonnes restent donc distinctes, et leur redondance
       de largeur devient un problème de mise en page, jamais de sens. Trouvé en mesurant :
       `validated_run_id` n'est renseigné sur **aucun** document, la moitié du couple est
-      morte depuis toujours
+      morte depuis toujours.
+      **Ce que le moteur porte déjà** : la table `doc_step_status` (au plus 4 lignes par
+      document, `ON DELETE CASCADE` éprouvée par le vrai `POST /documents/delete` et non
+      par un `PRAGMA`), `POST /documents/step_status` et `.../clear`, et le champ
+      `step_status` sur chaque document de `GET /documents`, avec son verdict de
+      péremption. Les deux signaux sont figés à la pose : `last_action_id` scopé **par
+      capacité** — `set_role` ne périme rien, c'est épinglé par un test — et un
+      instantané dérivé qui rattrape les 36 documents sur 58 que l'historique ignore. Une
+      coche périmée ne se rend **jamais** `[X]` : elle retombe à `[/]` en nommant ce qui
+      l'a démentie. Coût de lecture mesuré au pire cas (232 coches, qui n'arrivera
+      jamais) : **+13,5 ms** sur `/documents`, contre +251 à la première écriture, qui
+      recalculait par coche ce que `list_documents` tenait déjà. 29 tests
 - [x] **Les colonnes glissaient en passant sur le filtre Segmentation** — premier vrai
       défaut trouvé par la passe, corrigé le 31 août. La boîte de la liste est en
       `overflow: auto` sans gouttière réservée : sous les filtres qui laissent beaucoup de
