@@ -31,7 +31,21 @@ export interface IndexButtonState {
  * État du bouton unique « Mettre à jour l'index » à partir du nombre de
  * documents dont l'index FTS est périmé. Pur.
  */
-export function indexButtonState(staleCount: number, ftsReadable = true): IndexButtonState {
+export function indexButtonState(
+  staleCount: number,
+  ftsReadable: boolean | null = true,
+): IndexButtonState {
+  // `null` = on n'a pas pu demander (liste des documents en échec, sidecar injoignable).
+  // Ne rien savoir n'autorise pas à rassurer : sans ce cas, un chargement raté laissait
+  // « ✓ Index à jour » à l'écran, sous un bandeau rouge annonçant l'erreur.
+  if (ftsReadable === null) {
+    return {
+      label: "Index — état inconnu",
+      title: "La liste des documents n'a pas pu être lue : l'état de l'index est inconnu.",
+      disabled: true,
+      stale: false,
+    };
+  }
   // **Avant tout le reste.** `staleCount` vient de `fts_stale`, dérivé d'une requête
   // qui échoue en silence quand l'index est cassé : sur une base abîmée il vaut zéro,
   // exactement comme sur une base à jour. Sans ce garde, l'écran affichait « ✓ Index à

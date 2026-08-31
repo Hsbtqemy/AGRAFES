@@ -140,3 +140,54 @@ def test_db_diagnostics_script_strict_exit_code(
     assert payload["status"] == "warning"
     assert payload["fts"]["stale"] is True
 
+# ── index illisible : la commande doit RAPPORTER la panne, pas mourir avec (FTS-01) ──
+
+
+def _retirer_declaration_fts(conn) -> None:
+    """Empreinte des instantanes du 30 juin et du 17 aout : la table virtuelle quitte
+    le schema, les cinq tables d'ombre restent, `integrity_check` repond `ok`."""
+    conn.execute("PRAGMA writable_schema = ON")
+    conn.execute("DELETE FROM sqlite_master WHERE type = 'table' AND name = 'fts_units'")
+    conn.execute("PRAGMA writable_schema = OFF")
+    conn.commit()
+
+
+def test_diagnostics_reports_unreadable_index_instead_of_raising(db_conn, tmp_path) -> None:
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.diagnostics import collect_diagnostics
+
+    _retirer_declaration_fts(db_conn)
+    db_conn.close()
+    conn = get_connection(tmp_path / "test.db")
+
+    report = collect_diagnostics(conn)  # ne doit pas lever
+
+    assert report["fts"]["readable"] is False
+    assert report["fts"]["failure"] == "declaration-missing"
+    # `null`, pas `False` : on ignore s'il est perime, on sait qu'on ne peut pas le lire.
+    assert report["fts"]["stale"] is None
+    assert any("unreadable" in i for i in report["issues"])
+    # `integrity_check` reste `ok` sur cette panne : sans clause dediee, la panne qui se
+    # cache le mieux ressortait avec le statut le plus doux.
+    assert report["integrity"]["value"] == "ok"
+    assert report["status"] == "error"
+    conn.close()
+
+
+def test_diagnostics_keeps_reporting_the_rest_when_the_index_is_gone(db_conn, tmp_path) -> None:
+    """Le reste du rapport garde sa valeur : on signale, on ne perd pas les 20 autres
+    controles au passage."""
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.diagnostics import collect_diagnostics
+
+    _retirer_declaration_fts(db_conn)
+    db_conn.close()
+    conn = get_connection(tmp_path / "test.db")
+
+    report = collect_diagnostics(conn)
+    assert "documents" in report["counts"]
+    assert report["counts"]["units_total"] >= 0
+    assert report["counts"]["line_units"] >= 0
+    # seul le compte de lignes d'index est inconnu, et il le dit par `null`
+    assert report["counts"]["fts_rows"] is None
+    conn.close()

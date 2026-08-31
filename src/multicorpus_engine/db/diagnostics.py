@@ -30,32 +30,53 @@ def collect_diagnostics(conn: sqlite3.Connection) -> dict:
     structure_units = _count(conn, "SELECT COUNT(*) FROM units WHERE unit_type = 'structure'")
     runs_count = _count(conn, "SELECT COUNT(*) FROM runs")
     alignment_links = _count(conn, "SELECT COUNT(*) FROM alignment_links")
-    fts_rows = _count(conn, "SELECT COUNT(*) FROM fts_units")
-
-    missing_line_units = _count(
-        conn,
-        """
-        SELECT COUNT(*)
-        FROM units u
-        LEFT JOIN fts_units f ON f.rowid = u.unit_id
-        WHERE u.unit_type = 'line' AND f.rowid IS NULL
-        """,
-    )
-    orphan_fts_rows = _count(
-        conn,
-        """
-        SELECT COUNT(*)
-        FROM fts_units f
-        LEFT JOIN units u ON u.unit_id = f.rowid
-        WHERE u.unit_id IS NULL OR u.unit_type != 'line'
-        """,
-    )
-    fts_row_delta = fts_rows - line_units
-    fts_stale = (
-        missing_line_units > 0
-        or orphan_fts_rows > 0
-        or fts_row_delta != 0
-    )
+    # Tout ce qui touche `fts_units` peut lever, et la commande `diagnostics` est
+    # précisément celle qu'on lance quand la base va mal : elle doit **rapporter** la
+    # panne, pas mourir avec. Les deux pannes connues se distinguent à leur exception
+    # (FTS-01, item « distinguer les deux pannes dans tout diagnostic futur ») :
+    # `OperationalError: no such table` = table virtuelle retirée du schéma, tables
+    # d'ombre intactes et `integrity_check` à `ok` — invisible à un contrôle naïf ;
+    # `DatabaseError: … malformed` = pages corrompues.
+    fts_failure: str | None = None
+    fts_error: str | None = None
+    fts_rows = missing_line_units = orphan_fts_rows = fts_row_delta = None
+    fts_stale = None
+    try:
+        fts_rows = _count(conn, "SELECT COUNT(*) FROM fts_units")
+        missing_line_units = _count(
+            conn,
+            """
+            SELECT COUNT(*)
+            FROM units u
+            LEFT JOIN fts_units f ON f.rowid = u.unit_id
+            WHERE u.unit_type = 'line' AND f.rowid IS NULL
+            """,
+        )
+        orphan_fts_rows = _count(
+            conn,
+            """
+            SELECT COUNT(*)
+            FROM fts_units f
+            LEFT JOIN units u ON u.unit_id = f.rowid
+            WHERE u.unit_id IS NULL OR u.unit_type != 'line'
+            """,
+        )
+        fts_row_delta = fts_rows - line_units
+        fts_stale = (
+            missing_line_units > 0
+            or orphan_fts_rows > 0
+            or fts_row_delta != 0
+        )
+    except sqlite3.Error as exc:
+        fts_error = str(exc)
+        fts_failure = (
+            "declaration-missing" if isinstance(exc, sqlite3.OperationalError) else "corrupted"
+        )
+        # Remise à zéro explicite : si la panne survient sur la deuxième requête, la
+        # première a déjà posé un compte. Un chiffre partiel dans un rapport qui annonce
+        # « illisible » ferait plus de mal que le trou qu'il comble.
+        fts_rows = missing_line_units = orphan_fts_rows = fts_row_delta = None
+        fts_stale = None
 
     runs_without_stats = _count(
         conn,
@@ -128,7 +149,14 @@ def collect_diagnostics(conn: sqlite3.Connection) -> dict:
     issues: list[str] = []
     if integrity != "ok":
         issues.append(f"SQLite integrity_check returned: {integrity}")
-    if fts_stale:
+    if fts_failure == "declaration-missing":
+        issues.append(
+            "FTS index unreadable: the fts_units virtual table is gone from the schema "
+            "(shadow tables may remain, and integrity_check still says ok) — rebuild required"
+        )
+    elif fts_failure:
+        issues.append(f"FTS index unreadable: {fts_error} — rebuild required")
+    elif fts_stale:
         issues.append("FTS appears stale or inconsistent with line units")
     if runs_without_stats > 0:
         issues.append(f"{runs_without_stats} run(s) have empty stats_json")
@@ -151,7 +179,11 @@ def collect_diagnostics(conn: sqlite3.Connection) -> dict:
         issues.append(f"{docs_without_line_units} document(s) have no line units")
 
     status = "ok"
-    if integrity != "ok":
+    if integrity != "ok" or fts_failure is not None:
+        # Un index illisible est une **erreur**, pas un avertissement, et il faut le dire
+        # explicitement : la panne « déclaration retirée du schéma » laisse
+        # `integrity_check` à `ok`, donc sans cette clause c'est celle qui se cache le
+        # mieux qui ressortait avec le statut le plus doux (FTS-01).
         status = "error"
     elif issues:
         status = "warning"
@@ -177,7 +209,12 @@ def collect_diagnostics(conn: sqlite3.Connection) -> dict:
             "row_delta_vs_line_units": fts_row_delta,
             "missing_line_units": missing_line_units,
             "orphan_rows": orphan_fts_rows,
+            # `null` et non `false` quand l'index est illisible : on ne sait pas s'il est
+            # périmé, on sait qu'on ne peut pas le lire. Les deux ne se confondent pas.
             "stale": fts_stale,
+            "readable": fts_failure is None,
+            "failure": fts_failure,
+            "error": fts_error,
         },
         "runs": {
             "by_kind": runs_by_kind,

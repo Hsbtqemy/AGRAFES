@@ -99,3 +99,19 @@ describe("indexButtonState — index illisible", () => {
     expect(indexButtonState(3, true).label).toContain("3 documents");
   });
 });
+
+describe("indexButtonState — état inconnu", () => {
+  it("ne rassure pas quand on n'a pas pu demander", () => {
+    // `_renderDocList` tourne même après un chargement en échec : sans ce cas, l'écran
+    // gardait « ✓ Index à jour » sous un bandeau rouge annonçant l'erreur.
+    const st = indexButtonState(0, null);
+    expect(st.label).not.toContain("à jour");
+    expect(st.label).toContain("inconnu");
+  });
+
+  it("n'alarme pas non plus — ignorer n'est pas constater", () => {
+    const st = indexButtonState(0, null);
+    expect(st.stale).toBe(false);
+    expect(st.disabled).toBe(true);
+  });
+});

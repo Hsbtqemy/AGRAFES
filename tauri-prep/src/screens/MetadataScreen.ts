@@ -314,6 +314,9 @@ export class MetadataScreen {
       this._lastErrorMsg = null;
       this._lastRefreshAt = Date.now();
     } catch (err) {
+      // On ne sait plus rien de l'index : ne pas laisser le bouton sur son dernier
+      // état, qui rassurerait sous un bandeau d'erreur.
+      this._ftsReadable = null;
       this._log(`Erreur liste documents: ${err instanceof SidecarError ? err.message : String(err)}`, true);
     } finally {
       this._isBusy = false;
@@ -328,7 +331,7 @@ export class MetadataScreen {
    * illisible ne se déduit pas de l'absence de document périmé, qui vaut aussi
    * pour un index parfaitement à jour (FTS-01).
    */
-  private _ftsReadable = true;
+  private _ftsReadable: boolean | null = null;
 
   /** Met à jour le bouton unique « Mettre à jour l'index » (HANDOFF F4). */
   private _refreshIndexButton(): void {

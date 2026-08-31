@@ -39,7 +39,7 @@ export function metadataScreenTemplate(): string {
             <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>
             <button id="validate-btn" class="btn btn-secondary btn-sm">Valider métadonnées</button>
             <button id="audit-btn" class="btn btn-secondary btn-sm">🔍 Audit corpus</button>
-            <button id="meta-reindex-btn" class="btn btn-secondary btn-sm" disabled>✓ Index à jour</button>
+            <button id="meta-reindex-btn" class="btn btn-secondary btn-sm" disabled>Index…</button>
             <label class="prep-meta-auto-reindex-label"
                    title="Réindexer automatiquement l'index FTS après chaque curation appliquée (job asynchrone, non bloquant)">
               <input type="checkbox" id="meta-auto-reindex" /> Auto après curation
