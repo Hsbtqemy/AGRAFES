@@ -1,7 +1,8 @@
 # Statut par étape et par document — la case à trois états
 
-> Statut : **moteur livré** (2026-08-31, contrat 1.6.88, migration 038) ; le front reste à
-> faire — la colonne « À faire » porte encore quatre pastilles dérivées. Issu de la
+> Statut : **livré de bout en bout** (2026-08-31, contrat 1.6.88, migration 038) —
+> moteur et front. Reste une passe de QA du modèle, qui n'a encore rien vu tourner.
+> Issu de la
 > discussion ACT-01 du 2026-08-31. Rattache à [`pilotage/ACT-01.md`](../pilotage/ACT-01.md) (la page Actions,
 > livrée sans ce modèle) et à [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md)
 > §0 (les capacités sont indépendantes, les documents arrivent à n'importe quel stade).
@@ -90,7 +91,7 @@ beaucoup moins.
 | migration | **fait** — [038](../migrations/038_doc_step_status.sql), `doc_step_status`, FK `ON DELETE CASCADE` vers `documents`, éprouvée par le vrai `POST /documents/delete` |
 | routes | **faites** — `POST /documents/step_status` et `.../clear`, adaptateurs minces sur `services/step_status_service.py` |
 | `sidecar_contract.py` + `docs/openapi.json` + snapshot + `.md` | **faits** — contrat 1.6.88, les quatre artefacts |
-| front | **reste à faire** — la colonne « À faire » devient quatre cases, les comptes des cartes suivent |
+| front | **fait** — quatre cases par ligne à largeur fixe, `aria-checked="mixed"` pour « en cours », et **deux nombres** par carte |
 
 **Ce que la lecture coûte, mesuré.** Le pire cas n'arrivera jamais (58 documents × 4
 capacités = 232 coches) mais c'est celui qu'il faut tenir : `GET /documents` passe de

@@ -5,10 +5,11 @@ statut: interrompu
 
 # ACT-01 — la page Actions : une liste de documents qui ne sert à rien
 
-**Arrêté sur** — refonte « action d'abord » livrée, passe de QA jouée en entier (71/71),
-décisions tranchées et préalable moteur levé, 31 août 2026, **non poussée**. Il ne reste
-qu'un item ouvert : le **front** du modèle tri-état — son moteur est livré (contrat
-1.6.88, migration 038), la colonne « À faire » porte encore quatre pastilles dérivées.
+**Arrêté sur** — tout est livré, 31 août 2026 : la refonte « action d'abord », sa passe
+de QA jouée en entier (71/71), les trois décisions tranchées, et le **modèle tri-état de
+bout en bout** — moteur (contrat 1.6.88, migration 038) et front. Reste à jouer une passe
+de QA du tri-état : celle d'« action d'abord » décrit l'écran d'avant sur trois zones,
+et le dit maintenant en tête.
 
 ## Reste
 
@@ -106,9 +107,8 @@ qu'un item ouvert : le **front** du modèle tri-état — son moteur est livré 
       enregistre (item ci-dessus), et l'angle mort se referme de lui-même (83 % le
       30 juin, 62 % le 27 août). Reste la troisième, un apply sans effet qui n'écrit pas
       de ligne — c'est exactement ce que le champ prétend dire
-- [ ] **L'état par étape n'a qu'une couche, l'automatique** — **moteur livré le 31 août**
-      (contrat 1.6.88, migration 038) ; le front reste à faire, la colonne « À faire »
-      porte encore quatre pastilles dérivées. Cadré dans
+- [x] **L'état par étape n'a qu'une couche, l'automatique** — **livré le 31 août**,
+      moteur (contrat 1.6.88, migration 038) et front. Cadré dans
       `docs/DESIGN_step_status_tristate.md`. Une segmentation appliquée mais
       insatisfaisante rend le même écran qu'une réussie : le jugement de l'utilisateur n'a
       nulle part où se poser, et rien ne survit à la fermeture. Modèle proposé : une case
@@ -143,7 +143,24 @@ qu'un item ouvert : le **front** du modèle tri-état — son moteur est livré 
       coche périmée ne se rend **jamais** `[X]` : elle retombe à `[/]` en nommant ce qui
       l'a démentie. Coût de lecture mesuré au pire cas (232 coches, qui n'arrivera
       jamais) : **+13,5 ms** sur `/documents`, contre +251 à la première écriture, qui
-      recalculait par coche ce que `list_documents` tenait déjà. 29 tests
+      recalculait par coche ce que `list_documents` tenait déjà. 29 tests.
+      **Ce que le front porte** : quatre cases par ligne, une par capacité, à largeur
+      fixe et toujours dans le même ordre — c'est ce qui rend la colonne scannable, on
+      suit « Segmentation » du regard sur toute la liste. `aria-checked="mixed"` est le
+      tri-état natif. Le bornage des pastilles et son « +N » disparaissent avec elles.
+      Le clic ne fait qu'UNE chose, poser ou retirer la coche ; un test tient qu'il
+      n'ouvre rien, sans quoi la décision se perdrait au premier « tant qu'à cliquer ».
+      Chaque case porte sa propre infobulle, seul endroit où elle peut dire ce qu'elle
+      **vaut** — « validé le 12/08, avant que l'historique existe » n'est pas la même
+      promesse que « aucune modification enregistrée depuis ».
+      **Les cartes portent deux nombres** (« 56 à faire · 2 en cours »), et c'est la
+      simulation d'un corpus NEUF qui l'a décidé, pas le corpus de travail : cinq
+      documents fraîchement importés donnent une trace de segmentation sur les cinq,
+      parce que l'import produit des lignes. Une carte qui n'aurait compté que « jamais
+      touché » y aurait affiché « 0 à faire » — exactement le mensonge que le modèle
+      existe pour tuer ; une carte qui aurait tout additionné aurait affiché le même
+      nombre sur les quatre. Sur le corpus de travail, la segmentation passe de « 1 à
+      faire » à « 58 en cours » : même corpus, dit sans mentir. 31 tests front
 - [x] **Les colonnes glissaient en passant sur le filtre Segmentation** — premier vrai
       défaut trouvé par la passe, corrigé le 31 août. La boîte de la liste est en
       `overflow: auto` sans gouttière réservée : sous les filtres qui laissent beaucoup de
@@ -200,7 +217,15 @@ qu'un item ouvert : le **front** du modèle tri-état — son moteur est livré 
 
 ## QA
 
-- qa/actions-action-dabord.md — **jouée en entier** le 31 août, 71 sur 71. Elle vérifie ce
+- qa/actions-tri-etat.md — **à écrire**. Le modèle à trois états n'a aucune passe : ni
+  les cases, ni leur péremption, ni les deux nombres des cartes n'ont été vus tourner.
+  Tout est couvert par tests (29 moteur, 31 front) et par mesure en base, pas à l'œil —
+  c'est-à-dire dans l'état exact où « action d'abord » était avant sa passe, qui a
+  trouvé deux vrais défauts. Points de départ mesurés : les cartes doivent afficher
+  56·2 / 58 / 37·21 / 52·6, et **aucune coche n'existe** dans le corpus.
+- qa/actions-action-dabord.md — **jouée en entier** le 31 août, 71 sur 71, puis
+  **invalidée le même jour** sur trois zones par le tri-état. La passe le dit en tête,
+  zone par zone ; les cases restent cochées, elles disent ce qui a été vu ce jour-là. Elle vérifie ce
   qu'aucun test unitaire ne prouve : que l'état affiché correspond au document en base, que
   le filtre et la vue hiérarchie se composent sans se contredire, et que la colonne de
   gestes tient à l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas

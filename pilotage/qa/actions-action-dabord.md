@@ -58,17 +58,56 @@ poussé `1.6.86` entre les deux. Tout ce qui est **inférieur à 1.6.85** signif
 binaire n'a pas été remplacé : recommencer, ne pas jouer la passe. Entre 1.6.85 et 1.6.87
 la passe mesure la même chose — `1.6.87` ne touche pas `GET /documents`.
 
+## ⚠ Cette passe décrit l'écran D'AVANT le tri-état
+
+Jouée en entier le 31 août, **puis invalidée le même jour** par le modèle à trois états
+(contrat 1.6.88, commits `645ee52` et `4601ce7`). Les cases ont remplacé les pastilles,
+et une trace ne vaut plus « fait » : trois zones ne décrivent plus ce qui est à l'écran.
+
+| zone | encore valable ? |
+|---|---|
+| Les quatre cartes | le premier item seulement est faux (deux nombres par carte désormais) |
+| Le filtre et la liste | **non** — les comptes ont changé, et le filtre retient aussi « en cours » |
+| Le tri | oui |
+| L'état par ligne | **non** — la colonne porte quatre cases, plus des pastilles |
+| Les gestes de la ligne | oui |
+| La vue hiérarchie sous filtre | oui |
+| Tenue à l'écran | les items sur le repli et l'infobulle des pastilles sont caducs |
+| Les cas creux | oui |
+
+Les cases cochées sont **laissées telles quelles** : elles disent ce qui a été vu le
+31 août, sur l'écran de ce jour-là. Une passe du tri-état reste à écrire ; celle-ci ne
+doit pas être rejouée en l'état sur les zones marquées non.
+
 ## Base et comptes attendus
 
 Corpus de référence : `C:\Users\hsemil01\Documents\IGE\corpus_agrafes.WORKCOPY.db`,
 **58 documents**. Tout ce qui suit a été mesuré dessus le 31 août, en lecture seule.
 
-| carte | doit afficher | pourquoi |
+Ces comptes **datent de l'écran d'avant** et sont conservés pour lire les cases déjà
+jouées ; ils ne valent plus pour un rejeu.
+
+| carte | affichait le 31 août | pourquoi |
 |---|---|---|
-| Curation | **57 à faire** | seul `#416 Beigbeder-Francs_FR.docx` porte un `curated_at` |
-| Segmentation | **1 à faire** | seul `#426 9_CI-TrFr-2021_Aligné_UTF8.txt` a ≤ 1 unité (il en a 0) |
-| Alignement | **37 à faire** | 21 documents sur 58 sont touchés par un lien |
+| Curation | **57 à faire** | seul `#416 Beigbeder-Francs_FR.docx` portait un `curated_at` |
+| Segmentation | **1 à faire** | seul `#426 9_CI-TrFr-2021_Aligné_UTF8.txt` avait ≤ 1 unité |
+| Alignement | **37 à faire** | 21 documents sur 58 touchés par un lien |
 | Annotation | **53 à faire** | 5 annotés : `#387`, `#395`, `#416`, `#422`, `#423` |
+
+Mesuré **après** le tri-état, sur la même base, aucune coche posée — deux nombres par
+carte, et la base elle-même a bougé pendant la passe (réindexation, curation) :
+
+| carte | affiche maintenant |
+|---|---|
+| Curation | **56 à faire · 2 en cours** |
+| Segmentation | **58 en cours** — aucun document n'est plus d'un seul tenant |
+| Alignement | **37 à faire · 21 en cours** |
+| Annotation | **52 à faire · 6 en cours** |
+
+La segmentation est l'exemple à retenir : sous l'ancien modèle elle annonçait « 1 à
+faire », c'est-à-dire que 57 documents passaient pour segmentés parce qu'ils avaient plus
+d'une unité. Elle annonce maintenant « 58 en cours » — personne n'a validé le découpage
+d'aucun. C'est le même corpus, dit sans mentir.
 
 Autres comptes : **17** lignes doivent porter la pastille « Index périmé » ; **une seule**
 ligne doit afficher « Rien à faire », `#416`. Les **6** documents hors famille — `#422`,
@@ -79,8 +118,11 @@ la matrice sur la **racine `#416`**, pas sur lui-même.
 Si la base a bougé depuis, re-dériver les comptes plutôt que de faire confiance au tableau :
 
 ```
-python -c "import sqlite3,sys; sys.path.insert(0,'src'); from multicorpus_engine.services.documents_service import list_documents as L; d=L(sqlite3.connect('file:<chemin>?mode=ro',uri=True))['documents']; n=len(d); print(n, sum(1 for x in d if not x['curated_at']), sum(1 for x in d if x['unit_count']<=1), sum(1 for x in d if not x['aligned_count']), sum(1 for x in d if x['annotation_status']!='annotated'))"
+python -c "import sqlite3,sys; sys.path.insert(0,'src'); from multicorpus_engine.services.documents_service import list_documents as L; d=L(sqlite3.connect('file:<chemin>?mode=ro',uri=True))['documents']; T={'curation':lambda x:bool(x['curated_at']),'segmentation':lambda x:not(isinstance(x['unit_count'],int) and x['unit_count']<=1),'alignement':lambda x:(x['aligned_count'] or 0)>0,'annotation':lambda x:x['annotation_status']=='annotated'}; [print(s, sum(1 for x in d if not f(x)), 'a faire /', sum(1 for x in d if f(x)), 'en cours') for s,f in T.items()]"
 ```
+
+Il ne compte **pas** les coches : elles ne se dérivent pas, c'est tout leur intérêt. Un
+document coché sort des deux nombres.
 
 Les libellés à retrouver exactement : bandeau `58 documents` hors filtre et
 `Curation — 57 documents sur 58` sous filtre (il ne disparaît jamais, seul son bouton
