@@ -117,7 +117,41 @@ describe("hub Actions — les cartes filtrent la liste (ACT-01)", () => {
     btn.click();
     root.querySelector<HTMLButtonElement>("#act-hub-filter-clear")!.click();
     expect(rowTitles(root)).toHaveLength(4);
-    expect(root.querySelector<HTMLElement>("#act-hub-filter-strip")?.hidden).toBe(true);
+    // Le bandeau ne disparaît pas — seul son bouton s'efface. Le faire disparaître
+    // ferait changer la carte de hauteur au premier clic, en plus des lignes.
+    expect(root.querySelector<HTMLElement>("#act-hub-filter-strip")?.hidden).toBe(false);
+    expect(root.querySelector<HTMLElement>("#act-hub-filter-clear")?.hidden).toBe(true);
+    expect(root.querySelector("#act-hub-filter-label")?.textContent).toBe("4 documents");
+  });
+
+  it("le bandeau occupe la même place filtré ou non, et dit ce qu'on regarde", async () => {
+    const { root } = await mountWithDocs();
+    const strip = root.querySelector<HTMLElement>("#act-hub-filter-strip")!;
+    const label = root.querySelector<HTMLElement>("#act-hub-filter-label")!;
+
+    expect(strip.hidden).toBe(false);
+    expect(label.textContent).toBe("4 documents");
+    expect(strip.classList.contains("prep-acts-hub-filter-strip--on")).toBe(false);
+
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-segmentation")!.click();
+    expect(strip.hidden).toBe(false);
+    expect(label.textContent).toBe("Segmentation — 1 document sur 4");
+    expect(strip.classList.contains("prep-acts-hub-filter-strip--on")).toBe(true);
+    expect(root.querySelector<HTMLElement>("#act-hub-filter-clear")?.hidden).toBe(false);
+  });
+
+  it("sur un corpus vide le bandeau reste, et ne prétend pas compter", async () => {
+    const view = new ActionsScreen();
+    const root = view.render();
+    document.body.appendChild(root);
+    view.setConn({
+      get: vi.fn(async () => ({ documents: [], count: 0 })),
+      post: vi.fn(async () => ({})),
+    } as unknown as Conn);
+    await vi.waitFor(() => {
+      expect(root.querySelector("#act-hub-filter-label")?.textContent).toBe("Aucun document");
+    });
+    expect(root.querySelector<HTMLElement>("#act-hub-filter-strip")?.hidden).toBe(false);
   });
 
   it("une carte sans reste ne se laisse pas filtrer", async () => {
@@ -171,6 +205,32 @@ describe("hub Actions — la liste porte l'état et le geste (ACT-01)", () => {
   beforeEach(() => {
     localStorage.clear();
     document.body.innerHTML = "";
+  });
+
+  it("une ligne très chargée ne se replie pas : elle borne et compte le reste", async () => {
+    // C'est ce qui faisait varier la hauteur d'une ligne à l'autre. Le document 10
+    // porte les quatre étapes ; on le rend périmé pour dépasser la borne.
+    const view = new ActionsScreen();
+    const root = view.render();
+    document.body.appendChild(root);
+    view.setConn({
+      get: vi.fn(async (path: string) =>
+        path.startsWith("/documents")
+          ? { documents: [{ ...DOCS[0], fts_stale: true }], count: 1 }
+          : { relations: [] }),
+      post: vi.fn(async () => ({})),
+    } as unknown as Conn);
+    await vi.waitFor(() => {
+      expect(root.querySelector('tr[data-doc-id="10"]')).not.toBeNull();
+    });
+    const cell = root.querySelector<HTMLElement>('tr[data-doc-id="10"] .prep-acts-hub-state-cell')!;
+    const labels = Array.from(cell.querySelectorAll(".prep-acts-hub-badge"))
+      .map((e) => e.textContent);
+    expect(labels).toHaveLength(5);          // 4 pastilles + le compteur
+    expect(labels[0]).toBe("Index périmé");  // l'anomalie n'est pas celle qu'on cache
+    expect(labels[4]).toBe("+1");
+    // Rien n'est perdu : l'infobulle porte les cinq états.
+    expect(cell.title).toBe("Curation · Segmentation · Alignement · Annotation · Index périmé");
   });
 
   it("chaque ligne dit ce qu'il reste à y faire", async () => {
@@ -380,5 +440,84 @@ describe("hub Actions — l'alignement distingue ses deux refus (ACT-01)", () =>
 
     clickAlign(root, 11); // un parent est sa propre racine
     await vi.waitFor(() => expect(openFamily).toHaveBeenLastCalledWith(11, "matrix"));
+  });
+});
+
+describe("hub Actions — le tri de la liste (ACT-01)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = "";
+  });
+
+  const titles = (root: HTMLElement): string[] =>
+    Array.from(root.querySelectorAll("#act-doc-list tbody tr"))
+      .map((tr) => tr.querySelectorAll("td")[1]?.textContent ?? "");
+  const th = (root: HTMLElement, col: string): HTMLElement =>
+    root.querySelector<HTMLElement>(`#act-doc-list th[data-sort="${col}"]`)!;
+
+  it("six colonnes sur sept sont triables ; « Ouvrir » ne l'est pas", async () => {
+    const { root } = await mountWithDocs();
+    const sortables = Array.from(
+      root.querySelectorAll<HTMLElement>("#act-doc-list th[data-sort]"),
+    ).map((e) => e.dataset.sort);
+    expect(sortables).toEqual(["id", "title", "lang", "role", "units", "todo"]);
+  });
+
+  it("cliquer une colonne trie, re-cliquer inverse", async () => {
+    const { root } = await mountWithDocs();
+    th(root, "title").click();
+    expect(titles(root)).toEqual(["Brouillon", "Die Elenden", "Les Misérables", "The Wretched"]);
+    th(root, "title").click();
+    expect(titles(root)).toEqual(["The Wretched", "Les Misérables", "Die Elenden", "Brouillon"]);
+  });
+
+  it("l'en-tête annonce le tri courant, aux lecteurs d'écran compris", async () => {
+    const { root } = await mountWithDocs();
+    th(root, "units").click();
+    expect(th(root, "units").getAttribute("aria-sort")).toBe("ascending");
+    expect(th(root, "units").classList.contains("sort-active")).toBe(true);
+    expect(th(root, "units").querySelector(".sort-ind")?.textContent).toBe("↑");
+    // Les autres colonnes doivent se taire, pas garder un ancien état.
+    expect(th(root, "title").getAttribute("aria-sort")).toBe("none");
+    expect(th(root, "title").querySelector(".sort-ind")?.textContent).toBe("⇅");
+  });
+
+  it("le tri s'actionne au clavier, pas seulement à la souris", async () => {
+    const { root } = await mountWithDocs();
+    const head = th(root, "title");
+    expect(head.tabIndex).toBe(0);
+    head.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(titles(root)[0]).toBe("Brouillon");
+  });
+
+  it("le tri survit au filtre, et la numérotation suit l'affichage", async () => {
+    const { root } = await mountWithDocs();
+    th(root, "title").click();
+    th(root, "title").click(); // descendant
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-curation")!.click();
+    expect(titles(root)).toEqual(["Les Misérables", "Brouillon"]);
+    const nums = Array.from(root.querySelectorAll("#act-doc-list tbody tr"))
+      .map((tr) => tr.querySelectorAll("td")[0]?.textContent);
+    expect(nums).toEqual(["1", "2"]);
+  });
+
+  it("en hiérarchie, le tri agit DANS chaque niveau : un enfant reste sous son parent", async () => {
+    const { root } = await mountWithDocs(FAMILY);
+    root.querySelector<HTMLButtonElement>("#act-hub-hierarchy-btn")!.click();
+    await vi.waitFor(() => {
+      expect(root.querySelector("#act-doc-list tr.prep-tree-child")).not.toBeNull();
+    });
+    th(root, "title").click();
+    th(root, "title").click(); // descendant : « The Wretched » avant « Die Elenden »
+    const rows = Array.from(
+      root.querySelectorAll<HTMLElement>("#act-doc-list tbody tr[data-doc-id]"),
+    ).map((tr) => ({ id: tr.dataset.docId, child: tr.classList.contains("prep-tree-child") }));
+    // 11 est la racine ; 13 et 12 sont ses enfants, réordonnés entre eux ; 10 est isolé.
+    expect(rows).toEqual([
+      { id: "11", child: false },
+      { id: "13", child: true },
+      { id: "12", child: true },
+      { id: "10", child: false },
+    ]);
   });
 });

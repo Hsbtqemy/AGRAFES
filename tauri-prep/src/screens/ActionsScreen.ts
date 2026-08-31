@@ -25,9 +25,10 @@ import { escHtml as _escHtml } from "../lib/diff.ts";
 import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
 import {
-  HUB_STEPS, STEP_LABEL, docBadges, docsForStep, stepCounts,
+  HUB_STEPS, STEP_LABEL, docBadges, docsForStep, hubComparator, sortDocs, stepCounts,
+  visibleBadges,
 } from "../lib/actionsHubState.ts";
-import type { HubStep } from "../lib/actionsHubState.ts";
+import type { HubSortCol, HubStep, SortDir } from "../lib/actionsHubState.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AlignMatrixView } from "./AlignMatrixView.ts";
 import { TextCanvasView } from "./TextCanvasView.ts";
@@ -90,6 +91,11 @@ export class ActionsScreen {
   private _hubHierarchyView = false;
   // ACT-01 — capacité choisie dans les cartes ; null = tout le corpus.
   private _hubFilter: HubStep | null = null;
+  // Tri de la liste. Mêmes conventions que l'écran Documents (th[data-sort],
+  // .sort-ind, .sort-active) : deux tables aux mêmes colonnes doivent se manier
+  // pareil. « id » = ordre d'arrivée, c'est-à-dire le défaut.
+  private _sortCol: HubSortCol = "id";
+  private _sortDir: SortDir = "asc";
   private _allRelations: DocRelationRecord[] = [];
   private _allRelationsLoaded = false;
   // Log + busy
@@ -375,14 +381,27 @@ export class ActionsScreen {
         ?.classList.toggle("prep-acts-hub-wf-card--on", this._hubFilter === step);
     }
 
-    const strip = find<HTMLElement>("#act-hub-filter-strip");
+    // Le bandeau reste TOUJOURS là. Le montrer sous filtre seulement faisait varier
+    // la hauteur de la carte entre « tout » et « filtré », en plus du nombre de
+    // lignes : deux sauts pour un seul clic. Permanent, il gagne un second emploi —
+    // dire ce qu'on regarde même quand on regarde tout.
     const label = find<HTMLElement>("#act-hub-filter-label");
-    if (strip) strip.hidden = this._hubFilter === null;
-    if (label && this._hubFilter !== null) {
-      const shown = docsForStep(this._docs, this._hubFilter).length;
-      label.textContent =
-        `${STEP_LABEL[this._hubFilter]} — ${shown} document${shown > 1 ? "s" : ""} sur ${total}`;
+    const clear = find<HTMLElement>("#act-hub-filter-clear");
+    if (label) {
+      if (this._hubFilter === null) {
+        label.textContent = total === 0
+          ? "Aucun document"
+          : `${total} document${total > 1 ? "s" : ""}`;
+      } else {
+        const shown = docsForStep(this._docs, this._hubFilter).length;
+        label.textContent =
+          `${STEP_LABEL[this._hubFilter]} — ${shown} document${shown > 1 ? "s" : ""} sur ${total}`;
+      }
     }
+    // Seul le bouton se retire : « Tout afficher » n'a rien à proposer hors filtre.
+    if (clear) clear.hidden = this._hubFilter === null;
+    find<HTMLElement>("#act-hub-filter-strip")
+      ?.classList.toggle("prep-acts-hub-filter-strip--on", this._hubFilter !== null);
   }
 
   private _prependBackBtn(panel: HTMLElement, root: HTMLElement): void {
@@ -707,25 +726,78 @@ export class ActionsScreen {
     table.className = "prep-meta-table prep-acts-hub-table";
     table.appendChild(this._docTableHead());
     const tbody = document.createElement("tbody");
-    // La numérotation suit ce qui est affiché : sous filtre, « 1 » est la première
-    // ligne visible, pas le rang du document dans le corpus entier.
-    shown.forEach((doc, idx) => tbody.appendChild(this._docRow(doc, idx + 1)));
+    // La numérotation suit ce qui est affiché : sous filtre comme sous tri, « 1 »
+    // est la première ligne visible, pas le rang du document dans le corpus entier.
+    sortDocs(shown, this._sortCol, this._sortDir)
+      .forEach((doc, idx) => tbody.appendChild(this._docRow(doc, idx + 1)));
     table.appendChild(tbody);
     el.innerHTML = "";
     el.appendChild(table);
+    this._paintSortIndicators(table);
   }
 
-  /** En-tête commun aux deux vues (liste plate et hiérarchie). */
+  /**
+   * En-tête commun aux deux vues (liste plate et hiérarchie). Six colonnes sur sept
+   * sont triables — « Ouvrir » ne porte pas de valeur. N° l'est aussi, contrairement
+   * à l'écran Documents : c'est le seul chemin de retour à l'ordre d'arrivée une
+   * fois qu'on a trié sur autre chose.
+   */
   private _docTableHead(): HTMLTableSectionElement {
+    const cols: Array<[string, HubSortCol | null]> = [
+      ["N°", "id"], ["Titre", "title"], ["Langue", "lang"], ["Rôle", "role"],
+      ["Unités", "units"], ["À faire", "todo"], ["Ouvrir", null],
+    ];
     const thead = document.createElement("thead");
     const tr = document.createElement("tr");
-    for (const label of ["N°", "Titre", "Langue", "Rôle", "Unités", "À faire", "Ouvrir"]) {
+    for (const [label, col] of cols) {
       const th = document.createElement("th");
       th.textContent = label;
+      if (col !== null) {
+        th.classList.add("sortable-th");
+        th.dataset.sort = col;
+        th.tabIndex = 0;
+        th.setAttribute("role", "button");
+        th.title = `Trier par ${label}`;
+        const ind = document.createElement("span");
+        ind.className = "sort-ind";
+        ind.setAttribute("aria-hidden", "true");
+        th.append(" ", ind);
+        const activate = (): void => this._toggleSort(col);
+        th.addEventListener("click", activate);
+        // Un en-tête cliquable doit s'actionner au clavier, sinon le tri n'existe
+        // que pour la souris.
+        th.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); activate(); }
+        });
+      }
       tr.appendChild(th);
     }
     thead.appendChild(tr);
     return thead;
+  }
+
+  /** Re-clic sur la colonne active = inversion ; nouvelle colonne = ascendant. */
+  private _toggleSort(col: HubSortCol): void {
+    if (this._sortCol === col) {
+      this._sortDir = this._sortDir === "asc" ? "desc" : "asc";
+    } else {
+      this._sortCol = col;
+      this._sortDir = "asc";
+    }
+    this._renderDocList();
+  }
+
+  /** Peint ↑ / ↓ sur la colonne triée, ⇅ sur les autres. */
+  private _paintSortIndicators(scope: HTMLElement): void {
+    scope.querySelectorAll<HTMLElement>("th[data-sort]").forEach((th) => {
+      const active = th.dataset.sort === this._sortCol;
+      th.classList.toggle("sort-active", active);
+      th.setAttribute("aria-sort", active
+        ? (this._sortDir === "asc" ? "ascending" : "descending")
+        : "none");
+      const ind = th.querySelector<HTMLElement>(".sort-ind");
+      if (ind) ind.textContent = active ? (this._sortDir === "asc" ? "↑" : "↓") : "⇅";
+    });
   }
 
   /**
@@ -744,7 +816,11 @@ export class ActionsScreen {
     };
 
     tr.appendChild(cell(String(rowNum)));
-    tr.appendChild(titleTd ?? cell(doc.title));
+    // Le titre est tronqué à la largeur de sa colonne : l'infobulle le rend entier,
+    // sinon la troncature serait une perte.
+    const flatTitle = cell(doc.title);
+    flatTitle.title = doc.title;
+    tr.appendChild(titleTd ?? flatTitle);
     tr.appendChild(cell(doc.language));
     tr.appendChild(cell(doc.doc_role ?? "—"));
     tr.appendChild(cell(String(doc.unit_count)));
@@ -753,18 +829,28 @@ export class ActionsScreen {
     // passées et l'index est à jour. Le dire en toutes lettres plutôt que par un blanc.
     const stateTd = document.createElement("td");
     stateTd.className = "prep-acts-hub-state-cell";
-    const badges = docBadges(doc);
-    if (badges.length === 0) {
+    const all = docBadges(doc);
+    if (all.length === 0) {
       const none = document.createElement("span");
       none.className = "prep-acts-hub-badge prep-acts-hub-badge--none";
       none.textContent = "Rien à faire";
       stateTd.appendChild(none);
     } else {
-      for (const badge of badges) {
+      // Bornées à une seule ligne : au-delà elles se replient et la ligne grandit,
+      // ce qui empêche de suivre une colonne du regard. L'infobulle porte le tout.
+      const { shown, hidden } = visibleBadges(doc, ActionsScreen.MAX_ROW_BADGES);
+      stateTd.title = all.map((b) => b.label).join(" · ");
+      for (const badge of shown) {
         const span = document.createElement("span");
         span.className = `prep-acts-hub-badge prep-acts-hub-badge--${badge.kind}`;
         span.textContent = badge.label;
         stateTd.appendChild(span);
+      }
+      if (hidden > 0) {
+        const more = document.createElement("span");
+        more.className = "prep-acts-hub-badge prep-acts-hub-badge--more";
+        more.textContent = `+${hidden}`;
+        stateTd.appendChild(more);
       }
     }
     tr.appendChild(stateTd);
@@ -797,6 +883,9 @@ export class ActionsScreen {
     tr.appendChild(actionsTd);
     return tr;
   }
+
+  /** Combien de pastilles tiennent sur une ligne de la colonne « À faire ». */
+  private static readonly MAX_ROW_BADGES = 4;
 
   /** Mêmes glyphes que l'arbre de navigation (app.ts), pour ne pas inventer un second alphabet. */
   private static readonly STEP_ICON: Record<HubStep, string> = {
@@ -892,6 +981,15 @@ export class ActionsScreen {
     const keep = new Set(shown.map((d) => d.doc_id));
     const { roots, standalone, orphans } = buildMetadataTree(this._docs, this._allRelations);
 
+    // Le tri s'applique DANS chaque niveau, jamais à l'arbre aplati : un enfant
+    // doit rester sous son parent quel que soit l'ordre demandé. `buildMetadataTree`
+    // rend des tableaux fraîchement alloués, on peut les réordonner sur place.
+    const cmp = hubComparator(this._sortCol, this._sortDir);
+    roots.sort((a, b) => cmp(a.doc, b.doc));
+    for (const node of roots) node.children.sort((a, b) => cmp(a.doc, b.doc));
+    standalone.sort(cmp);
+    orphans.sort(cmp);
+
     const table = document.createElement("table");
     table.className = "prep-meta-table prep-acts-hub-table";
     table.appendChild(this._docTableHead());
@@ -959,6 +1057,7 @@ export class ActionsScreen {
 
     table.appendChild(tbody);
     el.appendChild(table);
+    this._paintSortIndicators(table);
   }
 
 

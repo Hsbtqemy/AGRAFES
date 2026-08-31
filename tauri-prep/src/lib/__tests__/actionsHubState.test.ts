@@ -11,7 +11,8 @@
 import { describe, it, expect } from "vitest";
 import type { DocumentRecord } from "../sidecarClient.ts";
 import {
-  HUB_STEPS, docBadges, docsForStep, stepCounts, stepState,
+  HUB_STEPS, docBadges, docsForStep, hubComparator, sortDocs, stepCounts, stepState,
+  visibleBadges,
 } from "../actionsHubState.ts";
 
 function doc(over: Partial<DocumentRecord> = {}): DocumentRecord {
@@ -130,5 +131,95 @@ describe("docBadges", () => {
   it("fts_stale absent ou false ne produit pas de pastille", () => {
     expect(docBadges(doc({ unit_count: 900, curated_at: "x", aligned_count: 1, annotation_status: "annotated", fts_stale: false })))
       .toEqual([]);
+  });
+});
+
+describe("tri de la liste", () => {
+  const corpus = [
+    doc({ doc_id: 3, title: "Élan", language: "de", doc_role: "cible", unit_count: 10 }),
+    doc({ doc_id: 1, title: "abricot", language: "fr", doc_role: null, unit_count: 200 }),
+    doc({ doc_id: 2, title: "Abricot", language: "en", doc_role: "source", unit_count: 30 }),
+  ];
+
+  it("ne réordonne jamais la liste hôte", () => {
+    const out = sortDocs(corpus, "title", "asc");
+    expect(out).not.toBe(corpus);
+    expect(corpus.map((d) => d.doc_id)).toEqual([3, 1, 2]);
+  });
+
+  it("id ascendant est l'ordre d'arrivée — le chemin du retour", () => {
+    expect(sortDocs(corpus, "id", "asc").map((d) => d.doc_id)).toEqual([1, 2, 3]);
+    expect(sortDocs(corpus, "id", "desc").map((d) => d.doc_id)).toEqual([3, 2, 1]);
+  });
+
+  it("le titre ignore casse et accents, et départage sur doc_id", () => {
+    // « abricot » et « Abricot » sont égaux pour le collator : sans départage,
+    // leur ordre relatif dépendrait de l'implémentation du tri.
+    expect(sortDocs(corpus, "title", "asc").map((d) => d.doc_id)).toEqual([1, 2, 3]);
+  });
+
+  it("les unités se trient en nombre, pas en texte", () => {
+    // Le piège du tri lexical : "200" viendrait avant "30".
+    expect(sortDocs(corpus, "units", "asc").map((d) => d.unit_count)).toEqual([10, 30, 200]);
+  });
+
+  it("un rôle absent ne casse pas le tri", () => {
+    expect(sortDocs(corpus, "role", "asc").map((d) => d.doc_role)).toEqual([null, "cible", "source"]);
+  });
+
+  it("« à faire » trie par quantité de travail restant", () => {
+    const docs = [
+      doc({ doc_id: 1, unit_count: 900, curated_at: "x", aligned_count: 1, annotation_status: "annotated" }), // 0
+      doc({ doc_id: 2, unit_count: 1 }),                                                                      // 4
+      doc({ doc_id: 3, unit_count: 900, curated_at: "x", aligned_count: 1, annotation_status: "annotated", fts_stale: true }), // 1
+    ];
+    expect(sortDocs(docs, "todo", "asc").map((d) => d.doc_id)).toEqual([1, 3, 2]);
+    expect(sortDocs(docs, "todo", "desc").map((d) => d.doc_id)).toEqual([2, 3, 1]);
+  });
+
+  it("le sens descendant n'emporte pas le départage, qui reste stable", () => {
+    // Si `desc` inversait aussi le tie-break, deux documents de même langue
+    // changeraient de place selon le sens — la liste paraîtrait bouger seule.
+    const memes = [
+      doc({ doc_id: 1, language: "fr" }), doc({ doc_id: 2, language: "fr" }),
+    ];
+    expect(sortDocs(memes, "lang", "asc").map((d) => d.doc_id)).toEqual([1, 2]);
+    expect(sortDocs(memes, "lang", "desc").map((d) => d.doc_id)).toEqual([1, 2]);
+  });
+
+  it("hubComparator est utilisable tel quel pour trier un niveau d'arbre", () => {
+    const cmp = hubComparator("title", "asc");
+    const niveau = [corpus[0], corpus[2]];
+    expect([...niveau].sort(cmp).map((d) => d.doc_id)).toEqual([2, 3]);
+  });
+});
+
+describe("visibleBadges — une ligne fait une ligne", () => {
+  it("sous la borne, tout est montré et rien n'est caché", () => {
+    const { shown, hidden } = visibleBadges(doc({ unit_count: 900, aligned_count: 1 }), 4);
+    expect(shown.map((b) => b.label)).toEqual(["Curation", "Annotation"]);
+    expect(hidden).toBe(0);
+  });
+
+  it("au-delà, l'anomalie passe DEVANT et n'est jamais celle qu'on cache", () => {
+    // Quatre étapes + index périmé = cinq pastilles pour quatre places. Cacher
+    // « Index périmé » cacherait le seul état qui appelle une action.
+    const { shown, hidden } = visibleBadges(doc({ unit_count: 1, fts_stale: true }), 4);
+    expect(shown[0].label).toBe("Index périmé");
+    expect(shown).toHaveLength(4);
+    expect(hidden).toBe(1);
+    expect(shown.map((b) => b.label)).not.toContain("Annotation");
+  });
+
+  it("le compte caché est exact, pas approximatif", () => {
+    const d = doc({ unit_count: 1, fts_stale: true });
+    const { shown, hidden } = visibleBadges(d, 2);
+    expect(shown).toHaveLength(2);
+    expect(hidden).toBe(docBadges(d).length - 2);
+  });
+
+  it("un document sans rien à faire ne cache rien", () => {
+    const d = doc({ unit_count: 900, curated_at: "x", aligned_count: 1, annotation_status: "annotated" });
+    expect(visibleBadges(d, 4)).toEqual({ shown: [], hidden: 0 });
   });
 });

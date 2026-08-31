@@ -21,6 +21,7 @@
  */
 
 import type { DocumentRecord } from "./sidecarClient.ts";
+import { compareDocsByTitle, compareLocale } from "../../../shared/docSort.ts";
 
 /** Les quatre capacités de préparation. Ordre d'affichage des cartes. */
 export const HUB_STEPS = ["curation", "segmentation", "alignement", "annotation"] as const;
@@ -104,4 +105,79 @@ export function docBadges(doc: DocumentRecord): DocBadge[] {
     .map((step) => ({ label: STEP_LABEL[step], kind: "todo" as const }));
   if (doc.fts_stale === true) badges.push({ label: "Index périmé", kind: "warn" });
   return badges;
+}
+
+/** Ce qu'une ligne montre, et ce qu'elle garde pour l'infobulle. */
+export interface VisibleBadges {
+  shown: DocBadge[];
+  /** Nombre de pastilles non montrées ; 0 = tout est visible. */
+  hidden: number;
+}
+
+/**
+ * Borne les pastilles d'une ligne à `max`, pour que toutes les lignes fassent la
+ * MÊME hauteur : au-delà, elles se replient et la ligne grandit, ce qui rend la
+ * liste illisible en diagonale — on ne peut plus suivre une colonne du regard.
+ *
+ * Une anomalie n'est jamais celle qu'on cache. « Index périmé » appelle une action
+ * et ne concerne que 17 documents sur 58 ; les étapes restantes, elles, sont le cas
+ * courant. Les avertissements sont donc servis d'abord, et le débordement ne mange
+ * que des étapes.
+ */
+export function visibleBadges(doc: DocumentRecord, max: number): VisibleBadges {
+  const all = docBadges(doc);
+  if (all.length <= max) return { shown: all, hidden: 0 };
+  const warns = all.filter((b) => b.kind === "warn");
+  const steps = all.filter((b) => b.kind !== "warn");
+  const shown = [...warns.slice(0, max), ...steps.slice(0, Math.max(0, max - warns.length))];
+  return { shown, hidden: all.length - shown.length };
+}
+
+// ─── Tri de la liste ────────────────────────────────────────────────────────
+
+/** Colonnes triables. `todo` = combien il reste à faire sur le document. */
+export const HUB_SORT_COLS = ["id", "title", "lang", "role", "units", "todo"] as const;
+export type HubSortCol = (typeof HUB_SORT_COLS)[number];
+export type SortDir = "asc" | "desc";
+
+/**
+ * Comparateur pur pour la liste du hub.
+ *
+ * Les colonnes texte passent par `shared/docSort.ts` — locale FR, insensible à la
+ * casse et aux accents — qui est la convention du dépôt entier : trois variantes
+ * avaient coexisté avant qu'elle existe, ce n'est pas le moment d'en ajouter une
+ * quatrième. `id` n'est pas le numéro affiché mais l'ordre d'arrivée des documents,
+ * c'est-à-dire le tri par défaut et le chemin du retour.
+ *
+ * Départage toujours sur `doc_id` : sans ça, deux documents de même langue changent
+ * de place d'un rendu à l'autre, et la liste paraît bouger toute seule.
+ */
+export function hubComparator(
+  col: HubSortCol,
+  dir: SortDir,
+): (a: DocumentRecord, b: DocumentRecord) => number {
+  const sign = dir === "asc" ? 1 : -1;
+  const tie = (a: DocumentRecord, b: DocumentRecord, cmp: number): number =>
+    cmp !== 0 ? sign * cmp : a.doc_id - b.doc_id;
+  return (a, b) => {
+    switch (col) {
+      case "id":    return sign * (a.doc_id - b.doc_id);
+      case "title": return tie(a, b, compareDocsByTitle(a, b));
+      case "lang":  return tie(a, b, compareLocale(a.language, b.language));
+      case "role":  return tie(a, b, compareLocale(a.doc_role, b.doc_role));
+      case "units": return tie(a, b, (a.unit_count ?? 0) - (b.unit_count ?? 0));
+      // « Ce qui reste » : le nombre de pastilles, anomalie d'index comprise.
+      // C'est le tri qui répond à « par quoi je commence ».
+      case "todo":  return tie(a, b, docBadges(a).length - docBadges(b).length);
+    }
+  };
+}
+
+/** Trie une copie — la liste hôte (`_docs`) est partagée, ne jamais la réordonner. */
+export function sortDocs(
+  docs: DocumentRecord[],
+  col: HubSortCol,
+  dir: SortDir,
+): DocumentRecord[] {
+  return docs.slice().sort(hubComparator(col, dir));
 }
