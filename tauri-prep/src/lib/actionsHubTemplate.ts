@@ -88,9 +88,9 @@ export function actionsHubTemplate(): string {
               aria-pressed="false" title="Basculer vue hi&eacute;rarchie / liste">&#127807; Hi&eacute;rarchie</button>
           </div>
         </div>
-        <p id="act-hub-filter-strip" class="prep-acts-hub-filter-strip" aria-live="polite" hidden>
+        <p id="act-hub-filter-strip" class="prep-acts-hub-filter-strip" aria-live="polite">
           <span id="act-hub-filter-label" class="prep-acts-hub-filter-label"></span>
-          <button type="button" id="act-hub-filter-clear" class="prep-acts-hub-filter-clear">Tout afficher</button>
+          <button type="button" id="act-hub-filter-clear" class="prep-acts-hub-filter-clear" hidden>Tout afficher</button>
         </p>
         <div id="act-doc-list" class="prep-acts-hub-doc-list"></div>
       </section>

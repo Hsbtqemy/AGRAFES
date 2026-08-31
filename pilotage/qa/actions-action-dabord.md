@@ -81,9 +81,15 @@ Si la base a bougé depuis, re-dériver les comptes plutôt que de faire confian
 python -c "import sqlite3,sys; sys.path.insert(0,'src'); from multicorpus_engine.services.documents_service import list_documents as L; d=L(sqlite3.connect('file:<chemin>?mode=ro',uri=True))['documents']; n=len(d); print(n, sum(1 for x in d if not x['curated_at']), sum(1 for x in d if x['unit_count']<=1), sum(1 for x in d if not x['aligned_count']), sum(1 for x in d if x['annotation_status']!='annotated'))"
 ```
 
-Les libellés à retrouver exactement : bandeau `Curation — 57 documents sur 58`, bouton de
-carte `Voir les 57` puis `Tout afficher`, en-têtes `N° · Titre · Langue · Rôle · Unités ·
-À faire · Ouvrir`, boutons de tête `↺ Actualiser` et `🌿 Hiérarchie` / `📋 Liste`.
+Les libellés à retrouver exactement : bandeau `58 documents` hors filtre et
+`Curation — 57 documents sur 58` sous filtre (il ne disparaît jamais, seul son bouton
+`Tout afficher` s'efface), bouton de carte `Voir les 57` puis `Tout afficher`, en-têtes
+`N° · Titre · Langue · Rôle · Unités · À faire · Ouvrir`, boutons de tête `↺ Actualiser`
+et `🌿 Hiérarchie` / `📋 Liste`.
+
+Le maximum de pastilles mesuré sur ce corpus est **4** (17 documents) : aucun « +1 » ne
+doit apparaître aujourd'hui. Il apparaîtra le jour où un document cumulera les quatre
+étapes ET un index périmé — `9_CI-TrFr-2021_Aligné_UTF8.txt` en est à un pas.
 
 ### Les quatre cartes
 
@@ -100,11 +106,23 @@ carte `Voir les 57` puis `Tout afficher`, en-têtes `N° · Titre · Langue · R
 - [x] Cliquer `Voir les 57` sur Curation réduit la liste à 57 lignes et la carte s'entoure d'un liseré
 - [x] Le bandeau annonce « Curation — 57 documents sur 58 » et propose « Tout afficher »
 - [x] Le bouton de la carte active devient « Tout afficher » ; les trois autres cartes restent cliquables
-- [x] Re-cliquer la carte active rend les 58 lignes et fait disparaître le bandeau
+- [ ] Re-cliquer la carte active rend les 58 lignes ; le bandeau RESTE et repasse à « 58 documents »
 - [x] « Tout afficher » du bandeau a le même effet que re-cliquer la carte
 - [x] Passer d'un filtre à l'autre sans repasser par « tout » remplace le filtre, ne les cumule pas
 - [ ] Sous filtre Segmentation, une seule ligne reste : `9_CI-TrFr-2021_Aligné_UTF8.txt`
 - [ ] La numérotation N° repart de 1 sous filtre — c'est le rang affiché, pas le rang dans le corpus
+
+### Le tri
+
+- [ ] Cliquer « Titre » trie de A à Z ; re-cliquer inverse
+- [ ] L'indicateur passe de ⇅ à ↑ puis ↓, et les autres colonnes retombent toutes à ⇅
+- [ ] « Unités » se trie en nombre : 1518 vient après 897, jamais avant
+- [ ] « À faire » en descendant met en tête les documents à quatre pastilles
+- [ ] Le tri accentue et minuscule pareil : « abricot » et « Abricot » ne se séparent pas
+- [ ] Changer de filtre garde le tri en place
+- [ ] En hiérarchie, trier ne sort aucun enfant de sous son parent
+- [ ] Le tri s'actionne au clavier : Tab jusqu'à un en-tête, puis Entrée
+- [ ] « Ouvrir » n'est pas triable ; « N° » l'est et ramène à l'ordre d'arrivée
 
 ### L'état par ligne
 
@@ -143,7 +161,13 @@ carte `Voir les 57` puis `Tout afficher`, en-têtes `N° · Titre · Langue · R
 
 - [ ] La colonne « Ouvrir » ne se replie jamais : les quatre boutons restent sur une ligne
 - [ ] Un titre long ne comprime pas les colonnes « À faire » et « Ouvrir »
-- [ ] Les pastilles d'une ligne très chargée passent à la ligne sans déformer la hauteur des voisines
+- [ ] Toutes les lignes ont exactement la même hauteur, y compris celles à quatre pastilles
+- [ ] Aucune cellule ne se replie : ni un titre long, ni les pastilles, ni l'en-tête « Langue »
+- [ ] Un titre trop long est élidé par des points de suspension, et son infobulle le rend entier
+- [ ] L'infobulle de la colonne « À faire » liste tous les états, séparés par des points médians
+- [ ] La carte Documents garde la même hauteur d'un filtre à l'autre — c'est son contenu qui défile
+- [ ] L'en-tête de colonnes reste visible quand on fait défiler la liste
+- [ ] Les colonnes ne bougent pas d'un filtre à l'autre : seule la hauteur du contenu change
 - [ ] En réduisant la fenêtre, les cartes passent à 2 puis 1 colonne sans que le tableau déborde horizontalement
 - [ ] Le tableau ne provoque aucun défilement horizontal de la page entière
 
