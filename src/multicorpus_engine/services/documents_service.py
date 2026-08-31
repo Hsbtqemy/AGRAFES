@@ -19,6 +19,7 @@ from typing import Any, Optional
 from ..indexer import index_failure, stale_doc_ids
 from ..runs import utcnow_iso
 from .errors import BadRequestError, NotFoundError, ValidationError
+from .step_status_service import step_status_map
 from .validation import Field, validate
 
 DOC_WORKFLOW_STATUSES = {"draft", "review", "validated"}
@@ -190,6 +191,23 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
     # s'il peut proposer un bouton, pas de connaître les modes de défaillance de FTS5.
     fts_failure = index_failure(conn)  # une seule sonde pour les deux drapeaux
     fts_readable = fts_failure is None
+    # La couche MANUELLE du statut par étape (ACT-01). Les deux autres états restent
+    # dérivés de `unit_count`/`aligned_count`/`annotation_status`/`curated_at` ci-dessus ;
+    # seul le `[X]` se stocke, et il arrive ici avec son verdict de péremption.
+    #
+    # Les quatre valeurs auxquelles chaque coche sera comparée sont DÉJÀ là — deux dans
+    # `_LIST_SQL`, deux dans `_derived_doc_state`. On les passe plutôt que de les faire
+    # recalculer : mesuré sur le corpus de travail au pire cas (232 coches), la lecture
+    # tombe de 46 ms à quelques ms, et `/documents` de 208 ms à sa valeur sans coche.
+    derived_for_marks = {
+        r[0]: {
+            "unit_count": r[10], "token_count": r[11],
+            "aligned_count": aligned_count.get(r[0], 0),
+            "curated_at": curated_at.get(r[0]),
+        }
+        for r in rows
+    }
+    step_status = step_status_map(conn, derived_for_marks)
     documents = [
         {
             "doc_id": r[0], "title": r[1], "language": r[2], "doc_role": r[3],
@@ -203,6 +221,7 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
             "fts_stale": r[0] in stale_ids,
             "curated_at": curated_at.get(r[0]),
             "aligned_count": aligned_count.get(r[0], 0),
+            "step_status": step_status.get(r[0], {}),
         }
         for r in rows
     ]

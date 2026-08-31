@@ -57,6 +57,8 @@
   "POST /documents/bulk_update",
   "POST /documents/delete",
   "POST /documents/set_text_start",
+  "POST /documents/step_status",
+  "POST /documents/step_status/clear",
   "POST /documents/tags/add",
   "POST /documents/tags/remove",
   "POST /documents/update",

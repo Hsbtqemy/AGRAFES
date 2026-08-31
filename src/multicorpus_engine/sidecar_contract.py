@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.87"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.88"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -279,6 +279,34 @@ API_VERSION = CONTRACT_VERSION
 #         « reparable » ne veut pas dire « a reparer ». Aucune sonde supplementaire :
 #         `index_failure` remplace `index_readable` et sert les deux drapeaux d'un seul
 #         parcours. Champ additif sur route existante -> snapshot inchange ; openapi bouge.
+# 1.6.88: le statut par etape gagne sa couche MANUELLE (ACT-01). Deux routes neuves,
+#         POST /documents/step_status et .../clear, et un champ `step_status` sur
+#         DocumentRecord. La page Actions ne savait dire que ce qu'elle DERIVE : des
+#         unites existent -> segmente, des liens existent -> aligne. Une segmentation
+#         appliquee mais insatisfaisante rendait donc le meme ecran qu'une reussie, le
+#         jugement de l'utilisateur n'avait nulle part ou se poser, et rien ne survivait a
+#         la fermeture. Modele a trois etats par (document, capacite) : `[ ]` aucune
+#         trace, `[/]` une trace mais rien de conclu, `[X]` l'utilisateur a dit que
+#         c'etait regle. Les DEUX premiers restent derives et ne coutent rien ; seul le
+#         troisieme se stocke (migration 038, `doc_step_status`, au plus 4 lignes par
+#         document). Le moteur ne pose jamais `[X]` lui-meme : il n'a pas qualite a
+#         declarer qu'un travail est fini, et c'est ce qui fait que le scenario se resout
+#         par le DEFAUT plutot que par un geste a ne pas oublier avant de quitter.
+#         PEREMPTION. Une coche que le travail suivant dement est un mensonge silencieux —
+#         mesure du 31 aout : environ une sur trois finirait ainsi. Deux signaux sont donc
+#         figes a la pose et compares a la lecture : `last_action_id` (le plus grand
+#         action_id de CETTE capacite, scope par capacite et non par document — `set_role`
+#         compte 11 actions et ne concerne aucune des quatre, une regle naive annulerait
+#         tout le document en renommant un role) et `derived_json` (unit_count,
+#         token_count, aligned_count, curated_at). Aucun ne suffit seul : l'historique est
+#         muet sur 36 documents sur 58 (forward-only depuis le 7 mai 2026), le compte
+#         derive est aveugle a une resegmentation qui rend le meme nombre d'unites — cas
+#         observe. `last_action_id` NULL dit qu'aucun historique n'existait a la pose :
+#         `basis='derived'`, la coche est plus faible et l'ecran doit le dire. Une coche
+#         perimee n'est JAMAIS rendue `[X]` : elle retombe a `[/]` avec `stale_reason`.
+#         Migration 038 avec ON DELETE CASCADE explicite — la 028 l'avait omis et c'est ce
+#         qui avait fait tomber /segment, /units/merge et /prep/undo. Routes neuves ->
+#         les trois artefacts bougent (openapi + snapshot) plus le .md.
 # 1.6.87: les TROIS chemins d'application de la curation enregistrent leur action —
 #         ACT-01. Ils n'en faisaient pas autant : POST /curate passait un `record_action`
 #         a curate_document ; le job (POST /jobs kind=curate) et la CLI `multicorpus
@@ -2486,6 +2514,60 @@ def openapi_spec() -> dict[str, Any]:
                     "responses": {"200": {"description": "Updated"}, "400": {"description": "Bad request"}, "401": {"description": "Unauthorized"}},
                 }
             },
+            "/documents/step_status": {
+                "post": {
+                    "summary": "Mark one capability as done on one document (tri-state [X])",
+                    "security": [{"token": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {
+                            "type": "object",
+                            "required": ["doc_id", "step"],
+                            "properties": {
+                                "doc_id": {"type": "integer"},
+                                "step": {"type": "string", "enum": ["curation", "segmentation", "alignement", "annotation"]},
+                            },
+                        }}},
+                    },
+                    "responses": {
+                        "200": {"description": "Marked", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "step": {"type": "string"},
+                            "validated_at": {"type": "string"},
+                            "basis": {"type": "string", "enum": ["history", "derived"]},
+                        }}}}},
+                        "400": {"description": "Bad request"},
+                        "401": {"description": "Unauthorized"},
+                        "404": {"description": "Document not found"},
+                    },
+                }
+            },
+            "/documents/step_status/clear": {
+                "post": {
+                    "summary": "Remove the done-mark of one capability on one document",
+                    "security": [{"token": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {
+                            "type": "object",
+                            "required": ["doc_id", "step"],
+                            "properties": {
+                                "doc_id": {"type": "integer"},
+                                "step": {"type": "string", "enum": ["curation", "segmentation", "alignement", "annotation"]},
+                            },
+                        }}},
+                    },
+                    "responses": {
+                        "200": {"description": "Cleared", "content": {"application/json": {"schema": {"type": "object", "properties": {
+                            "doc_id": {"type": "integer"},
+                            "step": {"type": "string"},
+                            "cleared": {"type": "boolean"},
+                        }}}}},
+                        "400": {"description": "Bad request"},
+                        "401": {"description": "Unauthorized"},
+                    },
+                }
+            },
             "/documents/delete": {
                 "post": {
                     "summary": "Delete documents and all associated data (units, alignment links, relations)",
@@ -4541,6 +4623,30 @@ def openapi_spec() -> dict[str, Any]:
                                 "/families it also covers documents outside any family "
                                 "(ACT-01)."
                             ),
+                        },
+                        "step_status": {
+                            "type": "object",
+                            "description": (
+                                "Manual done-marks for this document, keyed by capability "
+                                "(curation|segmentation|alignement|annotation). Absent key = "
+                                "no mark; the [ ] / [/] states stay derived from unit_count, "
+                                "aligned_count, annotation_status and curated_at. Each value "
+                                "carries validated_at, stale (the mark is contradicted by "
+                                "later work), stale_reason (the action type, or "
+                                "derived:<field>) and basis ('history' when an action trail "
+                                "existed at marking time, 'derived' when it did not — the "
+                                "mark is weaker then). A stale mark must render as [/], not "
+                                "[X] (ACT-01)."
+                            ),
+                            "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                    "validated_at": {"type": "string"},
+                                    "stale": {"type": "boolean"},
+                                    "stale_reason": {"type": "string", "nullable": True},
+                                    "basis": {"type": "string", "enum": ["history", "derived"]},
+                                },
+                            },
                         },
                     },
                     "additionalProperties": False,

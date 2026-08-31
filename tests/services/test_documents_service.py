@@ -355,3 +355,54 @@ def test_delete_bad_payload(db_conn: sqlite3.Connection) -> None:
         delete_documents(db_conn, {"doc_ids": []})
     with pytest.raises(BadRequestError):
         delete_documents(db_conn, {"doc_ids": ["not-int"]})
+
+
+# --- ACT-01 : les coches manuelles arrivent par la liste, avec leur verdict ---------
+#
+# `list_documents` PASSE l'état dérivé qu'il tient déjà à `step_status_map` plutôt que de
+# le lui faire recalculer — mesuré sur le corpus de travail, le pire cas (232 coches)
+# coûte +13,5 ms au lieu de +251. Ce raccourci est aussi un risque : si la main courante
+# passée ne correspondait pas à ce que le service calculerait seul, la péremption serait
+# jugée sur des valeurs fausses, en silence. D'où une comparaison des deux chemins.
+def test_list_documents_sert_les_coches(db_conn: sqlite3.Connection) -> None:
+    from multicorpus_engine.services.step_status_service import set_step_status
+
+    doc_id = _mk_doc(db_conn, "Coché")
+    _mk_unit(db_conn, doc_id, 1)
+    db_conn.commit()
+    set_step_status(db_conn, {"doc_id": doc_id, "step": "segmentation"})
+
+    row = _one(db_conn, doc_id)
+    assert set(row["step_status"]) == {"segmentation"}
+    assert row["step_status"]["segmentation"]["stale"] is False
+
+
+def test_un_document_sans_coche_porte_un_dictionnaire_vide(
+    db_conn: sqlite3.Connection,
+) -> None:
+    doc_id = _mk_doc(db_conn)
+    db_conn.commit()
+    assert _one(db_conn, doc_id)["step_status"] == {}
+
+
+def test_l_etat_passe_par_la_liste_donne_le_meme_verdict_que_le_calcul_direct(
+    db_conn: sqlite3.Connection,
+) -> None:
+    from multicorpus_engine.services.step_status_service import (
+        set_step_status, step_status_map,
+    )
+
+    doc_id = _mk_doc(db_conn, "Repère")
+    _mk_unit(db_conn, doc_id, 1)
+    db_conn.commit()
+    set_step_status(db_conn, {"doc_id": doc_id, "step": "segmentation"})
+    set_step_status(db_conn, {"doc_id": doc_id, "step": "annotation"})
+
+    # Le document change : une unité de plus, sans passer par l'historique.
+    _mk_unit(db_conn, doc_id, 2)
+    db_conn.commit()
+
+    par_la_liste = _one(db_conn, doc_id)["step_status"]
+    calcul_direct = step_status_map(db_conn)[doc_id]   # sans `derived`, il recalcule
+    assert par_la_liste == calcul_direct
+    assert par_la_liste["segmentation"]["stale_reason"] == "derived:unit_count"

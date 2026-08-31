@@ -1637,6 +1637,32 @@
             "nullable": true,
             "type": "string"
           },
+          "step_status": {
+            "additionalProperties": {
+              "properties": {
+                "basis": {
+                  "enum": [
+                    "history",
+                    "derived"
+                  ],
+                  "type": "string"
+                },
+                "stale": {
+                  "type": "boolean"
+                },
+                "stale_reason": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "validated_at": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "description": "Manual done-marks for this document, keyed by capability (curation|segmentation|alignement|annotation). Absent key = no mark; the [ ] / [/] states stay derived from unit_count, aligned_count, annotation_status and curated_at. Each value carries validated_at, stale (the mark is contradicted by later work), stale_reason (the action type, or derived:<field>) and basis ('history' when an action trail existed at marking time, 'derived' when it did not — the mark is weaker then). A stale mark must render as [/], not [X] (ACT-01).",
+            "type": "object"
+          },
           "title": {
             "type": "string"
           },
@@ -4559,8 +4585,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.87",
-    "x-contract-version": "1.6.87"
+    "version": "1.6.88",
+    "x-contract-version": "1.6.88"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -6629,6 +6655,150 @@
           }
         },
         "summary": "Per-document stage stats for the canvas state strip"
+      }
+    },
+    "/documents/step_status": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "step": {
+                    "enum": [
+                      "curation",
+                      "segmentation",
+                      "alignement",
+                      "annotation"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "step"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "history",
+                        "derived"
+                      ],
+                      "type": "string"
+                    },
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "step": {
+                      "type": "string"
+                    },
+                    "validated_at": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Marked"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Document not found"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Mark one capability as done on one document (tri-state [X])"
+      }
+    },
+    "/documents/step_status/clear": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "doc_id": {
+                    "type": "integer"
+                  },
+                  "step": {
+                    "enum": [
+                      "curation",
+                      "segmentation",
+                      "alignement",
+                      "annotation"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "doc_id",
+                  "step"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "cleared": {
+                      "type": "boolean"
+                    },
+                    "doc_id": {
+                      "type": "integer"
+                    },
+                    "step": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Cleared"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Remove the done-mark of one capability on one document"
       }
     },
     "/documents/tags/add": {

@@ -654,6 +654,7 @@ _WRITE_PATHS = frozenset({
     "/corpus/info",
     # Document / relation writes
     "/documents/update", "/documents/bulk_update", "/documents/delete",
+    "/documents/step_status", "/documents/step_status/clear",
     "/documents/tags/add", "/documents/tags/remove",
     "/doc_relations/set", "/doc_relations/delete",
     # Exports (write to disk)
@@ -1257,6 +1258,10 @@ class _CorpusHandler(BaseHTTPRequestHandler):
                 self._handle_documents_update(body)
             elif path == "/documents/bulk_update":
                 self._handle_documents_bulk_update(body)
+            elif path == "/documents/step_status":
+                self._handle_step_status_set(body)
+            elif path == "/documents/step_status/clear":
+                self._handle_step_status_clear(body)
             elif path == "/documents/delete":
                 self._handle_documents_delete(body)
             elif path == "/tokens/update":
@@ -7533,6 +7538,41 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             return
         except NotFoundError as exc:
             self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
+
+    def _handle_step_status_set(self, body: dict) -> None:
+        """POST /documents/step_status — poser un `[X]` sur (document, capacité).
+
+        Adaptateur mince : le service enregistre les deux signaux de péremption au
+        moment de la pose (ACT-01, docs/DESIGN_step_status_tristate.md).
+        """
+        from multicorpus_engine.services.errors import BadRequestError, NotFoundError
+        from multicorpus_engine.services.step_status_service import set_step_status
+        try:
+            with self._lock():
+                data = set_step_status(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
+            return
+        except NotFoundError as exc:
+            self._send_error(exc.message, code=ERR_NOT_FOUND, http_status=exc.http_status)
+            return
+        self._send_json(success_payload(data))
+
+    def _handle_step_status_clear(self, body: dict) -> None:
+        """POST /documents/step_status/clear — retirer un `[X]`.
+
+        Retirer une coche absente n'est pas une erreur : le geste demande qu'elle ne
+        soit pas là, et elle n'y est pas.
+        """
+        from multicorpus_engine.services.errors import BadRequestError
+        from multicorpus_engine.services.step_status_service import clear_step_status
+        try:
+            with self._lock():
+                data = clear_step_status(self._conn(), body)
+        except BadRequestError as exc:
+            self._send_error(exc.message, code=ERR_BAD_REQUEST, http_status=exc.http_status)
             return
         self._send_json(success_payload(data))
 

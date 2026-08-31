@@ -338,6 +338,8 @@ Three **independent** version fields surface in sidecar responses — do not con
 - `POST /align/collisions/resolve`
 - `POST /documents/update`
 - `POST /documents/bulk_update`
+- `POST /documents/step_status`
+- `POST /documents/step_status/clear`
 - `POST /documents/delete`
   - body: `{ doc_ids: int[] }` (non-empty list, token required)
   - suppression en cascade : alignment_links → units → doc_relations → units_fts → documents
@@ -577,6 +579,7 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `annotation_status`: `missing|annotated`
   - `curated_at`: string|null (1.6.85) — date ISO du dernier apply de curation **non annulé** ayant modifié ce document. Dérivé de `prep_action_history` (`action_type='curation_apply'`, `reverted=0`), pas une colonne : la curation n'en a aucune. Null = la curation n'a jamais rien changé ici — y compris après un apply resté sans effet, qui n'écrit pas de ligne.
   - `aligned_count`: integer (1.6.85) — nombre de liens d'alignement touchant ce document, comme pivot **ou** comme cible ; `0` = jamais aligné. Dérivé de `alignment_links`. Couvre aussi les documents hors famille, que `GET /families` ignore par construction.
+    - `step_status`: object (1.6.88) — les coches **manuelles** de ce document, par capacité. Clé absente = pas de coche ; `[ ]` et `[/]` restent **dérivés** de `unit_count`, `aligned_count`, `annotation_status` et `curated_at`, ils ne sont jamais stockés. Chaque valeur porte `validated_at`, `stale` (le travail postérieur dément la coche), `stale_reason` (le type d'action fautif, ou `derived:<champ>`) et `basis`. **Une coche `stale` doit se rendre `[/]`, jamais `[X]`** — c'est tout l'objet de la péremption. Voir `docs/DESIGN_step_status_tristate.md`.
   - **au niveau de la réponse**, pas du document — l'index est un objet unique :
     - `fts_readable`: boolean (1.6.84) — `false` quand l'index FTS ne peut pas être lu du tout : pages corrompues, ou table virtuelle disparue du schéma. À distinguer de « zéro document périmé » : `stale_doc_ids` avale l'erreur SQL et rend un ensemble vide, donc sans ce drapeau un index **cassé** est indistinguable d'un index **à jour**.
     - `fts_repairable`: boolean (1.6.86) — `true` quand l'index illisible peut être reconstruit **depuis l'application** (`POST /index`), ce qui est le cas de la panne « déclaration disparue du schéma ». `false` pour les pages corrompues, qui exigent une reconstruction hors ligne, et `false` aussi quand l'index se lit : *réparable* ne veut pas dire *à réparer*.
@@ -591,6 +594,14 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
 - `POST /documents/bulk_update` — update multiple docs at once
   - body: `{ updates: [{doc_id, title?, language?, doc_role?, resource_type?, workflow_status?}, …] }`
   - returns: `{ updated: int }`
+- `POST /documents/step_status` — **écriture (token)** : pose le `[X]` d'une capacité sur un document (1.6.88, ACT-01)
+  - body: `{ doc_id, step }` — `step` ∈ `curation|segmentation|alignement|annotation`
+  - returns: `{ doc_id, step, validated_at, basis }` — `basis` vaut `history` si un historique existait pour cette capacité au moment de la pose, `derived` sinon (la coche est alors plus faible : elle ne repose que sur le compte dérivé, aveugle à une resegmentation qui rend le même nombre d'unités)
+  - idempotent : re-poser une coche présente la rafraîchit, ce qui est le geste « je reconfirme après avoir retravaillé »
+  - 404 si le document n'existe pas ; 400 si `step` n'est pas l'une des quatre capacités
+- `POST /documents/step_status/clear` — **écriture (token)** : retire le `[X]` (1.6.88)
+  - body: `{ doc_id, step }` ; returns: `{ doc_id, step, cleared: bool }`
+  - retirer une coche absente n'est **pas** une erreur : `cleared: false`, le geste demande qu'elle ne soit pas là
 - `POST /doc_relations/set` — upsert a doc_relation
   - body: `{ doc_id, relation_type, target_doc_id, note? }`
   - returns: `{ action: "created"|"updated", id, doc_id, relation_type, target_doc_id }`
