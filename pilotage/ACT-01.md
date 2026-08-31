@@ -5,8 +5,10 @@ statut: interrompu
 
 # ACT-01 — la page Actions : une liste de documents qui ne sert à rien
 
-**Arrêté sur** — refonte « action d'abord » écrite et testée, non commitée, 31 août 2026.
-Reste la passe de QA à jouer, et trois constats trouvés en chemin.
+**Arrêté sur** — refonte « action d'abord » livrée et sa passe de QA jouée en entier
+(71/71), 31 août 2026, **non poussée**. Restent quatre décisions ou constats ouverts :
+le sens de « 57 à faire » sur la carte Curation, le modèle tri-état, `multicorpus segment`
+qui n'enregistre rien, et une ligne de doc qui revient à FTS-01.
 
 ## Reste
 
@@ -39,15 +41,14 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 - [x] Décider ce que devient la carte de tête « Traitement de corpus » — supprimée, avec
       ses trois règles CSS devenues mortes. Son unique bouton a rejoint l'en-tête de la
       carte Documents
-- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 71 points en 8 zones, **70 joués**
-      au 31 août : sept zones closes sur huit. Il ne reste qu'un point, « les colonnes ne
-      bougent pas d'un filtre à l'autre », et il attend **la re-vérification du correctif
-      de gouttière** : c'est lui qui a fait tomber le défaut, il ne peut se cocher qu'après
-      un rechargement du front. Le préambule porte la reconstruction du sidecar, le
-      contrôle `/health`, et depuis ce rejeu les **quatre manipulations** de la zone
-      « Tenue à l'écran » plus la **coupure du sidecar** des deux derniers cas creux, avec
-      l'ordre obligatoire — à relire plutôt qu'à refaire de mémoire. Le rejeu a payé :
-      **deux vrais défauts**, ci-dessous, que les 1328 tests prep ne pouvaient pas voir. **Cinq endroits ont été réécrits en
+- [x] **Jouer la passe `qa/actions-action-dabord.md`** — **71 points sur 71**, huit zones,
+      jouée entièrement le 31 août. Le préambule a gagné en chemin ce qu'il fallait pour la
+      rejouer sans redemander : les **quatre manipulations** de la zone « Tenue à l'écran »,
+      la **coupure du sidecar** des deux derniers cas creux avec son ordre obligatoire, et
+      les repères mesurés de chaque item. Le rejeu a payé : **deux vrais défauts**,
+      ci-dessous, qu'aucun des 1328 tests prep ne pouvait voir — le décalage des colonnes
+      sous le filtre Segmentation, et le bouton Hiérarchie qui mentait après une
+      actualisation. **Cinq endroits ont été réécrits en
       cours de passe**, chacun sur une question de l'utilisateur, et chacun demandait
       quelque chose qui ne se voit pas :
       · « le tri accentue et minuscule pareil » — aucune paire de titres, langues ou rôles
@@ -161,14 +162,15 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 
 ## QA
 
-- qa/actions-action-dabord.md — **en cours**, 70 points sur 71 au 31 août. Elle vérifie ce
+- qa/actions-action-dabord.md — **jouée en entier** le 31 août, 71 sur 71. Elle vérifie ce
   qu'aucun test unitaire ne prouve : que l'état affiché correspond au document en base, que
   le filtre et la vue hiérarchie se composent sans se contredire, et que la colonne de
   gestes tient à l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas
   estimés — 57/1/37/53 sur les cartes, 17 pastilles « Index périmé », une seule ligne
-  « Rien à faire » (`#416`), 6 documents dont le geste Alignement doit refuser. La jouer a
-  déjà servi : elle a fait tomber un item invérifiable, remplacé par trois rangs de tri
-  mesurés sur les vrais titres.
+  « Rien à faire » (`#416`), 6 documents dont le geste Alignement doit refuser. Bilan du
+  rejeu : **deux défauts réels** corrigés, et **cinq items réécrits** parce qu'ils
+  demandaient l'invisible. Rejouable en l'état — tout ce qu'il faut faire est dans le
+  préambule, plus rien à redemander.
 
 ## Contexte
 

@@ -243,7 +243,7 @@ cumulera cinq états.
 - [x] Survoler une PASTILLE (pas le blanc de la cellule) fait apparaître l'infobulle : `Curation · Alignement · Annotation · Index périmé`
 - [x] La carte Documents garde la même hauteur d'un filtre à l'autre — c'est son contenu qui défile
 - [x] L'en-tête de colonnes reste visible quand on fait défiler la liste
-- [ ] Les colonnes ne bougent pas d'un filtre à l'autre : seule la hauteur du contenu change
+- [x] Les colonnes ne bougent pas d'un filtre à l'autre : seule la hauteur du contenu change
 - [x] En réduisant la fenêtre, les cartes passent à 2 puis 1 colonne sans que le tableau déborde horizontalement
 - [x] En réduisant encore, le titre s'élide AVANT que le tableau ne déborde — jamais l'inverse
 - [x] Le tableau ne provoque aucun défilement horizontal de la page entière
