@@ -474,7 +474,8 @@ Response (HTTP 202):
 
 Supported `kind` values and required `params`:
 - `index` — no params required; optional `params.incremental` (bool) for incremental FTS sync
-- `curate` — `params.rules` (array, required)
+- `curate` — `params.rules` (array, required) ; optionnels : `doc_id` (absent = tout le corpus), `ignored_unit_ids`, `manual_overrides`, `include_non_traduit`, `rules_signature`, `apply_context`
+  - le résultat du job porte, comme la réponse de `POST /curate`, `action_ids` (un par document effectivement modifié) et `action_id` (le premier, ou `null` en portée corpus) : la curation lancée par la file est **annulable** en Mode A et compte dans `curated_at` (1.6.87)
 - `validate-meta` — `params.doc_id?`
 - `segment` — `params.doc_id` (required), optional `params.lang`, optional `params.pack` (`auto|default|fr_strict|en_strict`)
 - `import` — `params.mode` + `params.path` required; optional: `language`, `title`, `doc_role`, `resource_type`, `tei_unit`

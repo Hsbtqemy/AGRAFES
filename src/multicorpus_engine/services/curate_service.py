@@ -8,14 +8,20 @@ NotFoundError -> ERR_NOT_FOUND (the codes these endpoints used).
 
 Out of scope for this tranche (kept as handlers): ``curate_preview`` (server-coupled),
 the ``*_export`` handlers (bulky inline formatting + file writes), and ``curate``
-(delegates to curation.py).
+(delegates to curation.py) — of which only the undo recorder lives here, because the
+synchronous and asynchronous curate paths must build the same one.
 """
 
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from typing import Any, Callable
 
+from ..action_history import (
+    ACTION_CURATION_APPLY,
+    insert_unit_snapshots,
+    record_prep_action,
+)
 from .errors import BadRequestError, NotFoundError
 
 _EXC_SELECT = (
@@ -199,3 +205,64 @@ def list_apply_history(conn: sqlite3.Connection, body: dict) -> dict[str, Any]:
         for row in rows
     ]
     return {"events": events, "count": len(events)}
+
+
+# --- Mode A undo: the recorder both curate paths must pass -------------------
+
+Recorder = Callable[[int, list[tuple[int, str, str]]], "int | None"]
+
+
+def apply_recorder(
+    conn: sqlite3.Connection,
+    *,
+    rules_count: int,
+    scope: str,
+    rules_signature: str | None = None,
+    apply_context: dict | None = None,
+) -> Recorder:
+    """Build the ``record_action`` callback curate_document/curate_all_documents expect.
+
+    Called inside the curation transaction, before the UPDATE, with the
+    ``(unit_id, before, after)`` triples of the units about to change. Inserts the
+    prep_action_history row plus its unit snapshots *without committing* — the
+    commit belongs to curate_document.
+
+    Shared on purpose. The synchronous ``POST /curate`` built this closure inline
+    while the asynchronous ``kind='curate'`` job passed no recorder at all, so a
+    curation run through the job path was neither undoable (Mode A) nor visible in
+    the ``curated_at`` field ``GET /documents`` derives from this very table.
+    """
+
+    def _record(d_id: int, triples: list[tuple[int, str, str]]) -> int | None:
+        if not triples:
+            return None
+        description = (
+            f"Apply {rules_count} règle{'s' if rules_count > 1 else ''} · "
+            f"{len(triples)} unité{'s' if len(triples) > 1 else ''} modifiée"
+            f"{'s' if len(triples) > 1 else ''}"
+        )
+        context: dict = {
+            "rules_count":     rules_count,
+            "rules_signature": rules_signature,
+            "scope":           scope,
+        }
+        if apply_context is not None:
+            context["apply_context"] = apply_context
+        action_id = record_prep_action(
+            conn,
+            doc_id=d_id,
+            action_type=ACTION_CURATION_APPLY,
+            description=description,
+            context=context,
+        )
+        insert_unit_snapshots(
+            conn,
+            action_id,
+            [
+                {"unit_id": uid, "text_norm_before": before}
+                for (uid, before, _after) in triples
+            ],
+        )
+        return action_id
+
+    return _record

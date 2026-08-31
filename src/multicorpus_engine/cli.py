@@ -658,6 +658,7 @@ def cmd_curate(args: argparse.Namespace) -> None:
     from .db.migrations import apply_migrations
     from .runs import create_run, setup_run_logger, update_run_stats, utcnow_iso
     from .curation import rules_from_list, curate_document, curate_all_documents
+    from .services.curate_service import apply_recorder
     import json as _json
 
     db_path = Path(args.db).resolve()
@@ -689,14 +690,25 @@ def cmd_curate(args: argparse.Namespace) -> None:
         log.info("Loaded %d curation rules from %s", len(rules), rules_path)
 
         include_non_traduit = bool(getattr(args, "include_non_traduit", False))
+        # Same recorder as both sidecar paths: a curation applied through Mode A
+        # must be undoable and must count in the derived `curated_at`, exactly like
+        # one applied through the HTTP sidecar.
+        recorder = apply_recorder(
+            conn,
+            rules_count=len(rules),
+            scope="doc" if getattr(args, "doc_id", None) is not None else "all",
+        )
         if getattr(args, "doc_id", None) is not None:
             reports = [curate_document(conn, args.doc_id, rules, run_logger=log,
+                                       record_action=recorder,
                                        include_non_traduit=include_non_traduit)]
         else:
             reports = curate_all_documents(conn, rules, run_logger=log,
+                                           record_action=recorder,
                                            include_non_traduit=include_non_traduit)
 
         total_modified = sum(r.units_modified for r in reports)
+        action_ids = [r.action_id for r in reports if r.action_id is not None]
         stats = {
             "docs_curated": len(reports),
             "units_modified": total_modified,
@@ -711,6 +723,7 @@ def cmd_curate(args: argparse.Namespace) -> None:
             "units_modified": total_modified,
             "results": [r.to_dict() for r in reports],
             "fts_stale": total_modified > 0,
+            "action_ids": action_ids,
             "log": str(log_path),
             "created_at": utcnow_iso(),
         })

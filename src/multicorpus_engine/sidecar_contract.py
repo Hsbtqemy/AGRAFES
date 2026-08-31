@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.86"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.87"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -279,6 +279,22 @@ API_VERSION = CONTRACT_VERSION
 #         « reparable » ne veut pas dire « a reparer ». Aucune sonde supplementaire :
 #         `index_failure` remplace `index_readable` et sert les deux drapeaux d'un seul
 #         parcours. Champ additif sur route existante -> snapshot inchange ; openapi bouge.
+# 1.6.87: les TROIS chemins d'application de la curation enregistrent leur action —
+#         ACT-01. Ils n'en faisaient pas autant : POST /curate passait un `record_action`
+#         a curate_document ; le job (POST /jobs kind=curate) et la CLI `multicorpus
+#         curate` n'en passaient aucun. Une curation lancee par la file ou en Mode A
+#         n'ecrivait donc RIEN dans `prep_action_history` : elle n'etait pas annulable, et
+#         n'apparaissait pas dans le `curated_at` que 1.6.85 en derive — la page Actions
+#         aurait dit « a faire » pour toujours, sans moyen de s'en apercevoir. Le recorder
+#         passe dans services/curate_service.apply_recorder, construit a l'identique par
+#         les trois appelants plutot que recopie : corriger le seul site qu'on regardait
+#         aurait laisse son jumeau. Le resultat du job gagne `action_ids` + `action_id`
+#         (les memes que la reponse synchrone) et la sortie JSON de la CLI gagne
+#         `action_ids`. Le job lit desormais `params.rules_signature` et
+#         `params.apply_context`, que seul le corps synchrone lisait. Le front vivant
+#         n'emprunte que le chemin synchrone : rien ne change a l'ecran aujourd'hui, c'est
+#         le trou qui est ferme. Resultat de job non schematise (`result` est un objet
+#         libre) -> ni snapshot ni schema ne bougent ; openapi bouge (version).
 # 1.6.84: GET /documents gagne `fts_readable` (booleen, additif) — FTS-01. La liste
 #         portait deja `fts_stale` par document, derive de units <-> fts_units, mais
 #         `stale_doc_ids` avale sqlite3.Error et rend un ensemble vide : un index

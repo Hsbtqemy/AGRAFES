@@ -275,6 +275,53 @@ def test_cli_db_optimize_and_runs_prune(tmp_path: Path) -> None:
     assert int(remaining_query_runs) == 0
 
 
+def test_cli_curate_records_an_undoable_action(tmp_path: Path) -> None:
+    """Mode A must record what the sidecar records (ACT-01, contrat 1.6.87).
+
+    `multicorpus curate` passed no ``record_action``, like the async job path: a
+    curation applied through the CLI left no prep_action_history row, so it could
+    not be undone and never counted in the derived ``curated_at``.
+    """
+    db_path = tmp_path / "curate.db"
+    docx_path = tmp_path / "src.docx"
+    docx_path.write_bytes(make_docx(["[1] Le Sgt. dort.", "[2] Rien à changer ici."]))
+    rules_path = tmp_path / "rules.json"
+    rules_path.write_text(
+        json.dumps([{"pattern": r"Sgt\.", "replacement": "Sergent"}]),
+        encoding="utf-8",
+    )
+
+    for cmd in (
+        ["init-project", "--db", str(db_path)],
+        ["import", "--db", str(db_path), "--mode", "docx_numbered_lines",
+         "--language", "fr", "--path", str(docx_path), "--title", "Curate"],
+    ):
+        proc = _run_cli(cmd)
+        assert proc.returncode == 0, proc.stderr
+
+    proc = _run_cli(["curate", "--db", str(db_path), "--rules", str(rules_path)])
+    assert proc.returncode == 0, proc.stderr
+    payload = _parse_single_json(proc.stdout)
+    assert payload["units_modified"] >= 1
+    assert len(payload["action_ids"]) == 1
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT action_type, doc_id FROM prep_action_history WHERE action_id = ?",
+            (payload["action_ids"][0],),
+        ).fetchone()
+        assert row is not None and row[0] == "curation_apply"
+        # The snapshot is what makes it undoable.
+        snaps = conn.execute(
+            "SELECT COUNT(*) FROM prep_action_unit_snapshots WHERE action_id = ?",
+            (payload["action_ids"][0],),
+        ).fetchone()[0]
+        assert snaps == payload["units_modified"]
+    finally:
+        conn.close()
+
+
 def test_serve_token_label_redacts_literal_secret() -> None:
     """SEC-07: a literal --token value must never be persisted verbatim in
     runs.params; only the mode keyword or the placeholder 'custom' is stored."""

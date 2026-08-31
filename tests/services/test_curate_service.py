@@ -12,6 +12,7 @@ import sqlite3
 import pytest
 
 from multicorpus_engine.services.curate_service import (
+    apply_recorder,
     delete_exception,
     list_apply_history,
     list_exceptions,
@@ -159,3 +160,65 @@ def test_list_apply_history_filters_and_limit(db_conn: sqlite3.Connection) -> No
     assert list_apply_history(db_conn, {"limit": 2})["count"] == 2
     # limit is capped at 200 (huge request returns all 4, not an error)
     assert list_apply_history(db_conn, {"limit": 10_000})["count"] == 4
+
+
+# --- the Mode A undo recorder, shared by both curate paths ----------------------
+def test_apply_recorder_writes_action_and_snapshots(db_conn: sqlite3.Connection) -> None:
+    import json
+
+    doc_id, unit_id = _mk_unit(db_conn, "Le Sgt. dort.")
+    rec = apply_recorder(
+        db_conn, rules_count=2, scope="doc",
+        rules_signature="sig-1", apply_context={"origin": "job"},
+    )
+    action_id = rec(doc_id, [(unit_id, "Le Sgt. dort.", "Le Sergent dort.")])
+    db_conn.commit()
+
+    row = db_conn.execute(
+        "SELECT action_type, description, context_json, doc_id"
+        " FROM prep_action_history WHERE action_id = ?",
+        (action_id,),
+    ).fetchone()
+    assert row[0] == "curation_apply"
+    assert row[1] == "Apply 2 règles · 1 unité modifiée"
+    ctx = json.loads(row[2])
+    assert ctx["rules_count"] == 2
+    assert ctx["rules_signature"] == "sig-1"
+    assert ctx["scope"] == "doc"
+    assert ctx["apply_context"] == {"origin": "job"}
+    assert row[3] == doc_id
+
+    snaps = db_conn.execute(
+        "SELECT unit_id, text_norm_before FROM prep_action_unit_snapshots WHERE action_id = ?",
+        (action_id,),
+    ).fetchall()
+    assert [tuple(s) for s in snaps] == [(unit_id, "Le Sgt. dort.")]
+
+
+def test_apply_recorder_records_nothing_when_no_unit_changed(
+    db_conn: sqlite3.Connection,
+) -> None:
+    doc_id, _ = _mk_unit(db_conn)
+    rec = apply_recorder(db_conn, rules_count=1, scope="all")
+    assert rec(doc_id, []) is None
+    db_conn.commit()
+    assert db_conn.execute("SELECT COUNT(*) FROM prep_action_history").fetchone()[0] == 0
+
+
+def test_apply_recorder_omits_apply_context_when_absent(
+    db_conn: sqlite3.Connection,
+) -> None:
+    import json
+
+    doc_id, unit_id = _mk_unit(db_conn, "a")
+    rec = apply_recorder(db_conn, rules_count=1, scope="all")
+    action_id = rec(doc_id, [(unit_id, "a", "b")])
+    db_conn.commit()
+    ctx = json.loads(
+        db_conn.execute(
+            "SELECT context_json FROM prep_action_history WHERE action_id = ?",
+            (action_id,),
+        ).fetchone()[0]
+    )
+    assert "apply_context" not in ctx
+    assert ctx == {"rules_count": 1, "rules_signature": None, "scope": "all"}

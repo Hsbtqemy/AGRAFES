@@ -4015,11 +4015,7 @@ class _CorpusHandler(BaseHTTPRequestHandler):
             curate_document,
             rules_from_list,
         )
-        from multicorpus_engine.action_history import (
-            ACTION_CURATION_APPLY,
-            insert_unit_snapshots,
-            record_prep_action,
-        )
+        from multicorpus_engine.services.curate_service import apply_recorder
 
         rules = rules_from_list(body.get("rules", []))
         doc_id = body.get("doc_id")
@@ -4061,47 +4057,17 @@ class _CorpusHandler(BaseHTTPRequestHandler):
 
         rules_count = len(rules)
 
-        # Build the recorder closure. Called inside curate_document's tx, before
-        # the UPDATE, with the list of (unit_id, before, after) triples for
-        # units about to change. Inserts prep_action_history + snapshots
-        # without committing; commit happens at the end of curate_document.
-        def _recorder_for(conn):
-            def _record(d_id: int, triples: list[tuple[int, str, str]]) -> int | None:
-                if not triples:
-                    return None
-                description = (
-                    f"Apply {rules_count} règle{'s' if rules_count > 1 else ''} · "
-                    f"{len(triples)} unité{'s' if len(triples) > 1 else ''} modifiée"
-                    f"{'s' if len(triples) > 1 else ''}"
-                )
-                context: dict = {
-                    "rules_count":     rules_count,
-                    "rules_signature": rules_signature,
-                    "scope":           "all" if doc_id is None else "doc",
-                }
-                if apply_context is not None:
-                    context["apply_context"] = apply_context
-                action_id = record_prep_action(
-                    conn,
-                    doc_id=d_id,
-                    action_type=ACTION_CURATION_APPLY,
-                    description=description,
-                    context=context,
-                )
-                insert_unit_snapshots(
-                    conn,
-                    action_id,
-                    [
-                        {"unit_id": uid, "text_norm_before": before}
-                        for (uid, before, _after) in triples
-                    ],
-                )
-                return action_id
-            return _record
-
+        # The recorder is built by the curate service, so the asynchronous job path
+        # gets the identical one (it used to get none at all).
         with self._lock():
             conn = self._conn()
-            recorder = _recorder_for(conn)
+            recorder = apply_recorder(
+                conn,
+                rules_count=rules_count,
+                scope="all" if doc_id is None else "doc",
+                rules_signature=rules_signature,
+                apply_context=apply_context,
+            )
             if doc_id is not None:
                 reports = [curate_document(conn, doc_id, rules,
                                            skip_unit_ids=skip_unit_ids,
@@ -9965,6 +9931,7 @@ class CorpusServer:
                 curate_document,
                 rules_from_list,
             )
+            from multicorpus_engine.services.curate_service import apply_recorder
 
             raw_rules = params.get("rules", [])
             if not isinstance(raw_rules, list):
@@ -9996,20 +9963,40 @@ class CorpusServer:
 
             include_non_traduit = bool(params.get("include_non_traduit", False))
 
+            # Mode A undo, same as the synchronous POST /curate. Without this the
+            # job path wrote no prep_action_history row: the curation could not be
+            # undone, and never showed up in the curated_at that GET /documents
+            # derives from that table.
+            apply_context_in = params.get("apply_context")
+            apply_context = apply_context_in if isinstance(apply_context_in, dict) else None
+            rules_signature = params.get("rules_signature")
+            if rules_signature is not None and not isinstance(rules_signature, str):
+                rules_signature = str(rules_signature)
+
             progress_cb(10, "Applying curation rules")
             with lock:
+                recorder = apply_recorder(
+                    conn,
+                    rules_count=len(rules),
+                    scope="all" if doc_id is None else "doc",
+                    rules_signature=rules_signature,
+                    apply_context=apply_context,
+                )
                 if doc_id is not None:
                     reports = [curate_document(conn, int(doc_id), rules,
                                                skip_unit_ids=skip_unit_ids,
                                                manual_overrides=manual_overrides,
+                                               record_action=recorder,
                                                include_non_traduit=include_non_traduit)]
                 else:
                     reports = curate_all_documents(conn, rules,
                                                    skip_unit_ids=skip_unit_ids,
                                                    manual_overrides=manual_overrides,
+                                                   record_action=recorder,
                                                    include_non_traduit=include_non_traduit)
             units_modified = sum(r.units_modified for r in reports)
             units_skipped  = sum(r.units_skipped  for r in reports)
+            action_ids = [r.action_id for r in reports if r.action_id is not None]
             progress_cb(100, "Curation completed")
             return {
                 "docs_curated": len(reports),
@@ -10017,6 +10004,8 @@ class CorpusServer:
                 "units_skipped": units_skipped,
                 "fts_stale": units_modified > 0,
                 "results": [r.to_dict() for r in reports],
+                "action_ids": action_ids,
+                "action_id": action_ids[0] if doc_id is not None and action_ids else None,
             }
 
         if kind == "validate-meta":

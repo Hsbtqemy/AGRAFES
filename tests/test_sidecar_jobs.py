@@ -172,3 +172,68 @@ def test_unknown_job_id_returns_not_found(sidecar_job_env: dict) -> None:
     assert payload["ok"] is False
     assert payload["status"] == "error"
     assert payload["error_code"] == "NOT_FOUND"
+
+
+def test_curate_job_records_an_undoable_action(sidecar_job_env: dict) -> None:
+    """The async curate path must record what the synchronous one records.
+
+    It passed no ``record_action`` at all: a curation run through the job path was
+    neither undoable (Mode A) nor visible in the ``curated_at`` that GET /documents
+    derives from prep_action_history — so the Actions screen called such a document
+    "à faire" forever.
+    """
+    base = sidecar_job_env["base_url"]
+    doc_id = sidecar_job_env["doc_id"]
+
+    code, payload = _http_json("POST", f"{base}/jobs", {
+        "kind": "curate",
+        "params": {
+            "doc_id": doc_id,
+            "rules": [{"pattern": "Bonjour", "replacement": "Salutations"}],
+            "rules_signature": "sig-job",
+        },
+    })
+    assert code == 202
+    job = _wait_job_done(base, payload["job"]["job_id"])
+    assert job["status"] == "done", job.get("error")
+
+    result = job["result"]
+    assert result["units_modified"] >= 1
+    assert result["action_id"] is not None
+    assert result["action_ids"] == [result["action_id"]]
+
+    # Undoable, exactly as after POST /curate.
+    code, elig = _http_json("POST", f"{base}/prep/undo/eligibility", {"doc_id": doc_id})
+    assert code == 200
+    assert elig["eligible"] is True
+    assert elig["action_type"] == "curation_apply"
+
+    # And the document now reads as curated on the Actions screen.
+    code, docs = _http_json("GET", f"{base}/documents")
+    assert code == 200
+    row = next(d for d in docs["documents"] if d["doc_id"] == doc_id)
+    assert row["curated_at"] is not None
+
+
+def test_curate_job_over_whole_corpus_records_per_document(
+    sidecar_job_env: dict,
+) -> None:
+    """Corpus-wide scope credits each document separately, like curate_all_documents."""
+    base = sidecar_job_env["base_url"]
+    doc_id = sidecar_job_env["doc_id"]
+
+    code, payload = _http_json("POST", f"{base}/jobs", {
+        "kind": "curate",
+        "params": {"rules": [{"pattern": "Bonjour", "replacement": "Salutations"}]},
+    })
+    assert code == 202
+    job = _wait_job_done(base, payload["job"]["job_id"])
+    assert job["status"] == "done", job.get("error")
+
+    result = job["result"]
+    assert result["action_id"] is None          # scope='all' has no single action
+    assert len(result["action_ids"]) >= 1
+
+    code, elig = _http_json("POST", f"{base}/prep/undo/eligibility", {"doc_id": doc_id})
+    assert code == 200
+    assert elig["eligible"] is True
