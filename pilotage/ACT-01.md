@@ -39,12 +39,15 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 - [x] Décider ce que devient la carte de tête « Traitement de corpus » — supprimée, avec
       ses trois règles CSS devenues mortes. Son unique bouton a rejoint l'en-tête de la
       carte Documents
-- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 71 points en 8 zones, **67 joués**
-      au 31 août : cinq zones closes, les trois autres à un ou deux points près. Le
-      préambule porte la reconstruction du sidecar, le contrôle `/health`, et depuis ce
-      rejeu les **quatre manipulations** de la zone « Tenue à l'écran » — à relire plutôt
-      qu'à refaire de mémoire. Le rejeu a payé : **deux vrais défauts**, ci-dessous, que
-      les 1328 tests prep ne pouvaient pas voir. **Quatre endroits ont été réécrits en
+- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 71 points en 8 zones, **70 joués**
+      au 31 août : sept zones closes sur huit. Il ne reste qu'un point, « les colonnes ne
+      bougent pas d'un filtre à l'autre », et il attend **la re-vérification du correctif
+      de gouttière** : c'est lui qui a fait tomber le défaut, il ne peut se cocher qu'après
+      un rechargement du front. Le préambule porte la reconstruction du sidecar, le
+      contrôle `/health`, et depuis ce rejeu les **quatre manipulations** de la zone
+      « Tenue à l'écran » plus la **coupure du sidecar** des deux derniers cas creux, avec
+      l'ordre obligatoire — à relire plutôt qu'à refaire de mémoire. Le rejeu a payé :
+      **deux vrais défauts**, ci-dessous, que les 1328 tests prep ne pouvaient pas voir. **Cinq endroits ont été réécrits en
       cours de passe**, chacun sur une question de l'utilisateur, et chacun demandait
       quelque chose qui ne se voit pas :
       · « le tri accentue et minuscule pareil » — aucune paire de titres, langues ou rôles
@@ -62,6 +65,10 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       par construction sur ce corpus : le maximum est 4 pastilles et `MAX_ROW_BADGES` vaut
       4, donc jamais de `+N` et l'infobulle répète le visible ; reformulée sur ce qui reste
       vérifiable, qu'elle apparaisse en survolant **une pastille**.
+      · « sidecar coupé puis ⇄ » — vrai, mais seulement si l'actualisation vient d'abord :
+      `_ensureRelations` met les relations en cache, donc `⇄` répond de mémoire et ne teste
+      rien tant que `setConn` n'a pas remis `_allRelationsLoaded` à `false`. L'ordre est
+      maintenant écrit, avec la commande de coupure.
       **La cause commune est identifiée** : ces items ont été écrits en relisant les tests,
       pas en regardant ce que le corpus permet de voir — « abricot »/« Abricot » vient
       littéralement d'`actionsHubState.test.ts:139-141`. D'où des items qui décrivent un
@@ -154,7 +161,7 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 
 ## QA
 
-- qa/actions-action-dabord.md — **en cours**, 67 points sur 71 au 31 août. Elle vérifie ce
+- qa/actions-action-dabord.md — **en cours**, 70 points sur 71 au 31 août. Elle vérifie ce
   qu'aucun test unitaire ne prouve : que l'état affiché correspond au document en base, que
   le filtre et la vue hiérarchie se composent sans se contredire, et que la colonne de
   gestes tient à l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas

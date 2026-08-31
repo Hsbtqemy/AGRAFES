@@ -132,6 +132,24 @@ plus à la fermeture.)
 4. **Réduire la fenêtre progressivement.** Les cartes passent de 4 à 2 colonnes à 1300 px,
    puis à 1 colonne à 760 px.
 
+**Les deux derniers « cas creux » demandent de couper le sidecar**, et l'ordre n'est pas
+libre. Il tourne en deux processus — PyInstaller onefile : un lanceur et son ouvrier, le
+second étant celui que désigne le portfile. Tuer l'arbre du lanceur les emporte tous et
+laisse le shell vivant :
+
+```
+tasklist /FI "IMAGENAME eq multicorpus.exe"
+taskkill /F /T /PID <le lanceur, parent de l'autre>
+```
+
+Rien n'est écrit en base par ce geste ; un job en cours mourrait avec, en revanche.
+Ensuite, **`↺ Actualiser` D'ABORD, `⇄` juste après, sans rien faire entre les deux** :
+`_ensureRelations` met les relations en cache et rend `true` sans rien demander si elles
+sont déjà chargées. Si `⇄` ou 🌿 Hiérarchie a servi depuis le dernier rechargement, le
+sidecar mort ne change rien — on obtient le comportement normal et on conclut à tort.
+C'est l'actualisation qui vide ce cache, en remettant `_allRelationsLoaded` à `false`.
+Pour revenir : rouvrir le projet depuis le shell, `ensureRunning` relance le sidecar.
+
 L'élision du titre n'est **pas observable en plein écran** : les six colonnes fixes pèsent
 49,8 rem (≈ 800 px) et tout le reste va au titre — avec un plus long titre à 39 caractères,
 il y a large. Elle apparaît dans la manipulation 4, et ce qu'elle prouve est l'ordre des
@@ -151,7 +169,7 @@ cumulera cinq états.
 - [x] La carte de tête « Traitement de corpus » a disparu, et la page ne commence plus par elle
 - [x] Il n'y a qu'UN bouton d'actualisation sur la page, dans l'en-tête « Documents du corpus »
 - [x] `↺ Actualiser` recharge la liste ET rafraîchit les quatre compteurs
-- [ ] En vue 🌿 Hiérarchie, `↺ Actualiser` garde l'arbre — et le bouton dit toujours `📋 Liste`
+- [x] En vue 🌿 Hiérarchie, `↺ Actualiser` garde l'arbre — et le bouton dit toujours `📋 Liste`
 - [x] La carte Alignement a bien trois boutons : le filtre, `Ouvrir →`, et `Contrôle`
 - [x] `Ouvrir →` d'une carte entre dans l'espace sans présélectionner de document
 
@@ -236,5 +254,5 @@ cumulera cinq états.
 - [x] Sur un corpus vide, la liste dit « Aucun document importé. »
 - [x] Une carte sans reste affiche « tout à jour » en vert et son bouton « Rien à faire » est inerte
 - [x] Filtrer, puis traiter le dernier document concerné, laisse « Rien à faire ici : aucun document n'attend cette étape. » et un « Tout afficher » toujours cliquable
-- [ ] Sidecar coupé puis `↺ Actualiser` : le bandeau d'erreur apparaît et les compteurs ne se remettent pas à zéro en silence
-- [ ] Sidecar coupé puis ⇄ sur une ligne : le message parle de relations indisponibles, PAS d'absence de famille
+- [x] Sidecar coupé puis `↺ Actualiser` : le bandeau d'erreur apparaît et les compteurs ne se remettent pas à zéro en silence
+- [x] Sidecar coupé, puis **enchaîner sans rien faire d'autre** : ⇄ sur une ligne dit « relations indisponibles », PAS « n'appartient à aucune famille »
