@@ -18,6 +18,7 @@ import { RolesPane } from "../components/RolesPane.ts";
 import { CurationPane } from "../components/CurationPane.ts";
 import { AnnotationPane } from "../components/AnnotationPane.ts";
 import { SegmentPane } from "../components/SegmentPane.ts";
+import { sync as navSync } from "../lib/navHistory.ts";
 
 export interface TextCanvasCallbacks {
   log: (msg: string, isError?: boolean) => void;
@@ -420,6 +421,19 @@ export class TextCanvasView {
       else if (prev === "segment") this._segmentPane?.deactivate();
     }
     void this._syncActivePane();
+    // NAV-01 — le point d'accroche unique de la couche : les quatre `show*Layer` et les
+    // `focus*` passent tous par ici, donc une seule ligne suffit à alimenter l'historique.
+    navSync();
+  }
+
+  /** NAV-01 — la couche courante, telle que la pile de navigation la lit. */
+  layer(): CanvasMode {
+    return this._mode;
+  }
+
+  /** NAV-01 — restaure une couche sans toucher au document (la pile n'en porte pas). */
+  setLayer(mode: CanvasMode): void {
+    this._setMode(mode);
   }
 
   private _renderStateStrip(): void {

@@ -24,6 +24,7 @@ import { setHtml, raw } from "../lib/safeHtml.ts";
 import { escHtml as _escHtml } from "../lib/diff.ts";
 import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
+import { registerLevel, unregisterLevel, sync as navSync } from "../lib/navHistory.ts";
 import {
   HUB_STEPS, STEP_LABEL, docBadges, docsForStep, hubComparator, sortDocs, stepCounts,
   visibleBadges,
@@ -125,6 +126,7 @@ export class ActionsScreen {
     root.className = "screen prep-actions-screen";
     this._root = root;
     this._loadSubViewPref();
+    this._registerNavLevels();
 
     const header = document.createElement("div");
     header.className = "prep-acts-header";
@@ -268,6 +270,28 @@ export class ActionsScreen {
       this._lastFocusedBtn = null;
       requestAnimationFrame(() => btn.focus());
     }
+    // NAV-01 — c'est bien ICI qu'il faut accrocher l'historique et non dans la publique
+    // `setSubView`, que certains chemins court-circuitent (`onOpenRevisionFine` appelle
+    // directement le DOM).
+    navSync();
+  }
+
+  /**
+   * NAV-01 — les deux niveaux les plus fins de la pile de navigation. Ils vivent ici parce
+   * que cet écran possède la sous-vue ET le canvas ; `read` rend `null` quand le canvas
+   * n'est pas monté, ce qui suffit à la pile pour ignorer le niveau.
+   */
+  private _registerNavLevels(): void {
+    registerLevel("subView", {
+      order: 30,
+      read: () => this._activeSubView,
+      apply: (v) => { if (this._root) this._switchSubViewDOM(this._root, v as SubView); },
+    });
+    registerLevel("layer", {
+      order: 40,
+      read: () => this._textCanvasView?.layer() ?? null,
+      apply: (v) => { this._textCanvasView?.setLayer(v as "roles" | "curation" | "annoter" | "segment"); },
+    });
   }
 
   private _setSubViewClass(root: HTMLElement, view: SubView): void {
@@ -1181,6 +1205,10 @@ export class ActionsScreen {
    * Safe to call multiple times (idempotent).
    */
   dispose(): void {
+    // NAV-01 — l'écran démonté ne doit plus répondre à la pile : le shell détruit puis
+    // recrée Prep à chaque changement de mode, et un niveau survivant lirait un DOM mort.
+    unregisterLevel("subView");
+    unregisterLevel("layer");
     // Dispose sub-panels
     this._alignPanel?.dispose();
     this._alignPanel = null;

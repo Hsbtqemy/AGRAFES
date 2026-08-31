@@ -19,6 +19,7 @@ import { ExportsScreen, type ExportWorkflowPrefill } from "./screens/ExportsScre
 import { SettingsScreen } from "./screens/SettingsScreen.ts";
 import { JobCenter, showToast } from "./components/JobCenter.ts";
 import { inlineConfirm } from "./lib/inlineConfirm.ts";
+import { registerLevel, unregisterLevel, setPendingGuard, sync as navSync } from "./lib/navHistory.ts";
 import { setHtml, appendHtml, raw } from "./lib/safeHtml.ts";
 
 // ─── Project Presets — seeds ──────────────────────────────────────────────────
@@ -198,6 +199,37 @@ export class App {
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", this._beforeUnloadHandler);
+
+    // NAV-01 — le niveau « onglet » de la pile de navigation, et le garde de sortie.
+    // Enregistrés ici plutôt qu'au constructeur parce que le shell détruit puis recrée
+    // cette application à chaque changement de mode : la paire register/unregister suit la
+    // durée de vie réelle de l'instance.
+    registerLevel("tab", {
+      order: 20,
+      read: () => this._activeTab,
+      // Forcé : la question des modifications en attente a déjà été posée par le garde,
+      // avant que le geste ne navigue. La reposer ici la ferait apparaître deux fois.
+      apply: (v) => { this._switchTab(v as TabId, true); },
+    });
+    setPendingGuard(() => this._navPendingGuard());
+  }
+
+  /**
+   * NAV-01 — ce que la pile demande avant de laisser partir un retour. Rendu non nul, le
+   * geste est annulé AVANT la navigation et la question posée ; `popstate` ne s'annulant
+   * pas, c'est le seul moment où un refus reste propre.
+   */
+  private _navPendingGuard(): { confirm: () => Promise<boolean> } | null {
+    if (!this._hasPendingChangesInCurrentTab()) return null;
+    const cur = this._screenControllers[this._activeTab];
+    const msg = cur?.pendingChangesMessage?.() ?? "Des modifications non enregistrées. Continuer ?";
+    return {
+      confirm: () => {
+        const el = document.getElementById("app-pending-confirm") as HTMLElement | null;
+        if (!el) return Promise.resolve(false);
+        return inlineConfirm(el, msg, { confirmLabel: "Continuer", danger: false });
+      },
+    };
   }
 
   private _buildUI(): void {
@@ -523,6 +555,7 @@ export class App {
     this._tabBtns[tab].classList.add("active");
     this._tabBtns[tab].setAttribute("aria-current", "page");
     if (tab === "documents") this._metadata.onActivate();
+    navSync();
   }
 
   private _openExporterWithPrefill(prefill?: ExportWorkflowPrefill): void {
@@ -1133,6 +1166,10 @@ export class App {
 
   /** Stop all background timers and remove event listeners. Called by tauri-shell on unmount. */
   dispose(): void {
+    // NAV-01 — avant les écrans : le garde interroge `_screenControllers`, qu'on s'apprête
+    // à laisser derrière.
+    unregisterLevel("tab");
+    setPendingGuard(null);
     this._actions.dispose();
     this._settings?.setConn(null);
     this._jobCenter?.setConn(null);
