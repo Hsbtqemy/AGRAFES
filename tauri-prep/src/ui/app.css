@@ -1259,14 +1259,26 @@ summary:focus-visible,
   font-weight: 700; color: var(--color-muted, #64748b); text-transform: uppercase;
   letter-spacing: .04em; position: sticky; top: 0; z-index: 1;
 }
-.prep-meta-doc-table th.sortable-th {
+/* Tri par en-tête — partagé par l'écran Documents et le hub Actions (ACT-01).
+   Les deux tables portent les mêmes colonnes ; elles doivent se manier pareil, et
+   une seule règle vaut mieux que deux jumelles qui divergeront. */
+.prep-meta-doc-table th.sortable-th,
+.prep-acts-hub-table th.sortable-th {
   cursor: pointer; user-select: none;
   transition: background 0.12s, color 0.12s;
 }
-.prep-meta-doc-table th.sortable-th:hover { background: #eef2ff; color: #3730a3; }
-.prep-meta-doc-table th.sort-active { color: #3730a3; }
-.prep-meta-doc-table th .sort-ind { font-size: 10px; opacity: 0.55; }
-.prep-meta-doc-table th.sort-active .sort-ind { opacity: 1; }
+.prep-meta-doc-table th.sortable-th:hover,
+.prep-acts-hub-table th.sortable-th:hover { background: #eef2ff; color: #3730a3; }
+.prep-meta-doc-table th.sortable-th:focus-visible,
+.prep-acts-hub-table th.sortable-th:focus-visible {
+  outline: 2px solid var(--prep-accent, #0f766e); outline-offset: -2px;
+}
+.prep-meta-doc-table th.sort-active,
+.prep-acts-hub-table th.sort-active { color: #3730a3; }
+.prep-meta-doc-table th .sort-ind,
+.prep-acts-hub-table th .sort-ind { font-size: 10px; opacity: 0.55; }
+.prep-meta-doc-table th.sort-active .sort-ind,
+.prep-acts-hub-table th.sort-active .sort-ind { opacity: 1; }
 .prep-meta-doc-table tbody tr:last-child td { border-bottom: none; }
 .prep-meta-doc-table .col-check  { width: 30px; text-align: center; padding: 4px; }
 .prep-meta-doc-table .col-id     { width: 40px; font-size: 12px; color: var(--color-muted, #64748b); white-space: nowrap; }
@@ -3888,11 +3900,19 @@ button.prep-matrix-remove-choice:hover {
 }
 .prep-acts-hub-docs-header .prep-acts-hub-docs-title { margin: 0; }
 
-/* 3-column workflow grid — EN TÊTE de la page depuis ACT-01 : on choisit une
-   capacité, puis un document. La marge est donc dessous, pas dessus. */
+/* Grille des capacités — EN TÊTE de la page depuis ACT-01 : on choisit une
+   capacité, puis un document. La marge est donc dessous, pas dessus.
+
+   QUATRE colonnes, pas trois : à trois, la quatrième carte tombait seule sur une
+   deuxième ligne et se lisait comme un reste. Les quatre capacités sont de même
+   rang (DESIGN_peritext_conventions §0), l'affichage doit le dire.
+
+   `minmax(0, 1fr)` et non `1fr` : `1fr` vaut `minmax(auto, 1fr)`, donc une carte
+   au contenu long — ici la description de l'Alignement, la plus longue des
+   quatre — élargit sa colonne et les quatre cessent d'être égales. */
 .prep-acts-hub-workspace {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin: 0 0 20px;
 }
@@ -3932,10 +3952,12 @@ button.prep-matrix-remove-choice:hover {
   flex: 1;
 }
 
-/* Actions row at bottom of each wf-card */
+/* Actions row at bottom of each wf-card. À quatre colonnes la carte Alignement
+   porte trois boutons dans un quart de largeur : le repli est la règle, pas
+   l'exception, et `margin-top: auto` garde les rangées alignées par le bas. */
 .prep-acts-hub-wf-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   align-items: center;
   margin-top: auto;
@@ -3964,7 +3986,6 @@ button.prep-matrix-remove-choice:hover {
   background: transparent;
   color: var(--prep-accent, #0f766e);
   border: 1px solid color-mix(in srgb, var(--prep-accent, #0f766e) 40%, transparent);
-  margin-left: 8px;
 }
 .prep-acts-hub-wf-btn--secondary:hover { background: color-mix(in srgb, var(--prep-accent, #0f766e) 10%, transparent); }
 /* T6.1 — le lien de nav « Révision fine » est secondaire : plus discret que les étapes primaires. */
@@ -3991,9 +4012,10 @@ button.prep-matrix-remove-choice:hover {
 .prep-acts-hub-wf-link:hover { background: rgba(15, 118, 110, 0.07); }
 .prep-acts-hub-wf-link:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 2px; }
 
-/* Responsive: 2-col at medium widths, 1-col narrow */
-@media (max-width: 1050px) { .prep-acts-hub-workspace { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 700px)  { .prep-acts-hub-workspace { grid-template-columns: 1fr; } }
+/* Responsive : on passe de 4 à 2 puis 1 — jamais 3, qui rendrait l'orpheline
+   qu'on vient de supprimer. */
+@media (max-width: 1300px) { .prep-acts-hub-workspace { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px)  { .prep-acts-hub-workspace { grid-template-columns: minmax(0, 1fr); } }
 
 /* ─── ACT-01 : la page Actions, « action d'abord » ────────────────────────────
    Les cartes ne sont plus des étapes numérotées mais quatre filtres ; la liste
@@ -4005,18 +4027,26 @@ button.prep-matrix-remove-choice:hover {
 .prep-acts-hub-docs-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 /* Bandeau de filtre — n'apparaît que sous filtre (attribut hidden). */
+/* Bandeau permanent : il occupe la même place filtré ou non, sans quoi la carte
+   changerait de hauteur au premier clic. Discret au repos, accentué sous filtre. */
 .prep-acts-hub-filter-strip {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 1.9rem;
   margin: 0 0 10px;
   padding: 5px 10px;
-  border: 1px solid color-mix(in srgb, var(--prep-accent, #0f766e) 30%, transparent);
+  border: 1px solid transparent;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--prep-accent, #0f766e) 7%, transparent);
   font-size: 0.8rem;
+  color: var(--prep-muted, #4f5d6d);
 }
-.prep-acts-hub-filter-label { font-weight: 600; color: var(--prep-accent-dark, #0c4a46); }
+.prep-acts-hub-filter-strip--on {
+  border-color: color-mix(in srgb, var(--prep-accent, #0f766e) 30%, transparent);
+  background: color-mix(in srgb, var(--prep-accent, #0f766e) 7%, transparent);
+}
+.prep-acts-hub-filter-label { font-weight: 600; }
+.prep-acts-hub-filter-strip--on .prep-acts-hub-filter-label { color: var(--prep-accent-dark, #0c4a46); }
 .prep-acts-hub-filter-clear {
   margin-left: auto;
   border: 1px solid currentColor;
@@ -4053,15 +4083,20 @@ button.prep-matrix-remove-choice:hover {
 
 /* Colonne « À faire ». Surtout PAS `display: flex` sur la cellule : un `td` qui
    n'est plus `table-cell` sort de la grille du tableau, et les colonnes se
-   redistribuent. L'espacement passe donc par les pastilles elles-mêmes. */
-.prep-acts-hub-state-cell { line-height: 1.9; }
+   redistribuent. L'espacement passe donc par les pastilles elles-mêmes.
+
+   Les pastilles tiennent sur UNE ligne — jamais de repli. Se replier faisait varier
+   la hauteur d'une ligne à l'autre selon le nombre d'étapes restantes, et on ne
+   pouvait plus suivre une colonne du regard. Elles sont donc compactes, bornées à
+   quatre par ligne (le reste en « +N », l'infobulle porte le tout). */
+.prep-acts-hub-state-cell { white-space: nowrap; overflow: hidden; }
 .prep-acts-hub-badge {
-  margin-right: 4px;
+  margin-right: 3px;
   display: inline-flex;
   align-items: center;
-  padding: 0.1rem 0.5rem;
+  padding: 0.05rem 0.38rem;
   border-radius: 12px;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 600;
   white-space: nowrap;
   border: 1px solid #cbd5e1;
@@ -4071,6 +4106,7 @@ button.prep-matrix-remove-choice:hover {
 .prep-acts-hub-badge--todo { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
 .prep-acts-hub-badge--warn { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
 .prep-acts-hub-badge--none { border-color: #86efac; background: #f0fdf4; color: #166534; }
+.prep-acts-hub-badge--more { border-style: dashed; color: #64748b; }
 
 /* Colonne « Ouvrir » — les quatre gestes, ou le seul geste filtré. */
 .prep-acts-hub-row-actions { white-space: nowrap; }
@@ -4103,10 +4139,62 @@ button.prep-matrix-remove-choice:hover {
 /* Ligne montrée seulement pour situer un enfant retenu par le filtre. */
 .prep-acts-hub-row--context { opacity: 0.5; }
 
-/* La colonne des gestes ne doit pas se laisser comprimer par les titres longs :
-   sans cette borne, `table-layout: auto` la réduit et les boutons se replient. */
-.prep-acts-hub-table th:last-child,
-.prep-acts-hub-table td:last-child { width: 1%; white-space: nowrap; }
+/* Colonnes STABLES d'un filtre à l'autre.
+
+   En `table-layout: auto` — le défaut — les largeurs se calculent sur les lignes
+   effectivement rendues. Passer du corpus entier à « Segmentation », c'est passer de
+   57 lignes à 1 : les colonnes se redistribuaient et la table sautait latéralement à
+   chaque changement de filtre, alors que rien n'avait bougé autour. La dernière
+   colonne changeait de contenu par-dessus le marché (quatre gestes hors filtre, un
+   seul dessous), ce qui ajoutait son propre saut.
+
+   En `fixed`, seul « Titre » respire ; les six autres sont posées. Les largeurs
+   tiennent les deux états de la colonne « Ouvrir » : quatre boutons-icônes hors
+   filtre, et le plus long des libellés filtrés (« Segmentation → »). */
+.prep-acts-hub-table { table-layout: fixed; }
+/* Largeurs mesurées, pas estimées — comptage des pastilles sur les 58 documents de
+   la base de travail le 31 août : maximum réel 4 (17 documents), combinaison la plus
+   longue 40 caractères (« Curation + Alignement + Annotation + Index périmé »).
+   « À faire » est donc taillée pour ce cas-là, et c'est « Titre » — la seule colonne
+   élastique — qui cède la place, avec élision et infobulle.
+   Le cinquième cas (Segmentation en plus) est possible mais n'existe sur aucun
+   document aujourd'hui : il se replie proprement en « +1 », pas en ligne plus haute. */
+.prep-acts-hub-table th:nth-child(1), .prep-acts-hub-table td:nth-child(1) { width: 3rem; }
+.prep-acts-hub-table th:nth-child(3), .prep-acts-hub-table td:nth-child(3) { width: 5.6rem; }
+.prep-acts-hub-table th:nth-child(4), .prep-acts-hub-table td:nth-child(4) { width: 5.8rem; }
+.prep-acts-hub-table th:nth-child(5), .prep-acts-hub-table td:nth-child(5) { width: 5rem; }
+.prep-acts-hub-table th:nth-child(6), .prep-acts-hub-table td:nth-child(6) { width: 21rem; }
+.prep-acts-hub-table th:nth-child(7), .prep-acts-hub-table td:nth-child(7) { width: 9.4rem; }
+/* UNE LIGNE PAR DOCUMENT, sans exception : dès qu'une cellule se replie, sa ligne
+   grandit et la liste cesse de se lire en diagonale. Le titre s'élide donc au lieu
+   de passer à la ligne — son infobulle le rend entier. */
+.prep-acts-hub-table td { white-space: nowrap; }
+.prep-acts-hub-table td:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
+/* L'en-tête non plus ne se replie pas : « Langue » + son indicateur de tri
+   tombaient sur deux lignes et l'en-tête était plus haut que nécessaire. */
+.prep-acts-hub-table th { white-space: nowrap; }
+
+/* UNE SEULE HAUTEUR, quel que soit le filtre. La liste passait de 57 lignes à 1 et
+   la page sautait verticalement à chaque changement de carte ; ici la boîte garde sa
+   taille et c'est son contenu qui défile. Hauteur relative à la fenêtre — donc
+   constante d'un filtre à l'autre, ce qui est le point — plutôt qu'un nombre de
+   pixels qui gaspillerait un grand écran et déborderait d'un petit.
+   Somme des largeurs posées ≈ 45rem : sous une fenêtre étroite, c'est la liste qui
+   défile aussi horizontalement, jamais la page entière. */
+.prep-acts-hub-doc-list {
+  overflow: auto;
+  height: clamp(320px, 52vh, 620px);
+}
+/* Dès que la liste défile, l'en-tête doit rester : c'est lui qui porte les noms de
+   colonne ET le geste de tri. */
+.prep-acts-hub-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg);
+}
+/* L'état vide ne doit pas se coller en haut d'une boîte devenue haute. */
+.prep-acts-hub-doc-list .empty-hint { padding: 1.5rem 0.5rem; text-align: center; }
 
 /* ─── Sub-view back button ───────────────────────────────────────────────── */
 .prep-acts-view-back { padding: 8px 0 12px; }
