@@ -574,6 +574,8 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `doc_date`: string|null — date du document en texte libre, ex. "2024" ou "2024-03-15" (optionnel)
   - `token_count`: integer — nombre de tokens annotés pour ce document
   - `annotation_status`: `missing|annotated`
+  - `curated_at`: string|null (1.6.85) — date ISO du dernier apply de curation **non annulé** ayant modifié ce document. Dérivé de `prep_action_history` (`action_type='curation_apply'`, `reverted=0`), pas une colonne : la curation n'en a aucune. Null = la curation n'a jamais rien changé ici — y compris après un apply resté sans effet, qui n'écrit pas de ligne.
+  - `aligned_count`: integer (1.6.85) — nombre de liens d'alignement touchant ce document, comme pivot **ou** comme cible ; `0` = jamais aligné. Dérivé de `alignment_links`. Couvre aussi les documents hors famille, que `GET /families` ignore par construction.
 - `GET /documents/preview?doc_id=N&limit=M` — mini aperçu du contenu (read-only)
   - `limit` optionnel, défaut `6`, bornes `1..5000` (aligné convention preview v0.1.40)
   - retourne les premières unités `line` triées par `n`:

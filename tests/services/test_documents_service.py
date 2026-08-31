@@ -55,8 +55,130 @@ def test_list_shapes_each_row(db_conn: sqlite3.Connection) -> None:
     assert doc["unit_count"] == 0 and doc["token_count"] == 0
     assert doc["annotation_status"] == "missing"
     assert doc["fts_stale"] is False
+    assert doc["curated_at"] is None and doc["aligned_count"] == 0
     for key in ("doc_id", "source_path", "source_hash", "text_start_n", "publisher"):
         assert key in doc
+
+
+# --- curated_at / aligned_count (ACT-01) ----------------------------------------
+# Les deux etats que la page Actions ne pouvait pas montrer. Aucun n'est une colonne :
+# ils sont derives a la lecture, l'un de prep_action_history, l'autre de alignment_links.
+
+
+def _mk_curation_action(
+    conn: sqlite3.Connection,
+    doc_id: int,
+    performed_at: str,
+    action_type: str = "curation_apply",
+    reverted: int = 0,
+) -> int:
+    cur = conn.execute(
+        "INSERT INTO prep_action_history"
+        "  (doc_id, action_type, performed_at, description, reverted)"
+        " VALUES (?, ?, ?, 'x', ?)",
+        (doc_id, action_type, performed_at, reverted),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def _one(conn: sqlite3.Connection, doc_id: int) -> dict:
+    return next(d for d in list_documents(conn)["documents"] if d["doc_id"] == doc_id)
+
+
+def test_curated_at_reads_the_latest_apply(db_conn: sqlite3.Connection) -> None:
+    doc_id = _mk_doc(db_conn)
+    _mk_curation_action(db_conn, doc_id, "2026-01-01T00:00:00Z")
+    _mk_curation_action(db_conn, doc_id, "2026-08-16T21:50:46Z")
+    assert _one(db_conn, doc_id)["curated_at"] == "2026-08-16T21:50:46Z"
+
+
+def test_curated_at_ignores_a_reverted_apply(db_conn: sqlite3.Connection) -> None:
+    # Le temoin suit le TEXTE, pas l'historique : une passe annulee laisse le
+    # document dans l'etat ou il etait avant elle, donc « jamais cure ».
+    doc_id = _mk_doc(db_conn)
+    _mk_curation_action(db_conn, doc_id, "2026-08-16T21:50:46Z", reverted=1)
+    assert _one(db_conn, doc_id)["curated_at"] is None
+
+
+def test_curated_at_ignores_other_action_types(db_conn: sqlite3.Connection) -> None:
+    # prep_action_history porte aussi merge/split/resegment/update_text : aucun
+    # d'eux n'est une curation, et confondre les deux peindrait « cure » sur tout
+    # document simplement retouche a la main.
+    doc_id = _mk_doc(db_conn)
+    for kind in ("merge_units", "split_unit", "resegment", "update_text", "set_role"):
+        _mk_curation_action(db_conn, doc_id, "2026-08-16T21:50:46Z", action_type=kind)
+    assert _one(db_conn, doc_id)["curated_at"] is None
+
+
+def test_curated_at_is_per_document(db_conn: sqlite3.Connection) -> None:
+    # C'est ce que `curation_apply_history` (migration 007) ne sait PAS faire : son
+    # doc_id est NULL des que la portee est « tout le corpus ». Ici chaque document
+    # touche par un apply corpus-large a sa propre ligne.
+    a, b, c = _mk_doc(db_conn, "A"), _mk_doc(db_conn, "B"), _mk_doc(db_conn, "C")
+    _mk_curation_action(db_conn, a, "2026-03-01T00:00:00Z")
+    _mk_curation_action(db_conn, b, "2026-03-01T00:00:00Z")
+    assert _one(db_conn, a)["curated_at"] == "2026-03-01T00:00:00Z"
+    assert _one(db_conn, b)["curated_at"] == "2026-03-01T00:00:00Z"
+    assert _one(db_conn, c)["curated_at"] is None
+
+
+def _mk_unit(conn: sqlite3.Connection, doc_id: int, n: int) -> int:
+    cur = conn.execute(
+        "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm)"
+        " VALUES (?, 'line', ?, 'x', 'x')",
+        (doc_id, n),
+    )
+    return cur.lastrowid
+
+
+def _mk_link(conn: sqlite3.Connection, pivot: int, target: int, n: int = 1) -> None:
+    # alignment_links a des FK reelles vers units : un lien ne se fabrique pas sur
+    # des unit_id inventes.
+    pu, tu = _mk_unit(conn, pivot, n), _mk_unit(conn, target, n)
+    conn.execute(
+        "INSERT INTO alignment_links"
+        "  (run_id, pivot_doc_id, pivot_unit_id, target_doc_id, target_unit_id,"
+        "   external_id, created_at)"
+        " VALUES ('r', ?, ?, ?, ?, ?, datetime('now'))",
+        (pivot, pu, target, tu, n),
+    )
+    conn.commit()
+
+
+def test_aligned_count_counts_both_directions(db_conn: sqlite3.Connection) -> None:
+    # Un document peut etre cible sans jamais etre pivot : ne compter que
+    # pivot_doc_id le declarerait « jamais aligne ».
+    a, b = _mk_doc(db_conn, "A"), _mk_doc(db_conn, "B")
+    _mk_link(db_conn, a, b, n=1)
+    _mk_link(db_conn, a, b, n=2)
+    assert _one(db_conn, a)["aligned_count"] == 2
+    assert _one(db_conn, b)["aligned_count"] == 2
+
+
+def test_aligned_count_covers_a_document_outside_any_family(
+    db_conn: sqlite3.Connection,
+) -> None:
+    # La raison d'etre du champ : GET /families ne connait que les documents EN
+    # famille (parent ou enfant). Ces deux-la n'ont aucune doc_relations, et leur
+    # alignement serait donc invisible si on le lisait la-bas.
+    a, b = _mk_doc(db_conn, "A"), _mk_doc(db_conn, "B")
+    _mk_link(db_conn, a, b)
+    assert db_conn.execute("SELECT COUNT(*) FROM doc_relations").fetchone()[0] == 0
+    assert _one(db_conn, a)["aligned_count"] == 1
+
+
+def test_derived_state_survives_a_base_without_the_tables(
+    db_conn: sqlite3.Connection,
+) -> None:
+    # Une base ouverte avant la migration, ou reparee a la main, peut ne pas porter
+    # ces tables : /documents doit repondre « aucun etat », pas echouer en entier.
+    doc_id = _mk_doc(db_conn)
+    db_conn.execute("DROP TABLE prep_action_history")
+    db_conn.execute("DROP TABLE alignment_links")
+    db_conn.commit()
+    doc = _one(db_conn, doc_id)
+    assert doc["curated_at"] is None and doc["aligned_count"] == 0
 
 
 # --- stats (R1.2 — canvas stage strip) ------------------------------------------

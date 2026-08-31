@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.84"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.85"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -245,6 +245,24 @@ API_VERSION = CONTRACT_VERSION
 #         duplicate (pivot,target) link is refused. Logic in
 #         services/align_links_service.set_pivot. Additive enum+field → no new route →
 #         snapshot unchanged; openapi moves (version); .md action list updated.
+# 1.6.85: GET /documents gagne `curated_at` et `aligned_count` (additifs) — ACT-01. La
+#         page Actions posait une liste de documents inerte au-dessus de quatre cartes
+#         d'etapes, sans rien qui circule : impossible de voir depuis la liste ce qui
+#         restait a faire, et sur quoi. Les deux etats manquants etaient les seuls non
+#         servis. `curated_at` (ISO, nullable) = date du dernier apply de curation NON
+#         annule, lu dans `prep_action_history` — la trace existait deja, ecrite par le
+#         moteur sur les deux portees (un document, ou tout le corpus, ou
+#         `curate_all_documents` rappelle le meme recorder par document). Elle est
+#         preferee a `curation_apply_history` (migration 007), dont le `doc_id` est NULL
+#         des la portee « tout le corpus » et qui n'est ecrite qu'a la demande du front :
+#         mesure sur la base de travail, 1 ligne contre 5. Limite assumee : un apply sans
+#         effet n'ecrit rien, donc « le texte a ete modifie par la curation », pas
+#         « quelqu'un a clique Appliquer ». `aligned_count` (entier, defaut 0) = liens
+#         touchant le document dans un sens comme dans l'autre ; servi ici plutot que
+#         deduit de /families, qui ne connait que les documents EN famille et laisse donc
+#         muets les isoles (6 sur 58 dans la base de travail). Aucune migration : les deux
+#         valeurs sont derivees, mesurees a 0,6 ms et 3,2 ms sur 14 577 liens. Champs
+#         additifs sur route existante -> snapshot inchange ; openapi bouge.
 # 1.6.84: GET /documents gagne `fts_readable` (booleen, additif) — FTS-01. La liste
 #         portait deja `fts_stale` par document, derive de units <-> fts_units, mais
 #         `stale_doc_ids` avale sqlite3.Error et rend un ensemble vide : un index
@@ -4470,6 +4488,26 @@ def openapi_spec() -> dict[str, Any]:
                                 "True when the FTS index is stale for this doc "
                                 "(>= 1 line unit absent/divergent in fts_units). "
                                 "Derived live, not a persisted flag."
+                            ),
+                        },
+                        "curated_at": {
+                            "type": "string",
+                            "nullable": True,
+                            "description": (
+                                "ISO timestamp of the latest non-reverted curation apply "
+                                "that modified this document's text (prep_action_history, "
+                                "action_type='curation_apply'). Null when curation never "
+                                "changed anything here. Derived live, not a persisted column "
+                                "(ACT-01)."
+                            ),
+                        },
+                        "aligned_count": {
+                            "type": "integer",
+                            "description": (
+                                "Number of alignment_links touching this document, as pivot "
+                                "or as target. 0 = never aligned. Derived live; unlike "
+                                "/families it also covers documents outside any family "
+                                "(ACT-01)."
                             ),
                         },
                     },

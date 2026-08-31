@@ -1572,6 +1572,10 @@
       "DocumentRecord": {
         "additionalProperties": false,
         "properties": {
+          "aligned_count": {
+            "description": "Number of alignment_links touching this document, as pivot or as target. 0 = never aligned. Derived live; unlike /families it also covers documents outside any family (ACT-01).",
+            "type": "integer"
+          },
           "annotation_status": {
             "enum": [
               "missing",
@@ -1584,6 +1588,11 @@
             "type": "string"
           },
           "author_lastname": {
+            "nullable": true,
+            "type": "string"
+          },
+          "curated_at": {
+            "description": "ISO timestamp of the latest non-reverted curation apply that modified this document's text (prep_action_history, action_type='curation_apply'). Null when curation never changed anything here. Derived live, not a persisted column (ACT-01).",
             "nullable": true,
             "type": "string"
           },
@@ -4546,8 +4555,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.84",
-    "x-contract-version": "1.6.84"
+    "version": "1.6.85",
+    "x-contract-version": "1.6.85"
   },
   "openapi": "3.0.3",
   "paths": {

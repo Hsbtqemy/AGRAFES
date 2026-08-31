@@ -119,6 +119,58 @@ _UPDATED_DOC_SQL = """
 """
 
 
+# ACT-01 — les deux états par document que la liste ne savait pas montrer.
+#
+# `curated_at` : la curation n'a AUCUNE colonne dédiée, mais la trace existe déjà —
+# `prep_action_history` est écrit par le moteur lui-même à chaque apply qui modifie du
+# texte, sur les DEUX portées (un document, ou tout le corpus : `curate_all_documents`
+# rappelle le même recorder par document). C'est ce qui la sépare de
+# `curation_apply_history` (migration 007), dont le `doc_id` est NULL dès la portée
+# « tout le corpus » et qui n'est écrite qu'à la demande du front. Une passe annulée
+# (`reverted = 1`) ne compte pas : le témoin suit le texte, pas l'historique.
+#
+# Limite assumée : un apply qui ne change rien n'écrit pas de ligne, donc un document
+# curé sans effet reste « jamais curé ». C'est le sens utile ici — ce qu'on lit est
+# « ce texte a été modifié par la curation », pas « quelqu'un a cliqué Appliquer ».
+_CURATED_AT_SQL = """
+    SELECT doc_id, MAX(performed_at)
+    FROM prep_action_history
+    WHERE action_type = 'curation_apply' AND reverted = 0
+    GROUP BY doc_id
+"""
+
+# `aligned_count` : nombre de liens touchant le document, dans un sens comme dans l'autre.
+# Servi ici plutôt que déduit de /families, qui ne connaît que les documents EN famille —
+# un document isolé y est simplement absent, donc muet sur son alignement.
+_ALIGNED_COUNT_SQL = """
+    SELECT doc_id, SUM(n) FROM (
+        SELECT pivot_doc_id  AS doc_id, COUNT(*) AS n FROM alignment_links GROUP BY pivot_doc_id
+        UNION ALL
+        SELECT target_doc_id AS doc_id, COUNT(*) AS n FROM alignment_links GROUP BY target_doc_id
+    ) GROUP BY doc_id
+"""
+
+
+def _derived_doc_state(conn: sqlite3.Connection) -> tuple[dict[int, str], dict[int, int]]:
+    """(curated_at, aligned_count) par doc_id — deux agrégats, jamais d'exception.
+
+    Les deux tables sont créées par migration, mais une base ouverte avant celle-ci
+    (ou réparée à la main) peut ne pas les porter : l'absence d'état se lit alors
+    « aucun », comme pour un corpus neuf, plutôt que de faire échouer tout /documents.
+    """
+    curated: dict[int, str] = {}
+    aligned: dict[int, int] = {}
+    try:
+        curated = {int(r[0]): str(r[1]) for r in conn.execute(_CURATED_AT_SQL) if r[1]}
+    except sqlite3.Error:
+        pass
+    try:
+        aligned = {int(r[0]): int(r[1] or 0) for r in conn.execute(_ALIGNED_COUNT_SQL)}
+    except sqlite3.Error:
+        pass
+    return curated, aligned
+
+
 def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
     """List every document with derived counts + FTS staleness (GET /documents).
 
@@ -127,6 +179,7 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
     """
     rows = conn.execute(_LIST_SQL).fetchall()
     stale_ids = stale_doc_ids(conn)  # derived, no persisted flag
+    curated_at, aligned_count = _derived_doc_state(conn)  # ACT-01, dérivés eux aussi
     # `stale_ids` vide veut dire deux choses opposées — rien à réindexer, ou index
     # illisible, `stale_doc_ids` avalant l'erreur SQL. Sans ce second signal, une base
     # abîmée s'affichait « ✓ Index à jour » (FTS-01).
@@ -142,6 +195,8 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
             "translator_firstname": r[18], "work_title": r[19], "pub_place": r[20],
             "publisher": r[21], "notes": r[22], "meta_json": _parse_doc_meta(r[23]),
             "fts_stale": r[0] in stale_ids,
+            "curated_at": curated_at.get(r[0]),
+            "aligned_count": aligned_count.get(r[0], 0),
         }
         for r in rows
     ]
