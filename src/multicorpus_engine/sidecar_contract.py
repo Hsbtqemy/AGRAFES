@@ -14,7 +14,7 @@ from typing import Any
 from .services.request_schemas import INDEX_SCHEMA, field_schema_to_openapi
 
 
-CONTRACT_VERSION = "1.6.85"  # semantic versioning for the sidecar API contract
+CONTRACT_VERSION = "1.6.86"  # semantic versioning for the sidecar API contract
 # SID-08 / OPS-03: the API version IS the contract version — derived, never a
 # second hand-maintained literal, so the two can no longer drift. /health reports
 # the *engine* version under `version` (it predates the sidecar); every other
@@ -263,6 +263,22 @@ API_VERSION = CONTRACT_VERSION
 #         muets les isoles (6 sur 58 dans la base de travail). Aucune migration : les deux
 #         valeurs sont derivees, mesurees a 0,6 ms et 3,2 ms sur 14 577 liens. Champs
 #         additifs sur route existante -> snapshot inchange ; openapi bouge.
+# 1.6.86: GET /documents gagne `fts_repairable` (booleen, additif) — FTS-01. Des deux
+#         pannes que `fts_readable: false` recouvre, une seule se repare depuis
+#         l'application, et 1.6.84 ne permettait pas de les distinguer : le bouton
+#         restait donc inactif dans les DEUX cas, alors que la panne « declaration
+#         retiree du schema » porte trois des quatre instantanes abimes du corpus et
+#         qu'une reindexation la repare vraiment (mesure le 31 aout sur une copie :
+#         46 674 lignes, integrity_check ok). L'autre — pages corrompues — n'a aucune
+#         voie SQL qui marche : six mesurees le 25 aout, toutes mortes. Le moteur tranche
+#         et sert un booleen plutot que la taxonomie : l'ecran a besoin de savoir s'il
+#         peut proposer une reparation, pas de connaitre les modes de defaillance de
+#         FTS5. La classification interroge le SCHEMA (`fts_units` est-il declare ?) et
+#         non le type d'exception : `OperationalError` couvre aussi « database is
+#         locked », qui serait sinon annonce reparable. Faux quand l'index se lit —
+#         « reparable » ne veut pas dire « a reparer ». Aucune sonde supplementaire :
+#         `index_failure` remplace `index_readable` et sert les deux drapeaux d'un seul
+#         parcours. Champ additif sur route existante -> snapshot inchange ; openapi bouge.
 # 1.6.84: GET /documents gagne `fts_readable` (booleen, additif) — FTS-01. La liste
 #         portait deja `fts_stale` par document, derive de units <-> fts_units, mais
 #         `stale_doc_ids` avale sqlite3.Error et rend un ensemble vide : un index
@@ -4526,6 +4542,7 @@ def openapi_spec() -> dict[str, Any]:
                                 },
                                 "count": {"type": "integer"},
                                 "fts_readable": {"type": "boolean", "description": "false when the FTS index cannot be read at all (corrupted pages, or virtual table dropped from the schema) — distinct from zero stale documents (FTS-01)"},
+                                "fts_repairable": {"type": "boolean", "description": "true when the unreadable index can be rebuilt from inside the app (declaration dropped from the schema); false for corrupted pages, which need an offline rebuild, and false whenever the index reads (FTS-01)"},
                             },
                         },
                     ]

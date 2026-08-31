@@ -16,7 +16,7 @@ import json
 import sqlite3
 from typing import Any, Optional
 
-from ..indexer import index_readable, stale_doc_ids
+from ..indexer import index_failure, stale_doc_ids
 from ..runs import utcnow_iso
 from .errors import BadRequestError, NotFoundError, ValidationError
 from .validation import Field, validate
@@ -183,7 +183,13 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
     # `stale_ids` vide veut dire deux choses opposées — rien à réindexer, ou index
     # illisible, `stale_doc_ids` avalant l'erreur SQL. Sans ce second signal, une base
     # abîmée s'affichait « ✓ Index à jour » (FTS-01).
-    fts_readable = index_readable(conn)
+    #
+    # `fts_repairable` (1.6.86) tranche la question suivante, que le front ne peut pas
+    # trancher seul : des deux pannes, une seule se répare depuis l'application. Le
+    # moteur la nomme ici plutôt que d'exposer la taxonomie — l'écran a besoin de savoir
+    # s'il peut proposer un bouton, pas de connaître les modes de défaillance de FTS5.
+    fts_failure = index_failure(conn)  # une seule sonde pour les deux drapeaux
+    fts_readable = fts_failure is None
     documents = [
         {
             "doc_id": r[0], "title": r[1], "language": r[2], "doc_role": r[3],
@@ -200,7 +206,14 @@ def list_documents(conn: sqlite3.Connection) -> dict[str, Any]:
         }
         for r in rows
     ]
-    return {"documents": documents, "count": len(documents), "fts_readable": fts_readable}
+    return {
+        "documents": documents,
+        "count": len(documents),
+        "fts_readable": fts_readable,
+        # Faux quand l'index se lit : il n'y a alors rien à réparer. « Réparable » ne
+        # veut pas dire « à réparer ».
+        "fts_repairable": fts_failure == "declaration-missing",
+    }
 
 
 _STATS_LINE_SQL = """

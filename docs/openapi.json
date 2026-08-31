@@ -1748,6 +1748,10 @@
               "fts_readable": {
                 "description": "false when the FTS index cannot be read at all (corrupted pages, or virtual table dropped from the schema) — distinct from zero stale documents (FTS-01)",
                 "type": "boolean"
+              },
+              "fts_repairable": {
+                "description": "true when the unreadable index can be rebuilt from inside the app (declaration dropped from the schema); false for corrupted pages, which need an offline rebuild, and false whenever the index reads (FTS-01)",
+                "type": "boolean"
               }
             },
             "required": [
@@ -4555,8 +4559,8 @@
   "info": {
     "description": "Localhost HTTP API for persistent corpus operations (query/index/import/etc.).",
     "title": "multicorpus_engine sidecar API",
-    "version": "1.6.85",
-    "x-contract-version": "1.6.85"
+    "version": "1.6.86",
+    "x-contract-version": "1.6.86"
   },
   "openapi": "3.0.3",
   "paths": {

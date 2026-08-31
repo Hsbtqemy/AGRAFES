@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from ..indexer import classify_index_failure
+
 
 def _count(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
     row = conn.execute(sql, params).fetchone()
@@ -81,9 +83,10 @@ def collect_diagnostics(conn: sqlite3.Connection) -> dict:
         )
     except sqlite3.Error as exc:
         fts_error = str(exc)
-        fts_failure = (
-            "declaration-missing" if isinstance(exc, sqlite3.OperationalError) else "corrupted"
-        )
+        # Une seule définition de la taxonomie, partagée avec `GET /documents` : deux
+        # règles concurrentes finiraient par diverger, et c'est celle-ci qui décide si
+        # l'application propose une réparation.
+        fts_failure = classify_index_failure(conn, exc)
         # Remise à zéro explicite : si la panne survient sur la deuxième requête, la
         # première a déjà posé un compte. Un chiffre partiel dans un rapport qui annonce
         # « illisible » ferait plus de mal que le trou qu'il comble.

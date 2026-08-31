@@ -76,9 +76,47 @@ describe("indexButtonState — index illisible", () => {
   });
 
   it("n'offre pas un clic qui échouerait", () => {
-    // `POST /index` passe par DELETE/INSERT sur la table même qu'on ne peut plus
-    // toucher : les six voies SQL mesurées le 25 août échouent toutes.
+    // Sur des pages corrompues, `POST /index` passe par DELETE/INSERT sur la table
+    // même qu'on ne peut plus toucher : les six voies SQL mesurées le 25 août
+    // échouent toutes. Sans troisième argument, on est dans ce cas-là.
     expect(indexButtonState(0, false).disabled).toBe(true);
+  });
+
+  it("propose la réparation quand le moteur dit qu'elle marche", () => {
+    // L'autre panne — déclaration disparue du schéma — portait TROIS des quatre
+    // instantanés abîmés du corpus, et une réindexation la répare vraiment : mesuré
+    // le 31 août sur une copie, 46 674 lignes et `integrity_check` à `ok`. La laisser
+    // inactive mettait le remède hors de portée depuis l'application (FTS-01).
+    const st = indexButtonState(0, false, true);
+    expect(st.disabled).toBe(false);
+    expect(st.label).toContain("Réparer");
+    expect(st.label).not.toContain("illisible");
+    expect(st.stale).toBe(true);
+    expect(st.title).toContain("AUCUN texte n'est perdu");
+  });
+
+  it("ne promet pas la réparation sur des pages corrompues", () => {
+    const st = indexButtonState(0, false, false);
+    expect(st.disabled).toBe(true);
+    expect(st.label).toContain("illisible");
+    // Et il dit pourquoi le bouton ne sert à rien, plutôt que de laisser deviner.
+    expect(st.title).toContain("hors ligne");
+  });
+
+  it("ne propose jamais de réparer un index qui se lit", () => {
+    // `fts_repairable` est faux côté moteur quand l'index est lisible, mais le front
+    // ne doit pas dépendre de cette politesse : « réparable » ne veut pas dire
+    // « à réparer », et un index sain ne s'affiche pas en alarme.
+    expect(indexButtonState(0, true, true).label).toBe("✓ Index à jour");
+    expect(indexButtonState(3, true, true).label).toContain("3 documents");
+  });
+
+  it("l'état inconnu l'emporte sur une réparabilité affirmée", () => {
+    // Une liste de documents en échec ne dit rien de l'index : ne pas basculer sur
+    // un bouton « Réparer » à partir d'un drapeau qu'on n'a pas pu relire.
+    const st = indexButtonState(0, null, true);
+    expect(st.disabled).toBe(true);
+    expect(st.label).toContain("inconnu");
   });
 
   it("rassure sur ce qui n'est pas perdu", () => {

@@ -95,9 +95,18 @@ la **cause** reste inconnue.
       `_recreate_fts_table` + un test. **Reste ouvert** : la corruption de pages, qui n'a
       toujours aucun chemin ; et une décision d'interface — le bouton « ⚠ Index illisible »
       est inactif, et son infobulle affirme que reconstruire « ne suffirait pas », ce qui
-      est désormais **faux dans trois cas sur quatre**. Pour l'activer utilement il faut
-      savoir *laquelle* des deux pannes c'est côté front, donc un second champ additif sur
-      `GET /documents` — à trancher
+      est désormais **faux dans trois cas sur quatre**. **Tranché et livré le 31 août** :
+      `fts_repairable` (booléen additif, contrat **1.6.86**) — le moteur juge, l'écran ne
+      connaît pas les modes de défaillance de FTS5. Le bouton devient « ⚠ Réparer
+      l'index », **actif**, sur la panne réparable, et reste inactif sur la corruption de
+      pages avec une infobulle qui dit *pourquoi*. La classification interroge le
+      **schéma** (`fts_units` est-il déclaré ?) et non le type d'exception :
+      `OperationalError` couvre aussi « database is locked », qu'une règle par
+      `isinstance` aurait annoncé réparable. Une seule sonde sert les deux drapeaux.
+      Vérifié sur les trois instantanés au schéma courant : `PRE-FTS-REPAIR` → réparable,
+      `PRE-REBUILD` → non, `WORKCOPY` → lisible. **Reste ouvert** : la corruption de
+      pages, qui n'a toujours aucun chemin depuis l'application — c'est l'item
+      « `scripts/` accueille-t-il l'outil de reconstruction » qui le porte
 - [ ] Décider si `scripts/` accueille l'outil de reconstruction éprouvé le 25 août (recopie des tables saines dans un fichier neuf + refabrication de l'index depuis `units.text_norm`) — il n'existe aujourd'hui nulle part dans le dépôt, il a été écrit dans un répertoire temporaire
 - [ ] Trancher une politique de sauvegarde de la base de travail : le dossier en compte huit versions accumulées à la main depuis mars, sans rotation ni règle, et c'est ce qui a sauvé la mise deux fois
 

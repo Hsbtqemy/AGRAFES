@@ -311,12 +311,14 @@ export class MetadataScreen {
       const paquet = await listDocumentsWithIndexHealth(this._conn);
       this._docs = paquet.documents;
       this._ftsReadable = paquet.ftsReadable;
+      this._ftsRepairable = paquet.ftsRepairable;
       this._lastErrorMsg = null;
       this._lastRefreshAt = Date.now();
     } catch (err) {
       // On ne sait plus rien de l'index : ne pas laisser le bouton sur son dernier
       // état, qui rassurerait sous un bandeau d'erreur.
       this._ftsReadable = null;
+      this._ftsRepairable = false;
       this._log(`Erreur liste documents: ${err instanceof SidecarError ? err.message : String(err)}`, true);
     } finally {
       this._isBusy = false;
@@ -333,12 +335,20 @@ export class MetadataScreen {
    */
   private _ftsReadable: boolean | null = null;
 
+  /**
+   * Vrai seulement sur un `fts_repairable: true` explicite du sidecar (1.6.86) : des
+   * deux pannes que « illisible » recouvre, une seule se répare depuis l'application,
+   * et c'est le moteur qui tranche. Faux par défaut — proposer un bouton qui meurt au
+   * clic vaut moins que ne rien proposer.
+   */
+  private _ftsRepairable = false;
+
   /** Met à jour le bouton unique « Mettre à jour l'index » (HANDOFF F4). */
   private _refreshIndexButton(): void {
     const btn = this._root.querySelector<HTMLButtonElement>("#meta-reindex-btn");
     if (!btn) return;
     const staleCount = this._docs.filter(d => d.fts_stale).length;
-    const st = indexButtonState(staleCount, this._ftsReadable);
+    const st = indexButtonState(staleCount, this._ftsReadable, this._ftsRepairable);
     btn.textContent = st.label;
     btn.title = st.title;
     btn.disabled = st.disabled || this._isBusy || !this._conn;

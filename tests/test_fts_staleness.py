@@ -165,16 +165,67 @@ def test_list_documents_says_when_the_index_cannot_be_read(indexed_corpus, db_co
     from multicorpus_engine.db.connection import get_connection
     from multicorpus_engine.services.documents_service import list_documents
 
-    assert list_documents(db_conn)["fts_readable"] is True
+    sain = list_documents(db_conn)
+    assert sain["fts_readable"] is True
+    # « reparable » ne veut pas dire « a reparer » : un index qui se lit n'a rien
+    # a reparer, et l'ecran ne doit surtout pas proposer de bouton.
+    assert sain["fts_repairable"] is False
 
     _retirer_declaration_fts(db_conn)
     db_conn.close()
     conn = get_connection(tmp_path / "test.db")
     payload = list_documents(conn)
     assert payload["fts_readable"] is False
+    # Celle-ci se repare depuis l'application : c'est la panne de trois des quatre
+    # instantanes abimes, et `build_index` la corrige (voir le test dedie).
+    assert payload["fts_repairable"] is True
     # Les documents restent listes : on signale, on ne casse pas l'ecran.
     assert payload["count"] == 2
     assert all(d["fts_stale"] is False for d in payload["documents"])
+    conn.close()
+
+
+def test_page_corruption_is_not_announced_as_repairable(db_conn, tmp_path):
+    """L'autre panne : illisible AUSSI, mais aucune voie SQL ne la repare.
+
+    Six mesurees le 25 aout, toutes mortes. Annoncer `fts_repairable: true` ici
+    ferait proposer un bouton qui mourrait au clic.
+    """
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.services.documents_service import list_documents
+    from tests.conftest import corrupt_fts_pages
+
+    _remplir_index(db_conn)
+    db_conn.close()
+    if corrupt_fts_pages(tmp_path / "test.db") is None:
+        pytest.skip("aucune page ne reproduit la signature du 25 aout sur ce build SQLite")
+
+    conn = get_connection(tmp_path / "test.db")
+    payload = list_documents(conn)
+    assert payload["fts_readable"] is False
+    assert payload["fts_repairable"] is False
+    assert payload["count"] == 1
+    conn.close()
+
+
+def test_a_locked_database_is_not_announced_as_repairable(db_conn, tmp_path):
+    """Le piege qu'un `isinstance(exc, OperationalError)` aurait laisse passer.
+
+    Un verrou rend `OperationalError`, comme la declaration absente. Classer sur le
+    type d'exception aurait donc annonce « reparable » sur une base simplement
+    occupee, et le bouton aurait propose de reconstruire l'index pour rien. La
+    classification interroge le schema : `fts_units` est-il declare ?
+    """
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.indexer import classify_index_failure
+
+    verrou = sqlite3.OperationalError("database is locked")
+    assert classify_index_failure(db_conn, verrou) == "corrupted"
+
+    _retirer_declaration_fts(db_conn)
+    db_conn.close()
+    conn = get_connection(tmp_path / "test.db")
+    assert classify_index_failure(conn, verrou) == "declaration-missing"
     conn.close()
 
 

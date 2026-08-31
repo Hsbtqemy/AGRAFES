@@ -249,6 +249,46 @@ def update_index(
     return stats
 
 
+def classify_index_failure(conn: sqlite3.Connection, exc: sqlite3.Error) -> str:
+    """Name the FTS failure: ``declaration-missing`` or ``corrupted``.
+
+    The two documented failures need telling apart because **only one of them is
+    repairable from inside the app** (FTS-01): with the declaration gone,
+    :func:`build_index` recreates the table and refills it from ``units``; with
+    corrupted pages, every SQL route measured on 25 August dies on the damaged
+    tree, and the file must be rebuilt offline.
+
+    The question is asked of the **schema**, not of the exception type. Sniffing
+    ``isinstance(exc, OperationalError)`` looks equivalent and is not: a locked
+    database raises ``OperationalError`` too, and would be declared repairable —
+    the app would then offer a repair button for a transient lock.
+    """
+    try:
+        declared = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'fts_units'"
+        ).fetchone()[0]
+    except sqlite3.Error:
+        # Le schéma lui-même est illisible : on ne promet aucune réparation.
+        return "corrupted"
+    return "corrupted" if declared else "declaration-missing"
+
+
+def index_failure(conn: sqlite3.Connection) -> str | None:
+    """``None`` when the FTS index reads; otherwise the failure's name.
+
+    Single probe, so callers that need both *readable* and *repairable* pay one
+    scan rather than two — see :func:`index_readable` for why the scan is a
+    ``COUNT(*)`` and not a cheaper peek.
+    """
+    try:
+        conn.execute("SELECT COUNT(*) FROM fts_units").fetchone()
+        return None
+    except sqlite3.Error as exc:
+        failure = classify_index_failure(conn, exc)
+        logger.warning("index_failure: FTS index unusable (%s) — %s", exc, failure)
+        return failure
+
+
 def index_readable(conn: sqlite3.Connection) -> bool:
     """Can the FTS index be read at all?
 
@@ -284,12 +324,7 @@ def index_readable(conn: sqlite3.Connection) -> bool:
     request. Note that ``PRAGMA quick_check`` is *not* an alternative: it says
     ``ok`` on three of the four broken snapshots (the declaration-removed ones).
     """
-    try:
-        conn.execute("SELECT COUNT(*) FROM fts_units").fetchone()
-        return True
-    except sqlite3.Error as exc:
-        logger.warning("index_readable: FTS index unusable (%s)", exc)
-        return False
+    return index_failure(conn) is None
 
 
 def stale_doc_ids(conn: sqlite3.Connection) -> set[int]:

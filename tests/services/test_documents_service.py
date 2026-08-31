@@ -42,7 +42,9 @@ def test_list_empty(db_conn: sqlite3.Connection) -> None:
     # `fts_readable` fait partie de la reponse depuis 1.6.84 (FTS-01) : une base
     # vide a bien un index lisible, simplement vide. Les deux branches du drapeau
     # sont exercees dans tests/test_fts_staleness.py.
-    assert list_documents(db_conn) == {"documents": [], "count": 0, "fts_readable": True}
+    assert list_documents(db_conn) == {
+        "documents": [], "count": 0, "fts_readable": True, "fts_repairable": False,
+    }
 
 
 def test_list_shapes_each_row(db_conn: sqlite3.Connection) -> None:

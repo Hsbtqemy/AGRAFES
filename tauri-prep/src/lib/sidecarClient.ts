@@ -1176,14 +1176,24 @@ export async function listDocuments(conn: Conn): Promise<DocumentRecord[]> {
  */
 export async function listDocumentsWithIndexHealth(
   conn: Conn,
-): Promise<{ documents: DocumentRecord[]; ftsReadable: boolean }> {
+): Promise<{ documents: DocumentRecord[]; ftsReadable: boolean; ftsRepairable: boolean }> {
   const res = (await conn.get("/documents")) as {
     documents: DocumentRecord[];
     fts_readable?: boolean;
+    fts_repairable?: boolean;
   };
   // Un sidecar antérieur à 1.6.84 n'envoie pas le champ. L'absence de réponse n'est
   // pas une alarme : on ne crie au feu que sur un `false` explicite.
-  return { documents: res.documents, ftsReadable: res.fts_readable !== false };
+  //
+  // `fts_repairable` (1.6.86) va dans l'autre sens : son absence ne doit PAS faire
+  // proposer une réparation. Un sidecar ancien ne sait pas distinguer les deux pannes,
+  // et offrir un bouton qui meurt au clic vaut moins que ne rien offrir — d'où le
+  // `=== true` explicite, et non la symétrie du champ précédent.
+  return {
+    documents: res.documents,
+    ftsReadable: res.fts_readable !== false,
+    ftsRepairable: res.fts_repairable === true,
+  };
 }
 
 /** A single text unit (line) returned by GET /units. */

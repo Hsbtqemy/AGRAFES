@@ -576,6 +576,9 @@ Response now includes pagination fields: `total`, `limit`, `offset`, `has_more`,
   - `annotation_status`: `missing|annotated`
   - `curated_at`: string|null (1.6.85) — date ISO du dernier apply de curation **non annulé** ayant modifié ce document. Dérivé de `prep_action_history` (`action_type='curation_apply'`, `reverted=0`), pas une colonne : la curation n'en a aucune. Null = la curation n'a jamais rien changé ici — y compris après un apply resté sans effet, qui n'écrit pas de ligne.
   - `aligned_count`: integer (1.6.85) — nombre de liens d'alignement touchant ce document, comme pivot **ou** comme cible ; `0` = jamais aligné. Dérivé de `alignment_links`. Couvre aussi les documents hors famille, que `GET /families` ignore par construction.
+  - **au niveau de la réponse**, pas du document — l'index est un objet unique :
+    - `fts_readable`: boolean (1.6.84) — `false` quand l'index FTS ne peut pas être lu du tout : pages corrompues, ou table virtuelle disparue du schéma. À distinguer de « zéro document périmé » : `stale_doc_ids` avale l'erreur SQL et rend un ensemble vide, donc sans ce drapeau un index **cassé** est indistinguable d'un index **à jour**.
+    - `fts_repairable`: boolean (1.6.86) — `true` quand l'index illisible peut être reconstruit **depuis l'application** (`POST /index`), ce qui est le cas de la panne « déclaration disparue du schéma ». `false` pour les pages corrompues, qui exigent une reconstruction hors ligne, et `false` aussi quand l'index se lit : *réparable* ne veut pas dire *à réparer*.
 - `GET /documents/preview?doc_id=N&limit=M` — mini aperçu du contenu (read-only)
   - `limit` optionnel, défaut `6`, bornes `1..5000` (aligné convention preview v0.1.40)
   - retourne les premières unités `line` triées par `n`:

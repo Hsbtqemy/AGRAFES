@@ -34,6 +34,7 @@ export interface IndexButtonState {
 export function indexButtonState(
   staleCount: number,
   ftsReadable: boolean | null = true,
+  ftsRepairable: boolean = false,
 ): IndexButtonState {
   // `null` = on n'a pas pu demander (liste des documents en échec, sidecar injoignable).
   // Ne rien savoir n'autorise pas à rassurer : sans ce cas, un chargement raté laissait
@@ -51,24 +52,37 @@ export function indexButtonState(
   // exactement comme sur une base à jour. Sans ce garde, l'écran affichait « ✓ Index à
   // jour » sur les deux instantanés corrompus du corpus (FTS-01, mesuré le 28 août).
   //
-  // Le bouton est **inactif** : `POST /index` passe par DELETE/INSERT sur la table même
-  // qu'on ne peut plus toucher, et les six voies SQL mesurées le 25 août échouent toutes.
+  // Des deux pannes que `ftsReadable: false` recouvre, **une seule se répare d'ici**, et
+  // c'est le moteur qui tranche (`fts_repairable`, contrat 1.6.86) : l'écran n'a pas à
+  // connaître les modes de défaillance de FTS5. Déclaration disparue du schéma → une
+  // réindexation la reconstruit vraiment, mesuré le 31 août sur une copie d'un des
+  // instantanés abîmés — 46 674 lignes, `integrity_check` à `ok`. Pages corrompues → les
+  // six voies SQL mesurées le 25 août échouent toutes, y compris `POST /index`, qui passe
+  // par DELETE/INSERT sur la table même qu'on ne peut plus toucher.
   //
-  // Nuance mesurée le 31 août, qui reste à arbitrer : c'est vrai de la corruption de
-  // pages, et FAUX de l'autre panne — déclaration retirée du schéma — qui est celle de
-  // trois des quatre bases abîmées. Depuis le correctif de `_recreate_fts_table`, une
-  // réindexation la répare vraiment. Mais le front ne sait pas *laquelle* des deux pannes
-  // il regarde : `fts_readable` est un booléen. L'activer utilement demanderait un second
-  // champ additif sur `GET /documents`. En attendant, l'infobulle ne promet plus rien sur
-  // ce que la reconstruction peut ou ne peut pas faire (FTS-01).
+  // C'est la panne réparable qui portait trois des quatre bases abîmées du corpus : la
+  // laisser inactive, comme jusqu'au 31 août, mettait le remède hors de portée depuis
+  // l'application alors qu'il tenait en un clic (FTS-01).
+  if (!ftsReadable && ftsRepairable) {
+    return {
+      label: "⚠ Réparer l'index",
+      title:
+        "L'index de recherche a disparu du schéma de la base. La recherche est hors "
+        + "service, mais AUCUN texte n'est perdu : l'index se refabrique intégralement "
+        + "depuis les unités. Cliquez pour le reconstruire (job asynchrone).",
+      disabled: false,
+      stale: true,
+    };
+  }
   if (!ftsReadable) {
     return {
       label: "⚠ Index illisible",
       title:
-        "L'index de recherche ne peut pas être lu — il est corrompu, ou sa table a "
-        + "disparu du schéma. La recherche est hors service, mais AUCUN texte n'est "
-        + "perdu : l'index se refabrique intégralement depuis les unités. "
-        + "La base doit être réparée avant que la recherche revienne.",
+        "L'index de recherche ne peut pas être lu : ses pages sont abîmées. La recherche "
+        + "est hors service, mais AUCUN texte n'est perdu — l'index se refabrique "
+        + "intégralement depuis les unités. Reconstruire depuis ici ne suffirait pas : "
+        + "toutes les voies passent par la table endommagée, et la base doit être "
+        + "réparée hors ligne.",
       disabled: true,
       stale: true,
     };
