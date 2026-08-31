@@ -4,8 +4,9 @@
 > du 2026-08-31. Rattache à [`pilotage/ACT-01.md`](../pilotage/ACT-01.md) (la page Actions,
 > livrée sans ce modèle) et à [`DESIGN_peritext_conventions.md`](DESIGN_peritext_conventions.md)
 > §0 (les capacités sont indépendantes, les documents arrivent à n'importe quel stade).
-> **Trois décisions restent ouvertes**, listées en §6 — elles doivent être tranchées avant
-> qu'un ticket soit ouvert.
+> **Deux décisions restent ouvertes**, listées en §6 — elles doivent être tranchées avant
+> qu'un ticket soit ouvert. La troisième, la signature de péremption, a été tranchée le
+> 31 août par la mesure de la §5.
 
 ## 0. Le défaut que ça corrige
 
@@ -120,26 +121,76 @@ Le dépôt a déjà ce problème et sa réponse : `source_changed_at` (migration
 transposition : le `[X]` garde une **signature de ce qu'il a validé**, et retombe
 visiblement à `[/]` quand elle ne correspond plus.
 
-Reste à choisir la signature, et le choix n'est pas neutre :
+Reste à choisir la signature. **Mesuré le 31 août** sur la base de travail
+(58 documents, 299 lignes de `prep_action_history`), en lecture seule.
 
-- **Le compte d'unités** au moment de la validation — bon marché, mais aveugle à une
-  resegmentation qui rendrait le même nombre d'unités.
-- **L'`action_id` de `prep_action_history`** — le moteur y enregistre déjà chaque
-  mutation destructive par document (`curation_apply`, `resegment`, `merge_units`,
-  `split_unit`, `update_text`, `set_role`, `set_paragraph`). Une validation périme dès
-  qu'une action postérieure touche le document. Précis, et **sans donnée nouvelle**.
-- **Rien** — le `[X]` survit à tout, et c'est à l'utilisateur de le retirer.
+### Ce que la mesure établit
 
-La deuxième piste est la seule qui se dérive de l'existant. Elle a une limite à mesurer
-avant de s'y engager : `prep_action_history` est *forward-only* depuis la migration 019,
-et le chemin **asynchrone** de la curation n'y écrit rien (constat ouvert dans
-`pilotage/ACT-01.md`). Une signature fondée dessus hériterait de ces deux trous.
+**Le taux de retour est réel, ni nul ni permanent.** On revient sur une capacité déjà
+travaillée assez souvent pour qu'une signature serve, mais pas au point qu'elle périme
+tout :
 
-> **À vérifier en base avant d'écrire une ligne** — combien de documents portent une
-> action postérieure à leur dernière trace de capacité ? Une signature qui périmerait
-> tout le temps ne vaut pas mieux qu'une qui ne périme jamais.
+| capacité | documents touchés | dont revisités | moments de coche qui auraient péri |
+|---|---|---|---|
+| Curation | 10 | 4 (40 %) | 7 / 17 (41 %) |
+| Segmentation | 17 | 2 (11 %) | 6 / 23 (26 %) |
+| Alignement | 22 | 6 (27 %) | 13 / 35 (37 %) |
+| Annotation | 22 | 6 (27 %) | 13 / 35 (37 %) |
 
-## 6. Les trois décisions ouvertes
+Environ **une coche sur trois** finirait par être démentie par la suite du travail. Une
+signature n'est donc pas un ornement : sans elle, un tiers des `[X]` deviennent des
+mensonges silencieux.
+
+**La signature par compte d'unités est disqualifiée.** Sur les 12 resegmentations
+enregistrées, **2 rendent exactement le même nombre d'unités** — 16 %. Une fois sur six,
+le découpage change sous la coche sans qu'elle bronche. Pour un signal dont le seul
+métier est l'honnêteté, c'est rédhibitoire.
+
+**« Rien » est disqualifiée aussi**, par le premier tableau : laisser le `[X]` survivre à
+tout, c'est accepter qu'un tiers d'entre eux mentent.
+
+**La règle naïve sur-déclenche.** `set_role` compte 11 actions et ne concerne aucune des
+quatre capacités : sous « toute action postérieure périme », renommer un rôle annulerait
+tout ce qui était validé sur le document. Le périmètre doit être **par capacité**, pas
+par document.
+
+### Ce que la mesure déplace
+
+Le vrai obstacle n'est pas le choix de la signature, c'est sa **couverture** :
+
+> **36 documents sur 58 — 62 % du corpus — n'ont aucune action enregistrée.**
+
+Sur eux, une signature fondée sur l'historique ne peut jamais périmer quoi que ce soit :
+le `[X]` y serait définitif faute de preuve du contraire. Trois causes cumulées, déjà
+connues : `prep_action_history` est *forward-only* depuis le 7 mai 2026 ; le chemin
+**asynchrone** de la curation n'y écrit rien (constat ouvert dans `pilotage/ACT-01.md`) ;
+et une préparation antérieure n'a laissé aucune trace. L'activité est en outre très
+concentrée — le document le plus actif porte 124 actions, soit 47 % de tout l'historique,
+pour une médiane de 3.
+
+### Ce que la mesure recommande
+
+**Deux signatures, pas une**, parce qu'aucune ne couvre seule :
+
+1. **L'historique, scopé par capacité** — précis là où il existe, et il fait exactement
+   le bon travail : il périme sur les vrais retours et ignore `set_role`.
+2. **Un repli dérivé** (`unit_count`, `aligned_count`, `token_count`, `curated_at` au
+   moment de la coche) pour les 62 % de documents que l'historique ignore. Sa cécité
+   mesurée à 16 % ne mord que là où l'autre est muet — et 84 % de couverture vaut mieux
+   que zéro.
+
+Un `[X]` doit alors **dire sur quoi il se fonde** : « validé le 12/08, aucune
+modification enregistrée depuis » n'est pas la même promesse que « validé le 12/08,
+avant que l'historique existe ». Une coche qui tait sa propre incertitude est le défaut
+qu'on vient de corriger ailleurs — l'index de recherche qui se disait « à jour » alors
+qu'il était illisible (FTS-01).
+
+> **Note de méthode.** La première passe de cette mesure était circulaire : elle posait
+> le `[X]` juste après la *dernière* action de la capacité, donc aucune action de cette
+> capacité ne pouvait suivre, et elle rendait 0 % de péremption partout. Les chiffres
+> ci-dessus viennent de la seconde, qui compte les retours effectifs.
+
+## 6. Les décisions
 
 - [ ] **`workflow_status` survit-il à côté ?** Il est manuel, au grain du document
       entier, et porte `validated_at` + `validated_run_id`. Deux vocabulaires de
@@ -147,8 +198,10 @@ et le chemin **asynchrone** de la curation n'y écrit rien (constat ouvert dans
       curation l'ont fait (`curation_apply_history` face à `prep_action_history`).
       Trois issues : il se retire ; il se dérive des quatre cases (« validé » = les
       quatre à `[X]` ) ; il reste indépendant, et on documente pourquoi.
-- [ ] **La signature de péremption**, entre les trois pistes de la §5 — à trancher sur
-      une mesure en base, pas sur le papier.
+- [x] **La signature de péremption** — tranchée par la mesure du 31 août (§5) :
+      historique **scopé par capacité**, plus un repli dérivé pour les 62 % de documents
+      que l'historique ignore, et un `[X]` qui dit sur quoi il se fonde. Le compte
+      d'unités seul et « rien » sont écartés, chiffres à l'appui.
 - [ ] **La case remplace-t-elle le bouton d'ouverture ?** Les colonnes « À faire » et
       « Ouvrir » disent déjà la même chose deux fois — quatre capacités en état, puis
       les quatre mêmes en gestes, pour 30 rem à elles deux. Une case cliquable qui
