@@ -6,7 +6,7 @@ statut: interrompu
 # ACT-01 — la page Actions : une liste de documents qui ne sert à rien
 
 **Arrêté sur** — refonte « action d'abord » écrite et testée, non commitée, 31 août 2026.
-Reste la vérification à l'écran et trois constats trouvés en chemin.
+Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 
 ## Reste
 
@@ -39,9 +39,13 @@ Reste la vérification à l'écran et trois constats trouvés en chemin.
 - [x] Décider ce que devient la carte de tête « Traitement de corpus » — supprimée, avec
       ses trois règles CSS devenues mortes. Son unique bouton a rejoint l'en-tête de la
       carte Documents
-- [ ] **Vérifier à l'écran** — passe `qa/actions-action-dabord.md` à écrire et à jouer
-      dans le shell. Rien n'a encore été vu tourner : tout est vérifié par tests
-      (1295 vitest prep, 79 shell, 34 pytest du service) et par mesure en base, pas à l'œil
+- [ ] **Jouer la passe `qa/actions-action-dabord.md`** — écrite le 31 août (50 points,
+      7 zones), pas encore jouée. Rien n'a été VU tourner : tout est vérifié par tests
+      (1295 vitest prep, 79 shell, 34 pytest du service) et par mesure en base, pas à
+      l'œil. **Le sidecar doit être reconstruit avant** — celui en place date du 28 août
+      et ignore les deux champs neufs ; sans ça la passe mesure un binaire périmé et
+      annonce « 58 à faire » partout. Le préambule de la passe porte la commande et le
+      contrôle `/health` (`contract_version` = 1.6.85)
 - [ ] **Le chemin asynchrone de la curation n'enregistre rien** — trouvé en chemin, hors
       périmètre, non corrigé. `POST /jobs/enqueue kind=curate` appelle `curate_document` /
       `curate_all_documents` **sans** `record_action` (`sidecar.py:9998-10009`), là où
@@ -65,11 +69,12 @@ Reste la vérification à l'écran et trois constats trouvés en chemin.
 
 ## QA
 
-- qa/actions-action-dabord.md — **pas encore écrite.** Elle vérifiera ce qui ne se prouve
-  pas par un test unitaire : que l'état affiché correspond au document en base (un
-  document non segmenté ne doit pas s'annoncer segmenté), que le filtre et la vue
-  hiérarchie se composent sans se contredire, et que la colonne de gestes ne se replie pas
-  sur un titre long.
+- qa/actions-action-dabord.md — écrite, **jamais jouée**. Elle vérifie ce qu'aucun test
+  unitaire ne prouve : que l'état affiché correspond au document en base, que le filtre et
+  la vue hiérarchie se composent sans se contredire, et que la colonne de gestes tient à
+  l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas estimés —
+  57/1/37/53 sur les cartes, 17 pastilles « Index périmé », une seule ligne « Rien à
+  faire » (`#416`), 6 documents dont le geste Alignement doit refuser.
 
 ## Contexte
 
