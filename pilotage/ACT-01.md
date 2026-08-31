@@ -39,16 +39,22 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 - [x] Décider ce que devient la carte de tête « Traitement de corpus » — supprimée, avec
       ses trois règles CSS devenues mortes. Son unique bouton a rejoint l'en-tête de la
       carte Documents
-- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 67 points en 8 zones, **19 joués**
-      au 31 août (les quatre cartes, le filtre et la liste, le début du tri). Le reste n'a
-      pas été VU tourner : il est couvert par tests (1295 vitest prep, 79 shell, 34 pytest
-      du service) et par mesure en base, pas à l'œil. Le préambule porte la reconstruction
-      du sidecar et le contrôle `/health` — à relire à chaque rejeu plutôt qu'à faire de
-      mémoire. Un item a été **remplacé en cours de passe** : « le tri accentue et
-      minuscule pareil » était invérifiable sur ce corpus (aucune paire de titres, langues
-      ou rôles ne collationne égale en différant à l'octet — mesuré) et déjà prouvé par
-      `docSort.test.ts` ; à sa place, les trois rangs où le comparateur du dépôt diverge
-      d'un `<` naïf sur les 58 vrais titres
+- [ ] **Finir la passe `qa/actions-action-dabord.md`** — 69 points en 8 zones, **38 joués**
+      au 31 août : quatre zones closes (cartes, filtre et liste, tri, état par ligne) et
+      les gestes de la ligne à mi-chemin. Le reste — hiérarchie sous filtre, tenue à
+      l'écran, cas creux — n'a pas été VU tourner : il est couvert par tests (1295 vitest
+      prep, 79 shell, 34 pytest du service) et par mesure en base, pas à l'œil. Le
+      préambule porte la reconstruction du sidecar et le contrôle `/health` — à relire à
+      chaque rejeu plutôt qu'à faire de mémoire. **Deux endroits ont été réécrits en cours
+      de passe**, sur question de l'utilisateur, et les deux disaient quelque chose
+      d'invérifiable : « le tri accentue et minuscule pareil » (aucune paire de titres,
+      langues ou rôles de ce corpus ne collationne égale en différant à l'octet — mesuré ;
+      et `docSort.test.ts` le prouvait déjà), remplacé par les trois rangs où le
+      comparateur du dépôt diverge d'un `<` naïf sur les 58 vrais titres ; et « sous
+      filtre, la ligne n'offre plus qu'un bouton », dont la parenthèse « (ou l'étape
+      filtrée) » était illisible, et qui laissait suivre deux items sur `⇄` — une icône qui
+      n'existe **pas** sous filtre. Leçon retenue une fois de plus : un item écrit de tête
+      plutôt que mesuré coûte le temps de celui qui joue la passe
 - [x] **Le chemin asynchrone de la curation n'enregistre rien** — trouvé en chemin, puis
       **corrigé** (contrat 1.6.87), et il n'était pas seul. En énumérant les appelants
       plutôt qu'en corrigeant celui qu'on regardait : **trois** chemins appliquent la
@@ -108,7 +114,7 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
 
 ## QA
 
-- qa/actions-action-dabord.md — **en cours**, 19 points sur 67 au 31 août. Elle vérifie ce
+- qa/actions-action-dabord.md — **en cours**, 38 points sur 69 au 31 août. Elle vérifie ce
   qu'aucun test unitaire ne prouve : que l'état affiché correspond au document en base, que
   le filtre et la vue hiérarchie se composent sans se contredire, et que la colonne de
   gestes tient à l'écran. Ses comptes attendus sont mesurés sur la base de travail, pas

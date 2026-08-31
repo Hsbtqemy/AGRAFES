@@ -101,6 +101,13 @@ la casse ou aux accents à l'œil — **aucune** paire de titres, langues ou rô
 corpus ne collationne égale en différant à l'octet (mesuré), et `docSort.test.ts` la
 prouve déjà. C'est ce que l'item précédent demandait, en vain.
 
+**La colonne « Ouvrir » change de forme selon le filtre**, et les items en tiennent
+compte : hors filtre elle porte les quatre icônes `◇ ⌥ ⇄ ◎`, sous filtre un seul bouton
+en toutes lettres dont le libellé suit la carte active (`Curation →`, `Segmentation →`…).
+Les deux items sur `⇄` demandent donc de **repasser par « Tout afficher »** — l'icône
+n'existe pas sous filtre. Et sous le filtre Alignement, `#364` ne serait de toute façon
+pas là : il porte 1227 liens, le filtre ne liste que le « à faire » (mesuré).
+
 ### Les quatre cartes
 
 - [x] Les cartes affichent 57 / 1 / 37 / 53 à faire, dans l'ordre Curation · Segmentation · Alignement · Annotation
@@ -128,34 +135,36 @@ prouve déjà. C'est ce que l'item précédent demandait, en vain.
 - [x] L'indicateur passe de ⇅ à ↑ puis ↓, et les autres colonnes retombent toutes à ⇅
 - [x] « Unités » se trie en nombre : 1518 vient après 897, jamais avant
 - [x] « À faire » en descendant met en tête les documents à quatre pastilles
-- [ ] Trié par titre croissant, `[1] hi rend=italicxhiscriptalert(1).txt` est la PREMIÈRE ligne
-- [ ] Aux rangs 4 et 5, `9_CI-TrFr-2021_Aligné_UTF8.txt` vient AVANT `9-CI-OrEn-Obs-2022_Non Aligné.docx`
-- [ ] Aux rangs 11 et 12, `Coe-House_ES.docx` vient AVANT `Coe-House-AL_EN.docx`
-- [ ] Changer de filtre garde le tri en place
-- [ ] En hiérarchie, trier ne sort aucun enfant de sous son parent
-- [ ] Le tri s'actionne au clavier : Tab jusqu'à un en-tête, puis Entrée
-- [ ] « Ouvrir » n'est pas triable ; « N° » l'est et ramène à l'ordre d'arrivée
+- [x] Trié par titre croissant, `[1] hi rend=italicxhiscriptalert(1).txt` est la PREMIÈRE ligne
+- [x] Aux rangs 4 et 5, `9_CI-TrFr-2021_Aligné_UTF8.txt` vient AVANT `9-CI-OrEn-Obs-2022_Non Aligné.docx`
+- [x] Aux rangs 11 et 12, `Coe-House_ES.docx` vient AVANT `Coe-House-AL_EN.docx`
+- [x] Changer de filtre garde le tri en place
+- [x] En hiérarchie, trier ne sort aucun enfant de sous son parent
+- [x] Le tri s'actionne au clavier : Tab jusqu'à un en-tête, puis Entrée
+- [x] « Ouvrir » n'est pas triable ; « N° » l'est et ramène à l'ordre d'arrivée
 
 ### L'état par ligne
 
-- [ ] La colonne « À faire » existe entre « Unités » et « Ouvrir »
-- [ ] `#416 Beigbeder-Francs_FR.docx` est la SEULE ligne à afficher « Rien à faire », en vert
-- [ ] 17 lignes portent « Index périmé », en ambre, et cette pastille vient toujours en dernier
-- [ ] `9_CI-TrFr-2021_Aligné_UTF8.txt` porte les quatre pastilles d'étape
-- [ ] Aucune ligne n'affiche « Segmentation » alors que sa colonne « Unités » montre plus de 1
-- [ ] Le titre `[1] hi rend=italicxhiscriptalert(1).txt` s'affiche tel quel, sans italique ni fenêtre surgie
-- [ ] Choisir trois lignes au hasard et vérifier leurs pastilles contre la base : aucune ne se contredit
+- [x] La colonne « À faire » existe entre « Unités » et « Ouvrir »
+- [x] `#416 Beigbeder-Francs_FR.docx` est la SEULE ligne à afficher « Rien à faire », en vert
+- [x] 17 lignes portent « Index périmé », en ambre, et cette pastille vient toujours en dernier
+- [x] `9_CI-TrFr-2021_Aligné_UTF8.txt` porte les quatre pastilles d'étape
+- [x] Aucune ligne n'affiche « Segmentation » alors que sa colonne « Unités » montre plus de 1
+- [x] Le titre `[1] hi rend=italicxhiscriptalert(1).txt` s'affiche tel quel, sans italique ni fenêtre surgie
+- [x] Choisir trois lignes au hasard et vérifier leurs pastilles contre la base : aucune ne se contredit
 
 ### Les gestes de la ligne
 
-- [ ] Hors filtre, chaque ligne offre quatre boutons : ◇ ⌥ ⇄ ◎
-- [ ] Le survol de chacun nomme la capacité ET le document (« Curation — « Beigbeder-Francs_FR.docx » »)
-- [ ] ◇ ouvre le canvas sur la couche Curation, positionné sur CE document, pas sur le précédent
-- [ ] ⌥ ouvre la couche Segmentation sur ce document, ◎ la couche Annotation
-- [ ] Revenir au hub après un geste retrouve le filtre tel qu'il était
-- [ ] Sous filtre, la ligne n'offre plus qu'un bouton, libellé « Curation → » (ou l'étape filtrée)
+- [x] Hors filtre, chaque ligne offre quatre boutons : ◇ ⌥ ⇄ ◎
+- [x] Le survol de chacun nomme la capacité ET le document (« Curation — « Beigbeder-Francs_FR.docx » »)
+- [x] ◇ ouvre le canvas sur la couche Curation, positionné sur CE document, pas sur le précédent
+- [x] ⌥ ouvre la couche Segmentation sur ce document, ◎ la couche Annotation
+- [x] Revenir au hub après un geste retrouve le filtre tel qu'il était
+- [ ] Sous le filtre Curation, la colonne Ouvrir n'offre plus qu'un bouton en toutes lettres : `Curation →`
+- [ ] Sous le filtre Segmentation, ce même bouton dit `Segmentation →` — le libellé suit la carte active
+- [ ] Revenir à « Tout afficher » (les items suivants ont besoin des quatre icônes)
 - [ ] ⇄ sur `#364 Beigbeder-Francs_EN.docx` ouvre la matrice sur la famille de `#416`, pas sur `#364`
-- [ ] ⇄ sur `Hagena_Apfel_AL` refuse par un message parlant de famille, et n'ouvre PAS la matrice
+- [ ] ⇄ sur `#422 Hagena_Apfel_AL` refuse par un message parlant de famille, et n'ouvre PAS la matrice
 - [ ] Ce refus ne laisse pas la matrice sur la famille consultée juste avant
 
 ### La vue hiérarchie sous filtre
