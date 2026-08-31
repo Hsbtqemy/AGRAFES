@@ -70,6 +70,31 @@ def _recreate_fts_table(conn: sqlite3.Connection) -> None:
             else:
                 raise
 
+    # `DROP TABLE IF EXISTS fts_units` ci-dessus ne fait **rien** quand la déclaration a
+    # déjà quitté le schéma — or les cinq tables d'ombre, elles, sont toujours là. Le
+    # CREATE qui suit échouait donc sur « fts5: error creating shadow table fts_units_data:
+    # table 'fts_units_data' already exists », et la réindexation était **incapable de
+    # réparer** la panne présente sur trois des quatre instantanés abîmés (FTS-01). La
+    # branche qui nettoie les ombres n'était atteinte que lorsque le DROP *échoue*, ce qui
+    # n'arrive jamais dans ce cas-là. Mesuré le 31 août sur une copie de
+    # `…PRE-FTS-REPAIR.db` : ce seul geste suffit — 46 674 lignes réindexées,
+    # `integrity_check` à `ok`, la recherche répond.
+    #
+    # Sans déclaration, les ombres ne sont plus lisibles par personne : ce sont des
+    # orphelines, et l'index se refabrique intégralement depuis `units.text_norm`.
+    orpheline = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE name = 'fts_units'"
+    ).fetchone()[0] == 0
+    if orpheline:
+        logger.warning("fts_units declaration missing; dropping %d orphan shadow tables",
+                       len(_FTS5_SHADOW_SUFFIXES))
+        for suffix in _FTS5_SHADOW_SUFFIXES:
+            try:
+                conn.execute(f"DROP TABLE IF EXISTS fts_units{suffix}")
+            except sqlite3.Error:
+                pass
+        conn.commit()
+
     conn.execute(_FTS5_CREATE_SQL)
     conn.commit()
     logger.info("Recreated fts_units virtual table")
@@ -238,11 +263,29 @@ def index_readable(conn: sqlite3.Connection) -> bool:
     (``database disk image is malformed``) and declaration removed while the
     five shadow tables survive (``no such table: fts_units``). See FTS-01.
 
-    A single row is enough: both failures raise on the first read, and no
-    corruption is known that lets one row through and fails on the rest.
+    **The probe must scan the whole index, not peek at one row.** An earlier
+    version used ``SELECT rowid FROM fts_units LIMIT 1`` on the assumption that
+    "both failures raise on the first read". Measured on the snapshots, that is
+    false for the corruption that actually cost the 25 August incident: the bad
+    page is deep in the file (tree 12, page 55999), so the first row comes back
+    fine and the probe answered *readable* on the very database whose symptom
+    was "internal error" everywhere. ``COUNT(*)`` reaches it, and catches both:
+
+    ==========================  =========  ==========
+    snapshot                    ``LIMIT 1``  ``COUNT(*)``
+    ==========================  =========  ==========
+    PRE-REBUILD (pages corrupt)  ok (2 ms)  raises
+    PRE-FTS-REPAIR (no decl.)    raises     raises
+    WORKCOPY (healthy, 47908)    ok (2 ms)  ok (14 ms)
+    ==========================  =========  ==========
+
+    The 14 ms is the price, on a 48k-unit corpus, and it grows with the index;
+    it sits next to a :func:`stale_doc_ids` call measured at 80 ms in the same
+    request. Note that ``PRAGMA quick_check`` is *not* an alternative: it says
+    ``ok`` on three of the four broken snapshots (the declaration-removed ones).
     """
     try:
-        conn.execute("SELECT rowid FROM fts_units LIMIT 1").fetchone()
+        conn.execute("SELECT COUNT(*) FROM fts_units").fetchone()
         return True
     except sqlite3.Error as exc:
         logger.warning("index_readable: FTS index unusable (%s)", exc)

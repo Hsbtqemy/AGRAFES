@@ -122,3 +122,44 @@ def simple_odt(tmp_path: Path) -> Path:
     path = tmp_path / "fixture.odt"
     path.write_bytes(make_odt_bytes(paragraphs))
     return path
+
+
+def corrupt_fts_pages(db_path: Path) -> int | None:
+    """Corrupt one deep page of the FTS index; return its page number.
+
+    Reproduces the exact signature of the 25 August incident (FTS-01): the bad
+    page sits far into the file, so the FIRST row of ``fts_units`` still reads
+    and only a full scan raises ``DatabaseError: database disk image is
+    malformed``. That is the case a ``LIMIT 1`` probe misses — and did miss,
+    on the very snapshot whose symptom was "internal error" everywhere.
+
+    Pages are searched from the end backwards for one that yields exactly that
+    pair (one row ok / full scan raises). Returns ``None`` when no page does,
+    leaving the file untouched — callers must ``pytest.skip`` rather than fail,
+    since page layout depends on the SQLite build.
+    """
+    original = db_path.read_bytes()
+    page_size = int.from_bytes(original[16:18], "big")
+    if page_size == 1:            # header quirk: 1 means 65536
+        page_size = 65536
+    for page in range(len(original) // page_size, 1, -1):
+        attempt = bytearray(original)
+        offset = (page - 1) * page_size
+        attempt[offset:offset + page_size] = bytes([0xDE, 0xAD, 0xBE, 0xEF]) * (page_size // 4)
+        db_path.write_bytes(attempt)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            conn.execute("SELECT rowid FROM fts_units LIMIT 1").fetchone()
+            first_row_ok = True
+        except sqlite3.Error:
+            first_row_ok = False
+        try:
+            conn.execute("SELECT COUNT(*) FROM fts_units").fetchone()
+            scan_raises = False
+        except sqlite3.DatabaseError:
+            scan_raises = True
+        conn.close()
+        if first_row_ok and scan_raises:
+            return page
+    db_path.write_bytes(original)
+    return None

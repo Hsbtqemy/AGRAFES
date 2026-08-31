@@ -176,3 +176,93 @@ def test_list_documents_says_when_the_index_cannot_be_read(indexed_corpus, db_co
     assert payload["count"] == 2
     assert all(d["fts_stale"] is False for d in payload["documents"])
     conn.close()
+
+
+def _remplir_index(conn, n: int = 1200) -> None:
+    """Un corpus assez gros pour que l'index s'etale sur des dizaines de pages :
+    sans profondeur, aucune page corrompue ne peut se cacher derriere la premiere."""
+    from multicorpus_engine.indexer import build_index
+
+    conn.execute(
+        "INSERT INTO documents (title, language, doc_role, created_at)"
+        " VALUES ('Doc', 'fr', 'standalone', datetime('now'))"
+    )
+    doc_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.executemany(
+        "INSERT INTO units (doc_id, unit_type, n, text_raw, text_norm)"
+        " VALUES (?, 'line', ?, ?, ?)",
+        [
+            (doc_id, i, f"Une phrase de test numero {i} avec assez de mots pour peser.",
+             f"une phrase de test numero {i} avec assez de mots pour peser")
+            for i in range(1, n + 1)
+        ],
+    )
+    conn.commit()
+    build_index(conn)
+
+
+def test_index_readable_catches_corruption_past_the_first_row(db_conn, tmp_path):
+    """La panne du 25 aout : la premiere ligne se lit, le parcours complet non.
+
+    C'est le cas que la premiere version d'`index_readable` ratait. Elle sondait
+    `SELECT rowid ... LIMIT 1`, sur l'affirmation — ecrite, jamais mesuree — que
+    « les deux pannes levent des la premiere lecture ». La base PRE-REBUILD du
+    25 aout la dement : sa page abimee est loin dans le fichier (arbre 12,
+    page 55999), la premiere ligne revient intacte, et la sonde repondait donc
+    « lisible » sur la base meme dont le symptome etait « internal error »
+    partout. Ce test tient le cas qui echoue, pas seulement celui qui passe.
+    """
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.indexer import index_readable, stale_doc_ids
+    from tests.conftest import corrupt_fts_pages
+
+    _remplir_index(db_conn)
+    db_conn.close()
+    page = corrupt_fts_pages(tmp_path / "test.db")
+    if page is None:
+        pytest.skip("aucune page ne reproduit la signature du 25 aout sur ce build SQLite")
+
+    conn = get_connection(tmp_path / "test.db")
+    # 1. la sonde d'avant ne voit rien : la premiere ligne se lit encore
+    assert conn.execute("SELECT rowid FROM fts_units LIMIT 1").fetchone() is not None
+    # 2. et `stale_doc_ids` rend un ensemble VIDE, comme sur un index a jour
+    assert stale_doc_ids(conn) == set()
+    # 3. seul un parcours complet atteint la page abimee
+    assert index_readable(conn) is False
+    conn.close()
+
+
+def test_reindex_repairs_a_missing_declaration(indexed_corpus, db_conn, tmp_path):
+    """Le bouton « reindexer » doit pouvoir reparer la panne de trois instantanes sur quatre.
+
+    Avant le 31 aout il ne le pouvait pas, et personne ne l'avait mesure : le
+    `DROP TABLE IF EXISTS fts_units` de `_recreate_fts_table` ne fait rien quand la
+    declaration a deja quitte le schema, les cinq tables d'ombre survivent, et le
+    CREATE qui suit echoue sur « table 'fts_units_data' already exists ». La branche
+    qui nettoie les ombres n'etait atteinte que lorsque le DROP *echoue*.
+    """
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.indexer import build_index, index_readable
+
+    _retirer_declaration_fts(db_conn)
+    db_conn.close()
+    conn = get_connection(tmp_path / "test.db")
+    attendu = conn.execute(
+        "SELECT COUNT(*) FROM units WHERE unit_type = 'line'"
+    ).fetchone()[0]
+    assert attendu > 0
+    assert index_readable(conn) is False
+    # les cinq ombres sont la : c'est exactement ce qui faisait echouer le CREATE
+    ombres = [
+        r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE name LIKE 'fts_units_%'"
+        )
+    ]
+    assert len(ombres) == 5
+
+    assert build_index(conn) == attendu
+
+    assert index_readable(conn) is True
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    assert conn.execute("SELECT COUNT(*) FROM fts_units").fetchone()[0] == attendu
+    conn.close()

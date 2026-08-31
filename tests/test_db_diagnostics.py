@@ -191,3 +191,35 @@ def test_diagnostics_keeps_reporting_the_rest_when_the_index_is_gone(db_conn, tm
     # seul le compte de lignes d'index est inconnu, et il le dit par `null`
     assert report["counts"]["fts_rows"] is None
     conn.close()
+
+
+def test_diagnostics_survives_and_names_page_corruption(db_conn, tmp_path) -> None:
+    """L'autre panne, celle du 25 aout : pages corrompues et non declaration retiree.
+
+    Les tests au-dessus n'exercaient que le retrait de declaration ; la corruption
+    de pages n'etait verifiee qu'a la main, sur l'instantane du disque. Elle a sa
+    propre signature (`DatabaseError`) et son propre libelle."""
+    import pytest
+
+    from multicorpus_engine.db.connection import get_connection
+    from multicorpus_engine.db.diagnostics import collect_diagnostics
+    from tests.conftest import corrupt_fts_pages
+    from tests.test_fts_staleness import _remplir_index
+
+    _remplir_index(db_conn)
+    db_conn.close()
+    if corrupt_fts_pages(tmp_path / "test.db") is None:
+        pytest.skip("aucune page ne reproduit la signature du 25 aout sur ce build SQLite")
+
+    conn = get_connection(tmp_path / "test.db")
+    report = collect_diagnostics(conn)
+
+    assert report["fts"]["readable"] is False
+    assert report["fts"]["failure"] == "corrupted"
+    assert "malformed" in report["fts"]["error"]
+    assert report["fts"]["stale"] is None
+    assert report["status"] == "error"
+    # le reste du rapport tient debout
+    assert report["counts"]["documents"] == 1
+    assert report["counts"]["fts_rows"] is None
+    conn.close()

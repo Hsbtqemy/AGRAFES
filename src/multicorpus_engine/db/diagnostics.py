@@ -16,8 +16,20 @@ def _count(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
 
 def collect_diagnostics(conn: sqlite3.Connection) -> dict:
     """Return a JSON-serialisable diagnostics report for a corpus DB."""
-    integrity_row = conn.execute("PRAGMA integrity_check").fetchone()
-    integrity = str(integrity_row[0]) if integrity_row is not None else "unknown"
+    # `PRAGMA integrity_check` **lève** au lieu de rendre son rapport quand la base est
+    # assez abîmée — mesuré le 31 août sur une corruption de pages de l'index. C'est la
+    # PREMIÈRE instruction de la fonction : sans ce garde, la commande mourait avant même
+    # d'atteindre le bloc FTS gardé plus bas, donc le correctif précédent ne suffisait pas.
+    # Les deux comportements existent pour une même panne : sur l'instantané du 25 août le
+    # pragma *rend* son diagnostic (« Tree 12 page 55999: invalid page number »), sur une
+    # corruption plus franche il lève.
+    integrity_error: str | None = None
+    try:
+        integrity_row = conn.execute("PRAGMA integrity_check").fetchone()
+        integrity = str(integrity_row[0]) if integrity_row is not None else "unknown"
+    except sqlite3.DatabaseError as exc:
+        integrity_error = str(exc)
+        integrity = f"unreadable: {exc}"
 
     versions = [
         int(row["version"])
@@ -147,7 +159,12 @@ def collect_diagnostics(conn: sqlite3.Connection) -> dict:
     )
 
     issues: list[str] = []
-    if integrity != "ok":
+    if integrity_error is not None:
+        issues.append(
+            f"SQLite integrity_check could not even run: {integrity_error} "
+            "— the file itself is damaged, not just the index"
+        )
+    elif integrity != "ok":
         issues.append(f"SQLite integrity_check returned: {integrity}")
     if fts_failure == "declaration-missing":
         issues.append(

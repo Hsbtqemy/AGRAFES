@@ -51,9 +51,16 @@ export function indexButtonState(
   // exactement comme sur une base à jour. Sans ce garde, l'écran affichait « ✓ Index à
   // jour » sur les deux instantanés corrompus du corpus (FTS-01, mesuré le 28 août).
   //
-  // Le bouton est **inactif** à dessein : `POST /index` passe par DELETE/INSERT sur la
-  // table même qu'on ne peut plus toucher, et les six voies SQL mesurées le 25 août
-  // échouent toutes. Proposer un clic qui mourra vaut moins que ne rien proposer.
+  // Le bouton est **inactif** : `POST /index` passe par DELETE/INSERT sur la table même
+  // qu'on ne peut plus toucher, et les six voies SQL mesurées le 25 août échouent toutes.
+  //
+  // Nuance mesurée le 31 août, qui reste à arbitrer : c'est vrai de la corruption de
+  // pages, et FAUX de l'autre panne — déclaration retirée du schéma — qui est celle de
+  // trois des quatre bases abîmées. Depuis le correctif de `_recreate_fts_table`, une
+  // réindexation la répare vraiment. Mais le front ne sait pas *laquelle* des deux pannes
+  // il regarde : `fts_readable` est un booléen. L'activer utilement demanderait un second
+  // champ additif sur `GET /documents`. En attendant, l'infobulle ne promet plus rien sur
+  // ce que la reconstruction peut ou ne peut pas faire (FTS-01).
   if (!ftsReadable) {
     return {
       label: "⚠ Index illisible",
@@ -61,7 +68,7 @@ export function indexButtonState(
         "L'index de recherche ne peut pas être lu — il est corrompu, ou sa table a "
         + "disparu du schéma. La recherche est hors service, mais AUCUN texte n'est "
         + "perdu : l'index se refabrique intégralement depuis les unités. "
-        + "Reconstruire depuis ce bouton ne suffirait pas ; la base doit être réparée.",
+        + "La base doit être réparée avant que la recherche revienne.",
       disabled: true,
       stale: true,
     };
