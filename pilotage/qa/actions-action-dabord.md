@@ -38,8 +38,16 @@ npm --prefix tauri-shell run tauri -- dev
 
 **Confirmer que le sidecar servi est bien le neuf**, avant de regarder quoi que ce soit :
 lire `.agrafes_sidecar.json` à côté de la base pour le port, puis interroger `/health`.
-Le champ `contract_version` doit valoir **`1.6.85`**. S'il affiche `1.6.84`, le binaire
-n'a pas été remplacé — recommencer, ne pas jouer la passe.
+Le champ `contract_version` doit être **égal à celui du dépôt à la révision construite** —
+ne pas le comparer à un numéro écrit ici, il vieillit à chaque lot :
+
+```
+grep ^CONTRACT_VERSION src/multicorpus_engine/sidecar_contract.py
+```
+
+ACT-01 a livré `1.6.85` ; FTS-01 a poussé à `1.6.86` le même jour. Tout ce qui est
+**inférieur à 1.6.85** signifie que le binaire n'a pas été remplacé : recommencer, ne pas
+jouer la passe.
 
 ## Base et comptes attendus
 

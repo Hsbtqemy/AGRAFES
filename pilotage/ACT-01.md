@@ -45,7 +45,8 @@ Reste la passe de QA à jouer, et trois constats trouvés en chemin.
       l'œil. **Le sidecar doit être reconstruit avant** — celui en place date du 28 août
       et ignore les deux champs neufs ; sans ça la passe mesure un binaire périmé et
       annonce « 58 à faire » partout. Le préambule de la passe porte la commande et le
-      contrôle `/health` (`contract_version` = 1.6.85)
+      contrôle `/health` (le `contract_version` servi doit être au moins 1.6.85 — le
+      dépôt est passé à 1.6.86 le même jour avec FTS-01)
 - [ ] **Le chemin asynchrone de la curation n'enregistre rien** — trouvé en chemin, hors
       périmètre, non corrigé. `POST /jobs/enqueue kind=curate` appelle `curate_document` /
       `curate_all_documents` **sans** `record_action` (`sidecar.py:9998-10009`), là où
