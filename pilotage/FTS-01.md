@@ -1,6 +1,6 @@
 ---
 chantier: FTS-01
-statut: à venir
+statut: interrompu
 ---
 
 # FTS-01 — l'index de recherche se corrompt, et rien ne le dit
@@ -25,14 +25,27 @@ la **cause** reste inconnue.
       puisque `POST /index` ne peut pas réparer, et dont l'infobulle dit qu'aucun texte
       n'est perdu. Trois tests moteur, dont un qui assère le piège en trois temps
       (cinq tables d'ombre survivantes, `integrity_check` à `ok`, zéro périmé), et
-      cinq tests front
+      cinq tests front. **Complété le 31 août** : `_renderDocList()` tourne quoi qu'il arrive,
+      y compris après une liste de documents en échec — le bouton affichait alors
+      « ✓ Index à jour » sous un bandeau rouge. L'état est devenu tri-état : ignorer
+      n'autorise pas à rassurer, mais n'autorise pas à alarmer non plus
 - [x] **La base de travail n'a pas récidivé** — mesuré le 28 août, trois jours après la
       reconstruction : `WORKCOPY.db` a sa déclaration, ses cinq tables d'ombre, et
       `fts_units` se lit. En revanche l'index **retarde** de 21 532 lignes sur 69 440 —
       c'est normal (aucun trigger, seul `indexer.py` remplit), c'est signalé, et
       personne n'a cliqué. À ne pas confondre avec une panne lors du prochain diagnostic
 - [ ] Établir si la disparition de la **déclaration** de `fts_units` est un accident ou une réparation manuelle passée — mesuré le 25 août : `corpus_agrafes.db` et `corpus_agrafes.RECOVERED.db` (30 juin) et `corpus_agrafes.WORKCOPY.PRE-FTS-REPAIR.db` (17 août) portent les **cinq tables d'ombre** (`fts_units_content`, `_data`, `_idx`, `_docsize`, `_config`) mais **pas** la table virtuelle `fts_units`, alors que la migration 002 y est appliquée ; leur intégrité SQLite est par ailleurs `ok`. C'est exactement l'empreinte d'un retrait par `PRAGMA writable_schema` sans recréation — soit quelqu'un l'a fait, soit quelque chose le fait
-- [ ] Distinguer les deux pannes dans tout diagnostic futur : *déclaration absente* rend `OperationalError: no such table: fts_units`, *pages corrompues* rend `DatabaseError: database disk image is malformed` — la première laisse `integrity_check` à `ok` et passe donc inaperçue à un contrôle naïf
+- [x] **Distinguer les deux pannes dans tout diagnostic futur** — fait le 31 août, par la passe
+      adverse sur le correctif précédent. *Déclaration absente* rend `OperationalError: no such
+      table: fts_units`, *pages corrompues* rend `DatabaseError: database disk image is malformed`,
+      et la première laisse `integrity_check` à `ok`. `collect_diagnostics` nomme désormais
+      laquelle des deux (`fts.failure`) — et surtout, elle y **survit** : mesuré sur vos deux
+      instantanés, elle **levait**. La commande `multicorpus diagnostics`, celle qu'on lance
+      pendant l'incident, mourait de ce qu'elle existe pour rapporter, et emportait ses vingt
+      autres contrôles avec elle. Les comptes FTS passent à `null` et non zéro, `fts.stale`
+      aussi — on ne sait pas s'il est périmé, on sait qu'on ne peut pas le lire. Les deux
+      pannes sortent en `status: error` : sans clause explicite, celle qui se cache le mieux
+      ressortait en `warning`, puisque `integrity_check` la trouve `ok`
 - [ ] Trouver ce qui corrompt `fts_units` — deux occurrences en huit jours (17 août, trace `corpus_agrafes.WORKCOPY.PRE-FTS-REPAIR.db` ; 25 août, `…PRE-REBUILD-2026-08-25.db`), aucune explication ; pistes non explorées : arrêt brutal du sidecar pendant une écriture FTS, deux sidecars sur la même base, antivirus ou synchronisation sur le dossier `Documents`, une écriture FTS hors transaction
 - [ ] Vérifier si les corruptions de pages ont la même signature — sur celle du 25 août, `integrity_check` ne signalait que `fts_units_data` et `fts_units_content` (« invalid page number », 101 lignes de rapport) ; comparer avec la base du 17 août **ne le dira pas** : vérifié le 28 août, elle n'a aucune corruption de pages, c'est l'autre panne (déclaration absente, `integrity_check` à `ok`). Il n'existe donc qu'**une seule** corruption de pages sur disque, et rien à quoi la comparer — cet item attend une récidive, il n'est pas actionnable aujourd'hui
 - [ ] Corriger le masquage de l'erreur dans `services/units_service.py` : l'écriture FTS est enveloppée dans un `try/except: pass` (l. 375-387), donc une base malformée ne casse pas là mais **quatre instructions plus loin**, sur `UPDATE alignment_links` (l. 390) — un lecteur du traceback cherche du côté de l'alignement alors que le problème est l'index
