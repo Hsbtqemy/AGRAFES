@@ -14,7 +14,8 @@ la suite dit ce qui l'est.
 - [ ] Corriger le bouton « Choisir un autre fichier… » de `_showInitError` (`shell.ts:2566`) : il appelle `_onCreateDb()`, dont le dialogue est un `dialogSave` intitulé « Créer une nouvelle base de données AGRAFES » — il promet de choisir un fichier existant et propose d'en créer un neuf
 - [ ] Supprimer la copie morte côté prep : `_showPrepInitError` (`app.ts:528`), doublon inatteignable de la bannière du shell, avec le même défaut de verbe dans son « Réessayer », qui relance `_onCreateDb`
 - [ ] Supprimer avec elle `_onOpenDb` (`app.ts:487`) et `_onCreateDb` (`app.ts:503`), morts depuis CHR-01 lot 3 et porteurs d'un défaut de conception : ils désynchroniseraient le shell
-- [ ] Décider ce que prep montre PENDANT le mode dégradé : la bannière du shell dit ce qui se passe, mais les six écrans et le Job Center reçoivent `setConn(null)` et se rendent vides, sans dire pourquoi
+- [ ] Donner au déclencheur de base un état d'erreur persistant, sur le modèle de `.shell-db-trigger--pending` qui existe déjà pour le remontage : une classe et une infobulle, toujours visibles, quel que soit le mode — c'est ce qui manque après que la bannière a été écartée
+- [ ] Revoir l'effacement de la bannière par Échap (`shell.ts:3561`) : le même gestionnaire ferme le menu de la base, si bien qu'un Échap réflexe emporte le message d'erreur avec lui
 - [ ] Rattraper le rejet de `void _switchDb(entry.path)` (`shell.ts:1316`) — chemin étroit mais réel : `_switchDb` relance encore sur ce qui n'est PAS un échec de sidecar (MRU, persistance, rappel d'un écouteur qui lève)
 - [ ] Idem pour `_onChangeDb` (`shell.ts:2670`), dont le `try` n'entoure que le dialogue de fichier, le `await _switchDb(newPath)` de la ligne 2687 étant en dehors
 - [ ] Trancher si `constituerModule` doit s'abonner à `ctx.onDbChange` comme `rechercheModule` — utile pour l'état local, inutile pour le message, que le shell porte déjà
@@ -75,6 +76,20 @@ mais les écrans se rendent vides sans dire pourquoi : une liste de documents à
 à un corpus vide autant qu'à une base fermée. C'est le seul endroit où un signal local aurait
 de la valeur, et il est à peser — la bannière est collante et visible, un second message
 pourrait n'être que du bruit.
+
+**Un signal local dans prep n'est pas la réponse — mesuré.** La bannière est en
+`position: fixed; top: 44px; z-index: 9990`, posée sur `document.body`, et `_setMode`
+n'efface que la bannière de *changement* de base : celle d'erreur **survit à la
+navigation**. Elle reste donc à l'écran en arrivant dans Constituer, ce qui rend un second
+message local redondant, et coûteux — six écrans à toucher.
+
+Le trou est ailleurs. La bannière disparaît sur « Réessayer », « Choisir un autre… », sa
+propre ✕, une nouvelle tentative… **et sur Échap**, par un gestionnaire global qui ferme
+aussi le menu de la base (`shell.ts:3561`). Un Échap réflexe emporte donc le message. Et
+une fois écarté, il ne reste **rien** : `_updateDbBadge` ne reflète que `_pendingDbRemount`,
+pas un échec d'ouverture, si bien que le déclencheur a l'air normal pendant que les écrans
+sont vides. La réponse tient donc en une classe sur le déclencheur, pas en un signal par
+écran — le patron `--pending` est déjà là, il ne manque que le cas.
 
 **Le rejet non traité subsiste, mais étroit.** `_switchDb` relance encore, sur ce qui n'est
 pas un échec de sidecar : `_addToMru`, `_persist`, ou le rappel d'un écouteur `onDbChange`
