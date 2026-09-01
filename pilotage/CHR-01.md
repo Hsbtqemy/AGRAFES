@@ -35,8 +35,6 @@ statut: à venir
 - [ ] QAS-01 — le retour de focus par la ✕ du tiroir reste ouvert : prep ne connaît pas son déclencheur, et l'item de la revue prescrit un correctif sur un bouton qui n'existe plus
 - [x] Poser la garde des trois réancrages — `ui/__tests__/prepChrome.test.ts`, 5 cas, chacun prouvé au rouge (ancêtre positionné retiré, repli du token dérivé, ancrage optionnel rétabli)
 - [ ] Purger trois blocs CSS morts que la passe du lot 3 a mis au jour : `.prep-seg-split-layout` (`app.css:4771` + la surcharge de `constituerModule.ts:51`) et `.curate-preview-card` (`prep-vnext.css`) ne sont appliqués par AUCUN code — survivants des retraits de SegmentationView et CurationView, que la purge `aa7ded3` a manqués
-- [ ] Trancher le sort du bandeau d'erreur, devenu INATTEIGNABLE : il n'est montré que par le `catch` de `_onCreateDb`, lui-même appelé seulement par le bouton « Réessayer » du bandeau — un cycle fermé depuis que « Créer… » a quitté prep
-- [ ] Le vrai chemin d'échec n'a AUCUN signal visible : `_onDbChanged` met `_conn` à `null` et se contente d'un `console.error`, puis chaque écran reçoit `setConn(null)` et se rend vide — l'application a l'air normale et ne fait rien
 - [ ] Ajouter le raccourci « Fiche corpus » dans l'en-tête de l'écran Documents, par callback sur le modèle de `setOnOpenExporter`
 - [x] Écrire la passe de QA `qa/chrome-constituer.md`
 - [ ] La jouer
@@ -210,6 +208,15 @@ coûtait une régression fonctionnelle.
 
 L'inversion est peu chère parce que `_setMode` est déjà `async` : l'entrée de menu bascule
 sur Constituer, attend le montage, puis appelle.
+
+**Ce que ce chantier a mis au jour et passé à un autre.** Le bandeau d'erreur réancré au
+lot 3 n'a plus d'entrée — son seul appelant, le `catch` de `_onCreateDb`, n'est atteint que
+par le bouton « Réessayer » du bandeau lui-même — et le vrai chemin d'échec ne dit rien du
+tout. Le réancrage reste juste : il garde une porte que plus rien n'ouvre. Rouvrir cette
+porte demande de décider ce que l'application montre quand une base ne s'ouvre pas, sujet
+transversal aux trois modules : c'est **DEG-01**, ouvert le 1er septembre 2026. Il porte
+aussi la conclusion que CHR-01 a établie sans la chercher — prep ne choisit pas la base,
+et ses deux dialogues n'ont pas à revenir.
 
 **Collisions connues.** `ActionsScreen.ts` est aussi le terrain d'ACT-01 et de R2, mais ce
 chantier n'y touche que l'interface `ProjectPreset` et `applyPreset`, deux blocs isolés en
