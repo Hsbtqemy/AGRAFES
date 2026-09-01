@@ -30,28 +30,6 @@
 body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: var(--color-bg); color: var(--color-text); font-size: 14px; }
 
-/* Topbar */
-/* CHR-01 — les règles de `.prep-topbar` sont parties avec elle. Ne restent que les
-   boutons du bandeau d'erreur d'ouverture de base, qui empruntaient `.prep-topbar-db-btn`.
-   Cet emprunt était un défaut : ce style peint du blanc à 90 % sur un fond blanc à 13 %,
-   pensé pour la barre teal foncé — sur le jaune clair du bandeau (#fff3cd), les trois
-   boutons « Réessayer », « Choisir un autre… » et « × » étaient donc illisibles, sur la
-   seule surface qui annonce une base impossible à ouvrir. Ils prennent ici la palette du
-   bandeau : ambre foncé sur blanc, comme son propre texte. */
-.prep-init-error-btn {
-  background: #fff;
-  border: 1px solid #d3a017;
-  border-radius: 999px;
-  color: #856404;
-  font-size: 0.76rem;
-  font-weight: 600;
-  padding: 4px 10px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.13s;
-}
-.prep-init-error-btn:hover { background: #fdf3d6; }
-
 .prep-journal-drawer {
   position: fixed;
   top: var(--prep-topbar-h, 44px);
@@ -344,22 +322,6 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
 }
 .prep-corpus-textarea { resize: vertical; min-height: 88px; }
 .prep-corpus-hint { font-size: 0.78rem; color: var(--color-muted); margin: 0.5rem 0 0; line-height: 1.4; }
-
-/* DB init error banner in prep */
-.prep-init-error {
-  position: sticky;
-  top: 0;
-  background: #fff3cd;
-  border-bottom: 2px solid #e6a817;
-  padding: 8px 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 0.83rem;
-  z-index: 100;
-}
-.prep-init-error-detail { font-family: monospace; font-size: 0.77rem; color: #555; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* Tab bar */
 

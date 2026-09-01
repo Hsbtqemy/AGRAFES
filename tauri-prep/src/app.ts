@@ -7,8 +7,7 @@
 
 import type { Conn } from "./lib/sidecarClient.ts";
 import { ensureRunning, SidecarError, getCorpusInfo, updateCorpusInfo } from "./lib/sidecarClient.ts";
-import { getCurrentDbPath, setCurrentDbPath, getOrCreateDefaultDbPath } from "./lib/db.ts";
-import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
+import { setCurrentDbPath, getOrCreateDefaultDbPath } from "./lib/db.ts";
 import { ImportScreen } from "./screens/ImportScreen.ts";
 import { ShareDocsImportScreen } from "./screens/ShareDocsImportScreen.ts";
 import { ActionsScreen } from "./screens/ActionsScreen.ts";
@@ -18,7 +17,6 @@ import { SettingsScreen } from "./screens/SettingsScreen.ts";
 import { JobCenter, showToast } from "./components/JobCenter.ts";
 import { inlineConfirm } from "./lib/inlineConfirm.ts";
 import { registerLevel, unregisterLevel, setPendingGuard, sync as navSync } from "./lib/navHistory.ts";
-import { setHtml, raw } from "./lib/safeHtml.ts";
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 // CSS lives in tauri-prep/src/ui/app.css + job-center.css (Vite-managed, P6).
@@ -46,9 +44,6 @@ export class App {
   private _tabBtns: Record<TabId, HTMLButtonElement> = {} as never;
   private _screenEls: Record<TabId, HTMLElement> = {} as never;
   private _screenControllers: Record<TabId, GuardableScreen> = {} as never;
-  /** `.prep-shell` — hôte du garde de sortie d'onglet et point d'ancrage du
-   *  bandeau d'erreur, depuis que la barre a disparu (CHR-01). */
-  private _shellEl!: HTMLElement;
   private _logEl!: HTMLElement;
   private _journalOpen = false;
   /** Racine montée par `_buildUI`. Gardée pour les commandes publiques appelées
@@ -212,7 +207,6 @@ export class App {
     const shell = document.createElement("div");
     shell.className = "prep-shell";
     shell.id = "prep-shell-main";
-    this._shellEl = shell;
 
     // CHR-01 — le garde de sortie d'onglet (« modifications non enregistrées »)
     // pendait sous la barre, qui portait `position: relative` pour lui. `.prep-shell`
@@ -478,80 +472,6 @@ export class App {
     return Boolean(this._screenControllers[this._activeTab]?.hasPendingChanges?.());
   }
 
-  private _dbBadge(): string {
-    const p = getCurrentDbPath();
-    if (!p) return "Aucun corpus";
-    return p.replace(/\\/g, "/").split("/").pop() ?? p;
-  }
-
-  private async _onOpenDb(): Promise<void> {
-    let picked: string | string[] | null;
-    try {
-      picked = await dialogOpen({
-        title: "Ouvrir une base de données SQLite",
-        filters: [{ name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] }],
-        multiple: false,
-      });
-    } catch { return; }
-    const p = Array.isArray(picked) ? picked[0] : picked;
-    if (!p) return;
-    setCurrentDbPath(p);
-    await this._onDbChanged(p);
-    showToast(`DB active\u00a0: ${this._dbBadge()}`);
-  }
-
-  private async _onCreateDb(root: HTMLElement): Promise<void> {
-    let savePath: string | null;
-    try {
-      savePath = await dialogSave({
-        title: "Créer une nouvelle base de données AGRAFES",
-        filters: [{ name: "SQLite", extensions: ["db"] }],
-        defaultPath: "nouveau_corpus.db",
-      });
-    } catch { return; }
-    if (!savePath) return;
-    if (!/\.(db|sqlite|sqlite3)$/i.test(savePath)) savePath += ".db";
-
-    setCurrentDbPath(savePath);
-
-    // Remove any stale error banner
-    root.querySelector(".prep-init-error")?.remove();
-
-    try {
-      await this._onDbChanged(savePath);
-      showToast(`DB initialis\u00e9e\u00a0: ${this._dbBadge()}`);
-    } catch (err) {
-      this._showPrepInitError(root, savePath, String(err));
-    }
-  }
-
-  private _showPrepInitError(root: HTMLElement, dbPath: string, msg: string): void {
-    root.querySelector(".prep-init-error")?.remove();
-    const banner = document.createElement("div");
-    banner.className = "prep-init-error";
-    setHtml(banner, raw(`
-      <span style="color:#856404;font-size:1.1rem">&#9888;</span>
-      <span style="font-weight:600;color:#856404;white-space:nowrap">Impossible d&rsquo;initialiser la DB</span>
-      <code class="prep-init-error-detail">${msg.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</code>
-      <button id="prep-retry-btn" class="prep-init-error-btn">R&eacute;essayer</button>
-      <button id="prep-change-btn" class="prep-init-error-btn">Choisir un autre&hellip;</button>
-      <button id="prep-dismiss-btn" class="prep-init-error-btn">&times;</button>
-    `));
-    // CHR-01 — juste au-dessus de `.prep-shell`, et par une référence gardée plutôt
-    // que par un sélecteur optionnel : l'ancien `querySelector(".prep-topbar")?.` avalait
-    // son échec, si bien que retirer la barre aurait fait disparaître ce bandeau sans un
-    // mot — sur la seule surface qui signale une base illisible.
-    this._shellEl.insertAdjacentElement("beforebegin", banner);
-    banner.querySelector("#prep-retry-btn")?.addEventListener("click", () => {
-      banner.remove();
-      void this._onCreateDb(root);
-    });
-    banner.querySelector("#prep-change-btn")?.addEventListener("click", () => {
-      banner.remove();
-      void this._onOpenDb();
-    });
-    banner.querySelector("#prep-dismiss-btn")?.addEventListener("click", () => banner.remove());
-  }
 
   // ─── Fiche corpus (métadonnées DB) ─────────────────────────────────────────
 

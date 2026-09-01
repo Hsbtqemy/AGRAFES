@@ -11,22 +11,26 @@ la suite dit ce qui l'est.
 
 ## Reste
 
-- [ ] Corriger le bouton « Choisir un autre fichier… » de `_showInitError` (`shell.ts:2566`) : il appelle `_onCreateDb()`, dont le dialogue est un `dialogSave` intitulé « Créer une nouvelle base de données AGRAFES » — il promet de choisir un fichier existant et propose d'en créer un neuf
-- [ ] Supprimer la copie morte côté prep : `_showPrepInitError` (`app.ts:528`), doublon inatteignable de la bannière du shell, avec le même défaut de verbe dans son « Réessayer », qui relance `_onCreateDb`
-- [ ] Supprimer avec elle `_onOpenDb` (`app.ts:487`) et `_onCreateDb` (`app.ts:503`), morts depuis CHR-01 lot 3 et porteurs d'un défaut de conception : ils désynchroniseraient le shell
-- [ ] Donner au déclencheur de base un état d'erreur persistant, sur le modèle de `.shell-db-trigger--pending` qui existe déjà pour le remontage : une classe et une infobulle, toujours visibles, quel que soit le mode — c'est ce qui manque après que la bannière a été écartée
-- [ ] Revoir l'effacement de la bannière par Échap (`shell.ts:3561`) : le même gestionnaire ferme le menu de la base, si bien qu'un Échap réflexe emporte le message d'erreur avec lui
-- [ ] Rattraper le rejet de `void _switchDb(entry.path)` (`shell.ts:1316`) — chemin étroit mais réel : `_switchDb` relance encore sur ce qui n'est PAS un échec de sidecar (MRU, persistance, rappel d'un écouteur qui lève)
-- [ ] Idem pour `_onChangeDb` (`shell.ts:2670`), dont le `try` n'entoure que le dialogue de fichier, le `await _switchDb(newPath)` de la ligne 2687 étant en dehors
-- [ ] Trancher si `constituerModule` doit s'abonner à `ctx.onDbChange` comme `rechercheModule` — utile pour l'état local, inutile pour le message, que le shell porte déjà
-- [ ] Écrire une passe de QA du mode dégradé, et la jouer
+- [x] Corriger le bouton « Choisir un autre fichier… » de `_showInitError` (`shell.ts:2566`) : il appelle `_onCreateDb()`, dont le dialogue est un `dialogSave` intitulé « Créer une nouvelle base de données AGRAFES » — il promet de choisir un fichier existant et propose d'en créer un neuf
+- [x] Supprimer la copie morte côté prep : `_showPrepInitError` (`app.ts:528`), doublon inatteignable de la bannière du shell, avec le même défaut de verbe dans son « Réessayer », qui relance `_onCreateDb`
+- [x] Supprimer avec elle `_onOpenDb` (`app.ts:487`) et `_onCreateDb` (`app.ts:503`), morts depuis CHR-01 lot 3 et porteurs d'un défaut de conception : ils désynchroniseraient le shell
+- [x] Donner au déclencheur de base un état d'erreur persistant, sur le modèle de `.shell-db-trigger--pending` qui existe déjà pour le remontage : une classe et une infobulle, toujours visibles, quel que soit le mode — c'est ce qui manque après que la bannière a été écartée
+- [x] Revoir l'effacement de la bannière par Échap (`shell.ts:3561`) : le même gestionnaire ferme le menu de la base, si bien qu'un Échap réflexe emporte le message d'erreur avec lui
+- [x] Rattraper le rejet de `void _switchDb(entry.path)` (`shell.ts:1316`) — chemin étroit mais réel : `_switchDb` relance encore sur ce qui n'est PAS un échec de sidecar (MRU, persistance, rappel d'un écouteur qui lève)
+- [x] Idem pour `_onChangeDb` (`shell.ts:2670`), dont le `try` n'entoure que le dialogue de fichier, le `await _switchDb(newPath)` de la ligne 2687 étant en dehors
+- [x] Trancher si `constituerModule` doit s'abonner à `ctx.onDbChange` — **non** : le shell le remonte à chaque changement de base plutôt que de le notifier, donc l'abonnement n'apporterait rien de plus, et le message est porté par la bannière
+- [x] Écrire la passe `qa/mode-degrade.md`
+- [ ] La jouer
 
 ## QA
 
-Aucune passe écrite. Elle se joue en pointant une base qui n'en est pas — un fichier texte
-renommé en `.db` suffit — puis en pressant chacun des trois boutons de la bannière. Le point
-qui compte est le deuxième : « Choisir un autre fichier… » doit ouvrir un sélecteur de
-fichier existant, pas un enregistreur.
+- qa/mode-degrade.md
+
+Écrite le 1er septembre 2026, pas encore jouée. Elle se joue en pointant une base qui n'en
+est pas — un fichier texte renommé en `.db`, la recette est dans son préambule — puis en
+pressant chacun des trois boutons de la bannière. Le point qui compte est le deuxième :
+« Choisir un autre fichier… » doit ouvrir un sélecteur de fichier existant, pas un
+enregistreur.
 
 Voir aussi `qa/chrome-constituer.md`, dont le dernier point demande ce que l'écran montre
 sidecar arrêté — c'est de là que ce chantier est parti.

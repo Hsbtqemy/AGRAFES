@@ -164,6 +164,15 @@ const SHELL_CSS = `
   .shell-db-trigger--pending .shell-db-trigger-name {
     color: #fcd34d;
   }
+  /* DEG-01 — la base n a pas pu s ouvrir. Trace persistante : la banniere s efface
+     (croix, Echap), le declencheur non. Rouge plutot qu ambre, l ambre disant deja
+     " modifiee, a reappliquer " — deux etats differents ne doivent pas se ressembler. */
+  .shell-db-trigger--error .shell-db-trigger-name { color: #fca5a5; }
+  .shell-db-trigger--error .shell-db-trigger-icon { opacity: 1; }
+  .shell-db-trigger--error {
+    background: rgba(220,38,38,0.18);
+    border-color: rgba(248,113,113,0.55);
+  }
   /* Démarrage du sidecar : spinner à la place de l'icône + libellé en cours */
   .shell-db-trigger-spinner {
     display: none;
@@ -1043,6 +1052,10 @@ let _navigating = false;
 /** After first successful navigation, `_setMode(m)` skips when `m` is already active (avoids full remount on repeated tab clicks). */
 let _shellNavReady = false;
 let _pendingDbRemount = false;
+/** DEG-01 — dernière base dont l’ouverture a échoué, ou `null`. La bannière d’erreur
+ *  s’efface (✕, Échap, navigation vers une autre base) ; il fallait qu’il reste une
+ *  trace, sinon le déclencheur a l’air normal pendant que les écrans sont vides. */
+let _dbInitFailedPath: string | null = null;
 const _dbListeners: Set<(path: string | null) => void> = new Set();
 let _deepLinkUnlisten: (() => void) | null = null;
 
@@ -1313,7 +1326,10 @@ function _buildMruSection(): HTMLElement {
         // Re-select via dialog
         void _onChangeDb(entry.path);
       } else {
-        void _switchDb(entry.path);
+        void _switchDb(entry.path).catch((err: unknown) => {
+          _shellLog("error", "db_switch", `Changement de base interrompu : ${_pathLabel(entry.path)}`, String(err));
+          _showToast(`Changement de base interrompu : ${String(err)}`, 6000);
+        });
       }
     });
     row.appendChild(nameBtn);
@@ -2450,6 +2466,13 @@ function _updateDbBadge(): void {
   } else {
     trigger.classList.remove("shell-db-trigger--pending");
   }
+  // DEG-01 — l’échec d’ouverture prime sur le reste : c’est le seul état qui rende
+  // l’application inutilisable, et le seul dont la bannière peut avoir été écartée.
+  const enEchec = _dbInitFailedPath !== null && _dbInitFailedPath === _currentDbPath;
+  trigger.classList.toggle("shell-db-trigger--error", enEchec);
+  if (enEchec) {
+    trigger.title = `${_currentDbPath ?? ""} — le moteur n’a pas pu ouvrir cette base ; cliquer pour en choisir une autre`;
+  }
 }
 
 // ─── DB menu helpers ──────────────────────────────────────────────────────────
@@ -2520,12 +2543,14 @@ async function _initDb(dbPath: string): Promise<void> {
     // Dynamic import keeps sidecar logic in the explorer chunk (lazy-loaded)
     const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
     await ensureRunning(dbPath);
+    _dbInitFailedPath = null;
     _hideSidecarOverlay();
     _showToast("DB initialis\u00e9e \u2713", 3000);
     _shellLog("info", "sidecar", `Sidecar healthy for DB: ${_pathLabel(dbPath)}`);
   } catch (err) {
     _hideSidecarOverlay();
     _shellLog("error", "sidecar", `Sidecar health failure for DB: ${_pathLabel(dbPath)}`, String(err));
+    _dbInitFailedPath = dbPath;
     _showInitError(dbPath, String(err));
   } finally {
     if (btn) { btn.disabled = false; btn.classList.remove("shell-db-trigger--loading"); }
@@ -2563,7 +2588,10 @@ function _showInitError(dbPath: string, errorMsg: string): void {
   const changeBtn = document.createElement("button");
   changeBtn.className = "shell-db-btn";
   changeBtn.textContent = "Choisir un autre fichier\u2026";
-  changeBtn.addEventListener("click", () => { _clearInitError(); void _onCreateDb(); });
+  // DEG-01 — appelait `_onCreateDb()`, dont le dialogue est un `dialogSave` intitulé
+  // « Créer une nouvelle base de données AGRAFES » : on échoue à ouvrir une base, on
+  // demande à en désigner une autre, et on obtient un enregistreur de fichier neuf.
+  changeBtn.addEventListener("click", () => { _clearInitError(); void _onChangeDb(); });
 
   const dismissBtn = document.createElement("button");
   dismissBtn.className = "shell-db-btn";
@@ -2684,7 +2712,16 @@ async function _onChangeDb(defaultPath?: string): Promise<void> {
   const newPath = Array.isArray(picked) ? picked[0] : picked;
   if (!newPath) return;
 
-  await _switchDb(newPath);
+  // DEG-01 — le `try` ci-dessus n’entoure que le dialogue. `_switchDb` relance encore
+  // sur ce qui n’est PAS un échec de sidecar (MRU, persistance, rappel d’écouteur qui
+  // lève) : l’échec de sidecar, lui, est déjà traité par `_initDb`, qui n’en relance pas.
+  // Sans ce rattrapage, l’appelant fait `void` et le rejet part dans le vide.
+  try {
+    await _switchDb(newPath);
+  } catch (err) {
+    _shellLog("error", "db_switch", `Changement de base interrompu : ${_pathLabel(newPath)}`, String(err));
+    _showToast(`Changement de base interrompu : ${String(err)}`, 6000);
+  }
 }
 
 // ─── Router / lifecycle ───────────────────────────────────────────────────────
@@ -3558,6 +3595,10 @@ function _installKeyboardShortcuts(): void {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       _closeDbMenu();
+      // DEG-01 — Échap écarte aussi la bannière d’échec, et le fait au passage : le même
+      // geste ferme le menu de la base. C’était le trou — une fois écartée, plus rien ne
+      // disait que la base n’était pas ouverte. Le geste reste, mais le déclencheur garde
+      // désormais l’état d’erreur (`_dbInitFailedPath`) : écarter n’efface plus le fait.
       _clearInitError();
       return;
     }

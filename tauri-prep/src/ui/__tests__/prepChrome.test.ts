@@ -5,9 +5,10 @@
  * d'implantation. En la retirant, chacune pouvait se casser SANS UN MOT — ni erreur,
  * ni test rouge, ni différence visible tant qu'on ne provoque pas le cas :
  *
- *  1. Le bandeau « Impossible d'initialiser la DB » s'insérait par un sélecteur
- *     optionnel sur `.prep-topbar`. Sans barre, l'optionnel avale l'échec et la seule
- *     surface qui signale une base illisible cesse d'exister.
+ *  1. Le bandeau « Impossible d'initialiser la DB ». **Point clos autrement** : DEG-01 a
+ *     montré qu'il était un doublon inatteignable de `_showInitError` du shell, laquelle
+ *     couvre les quatre modes. Il a donc été supprimé plutôt que réancré, et les deux
+ *     cas qui le gardaient ici avec lui.
  *  2. `#app-pending-confirm`, hôte du garde « modifications non enregistrées », est
  *     positionné en absolu dans `app.css` — mais son ancêtre positionné, `.prep-shell`,
  *     est déclaré dans `prep-vnext.css`. Deux fichiers pour un seul mécanisme : qui
@@ -57,18 +58,16 @@ function corpsDeRegle(css: string, selecteur: string): string | null {
   return css.slice(open + 1, css.indexOf("}", open));
 }
 
-describe("bandeau d'erreur d'ouverture de base", () => {
-  it("ne s'ancre plus par un sélecteur optionnel, qui avalerait son échec", () => {
-    expect(APP_TS_CODE).not.toMatch(/querySelector\(["']\.prep-topbar["']\)\?\./);
-    expect(APP_TS_CODE).toMatch(/_shellEl\.insertAdjacentElement\(\s*["']beforebegin["']/);
-  });
-
-  it("ses boutons ne réempruntent pas le style de la barre disparue", () => {
-    // `.prep-topbar-db-btn` peignait du blanc à 90 % sur un fond blanc à 13 %, pour une
-    // barre teal foncé. Sur le jaune du bandeau (#fff3cd), les trois boutons étaient
-    // illisibles — sur la surface même qui annonce une base impossible à ouvrir.
-    expect(APP_TS_CODE).not.toMatch(/prep-topbar-db-btn/);
-    expect(corpsDeRegle(APP_CSS, ".prep-init-error-btn")).not.toBeNull();
+describe("le bandeau d'erreur de prep ne doit pas revenir", () => {
+  it("ni son code, ni son CSS — le shell porte la seule bannière (DEG-01)", () => {
+    // Prep en tenait un doublon, inatteignable depuis que « Créer… » a quitté la barre :
+    // son seul appelant était le `catch` de `_onCreateDb`, lui-même appelé par son propre
+    // bouton « Réessayer ». `_showInitError` du shell couvre les quatre modes, y compris
+    // ceux qui ne montent aucun module. Le rétablir ici recréerait deux messages pour un
+    // seul échec — et, avec les dialogues qui l'accompagnaient, la désynchronisation du
+    // chemin de base entre prep et le shell.
+    expect(APP_TS_CODE).not.toMatch(/_showPrepInitError|_onOpenDb|_onCreateDb/);
+    expect(APP_CSS).not.toMatch(/\.prep-init-error/);
   });
 });
 
