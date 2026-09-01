@@ -59,7 +59,12 @@
   --prep-shadow-md: 0 8px 22px rgba(15, 118, 110, 0.08);
 
   /* Layout dimensions */
-  --prep-topbar-h: 54px;
+  /* CHR-01 — la barre de prep a disparu ; ce token ne mesure plus SA hauteur mais
+     celle du chrome AU-DESSUS du contenu prep, ce que ses quatre consommateurs
+     soustraient tous. Dans le shell — le seul contexte livré — c'est le header fixe
+     de 44px (tauri-shell/index.html). Nom conservé pour ne pas disperser un
+     renommage sur quatre fichiers. */
+  --prep-topbar-h: 44px;
   --prep-nav-w: 230px;
 
   /* Loading state color */

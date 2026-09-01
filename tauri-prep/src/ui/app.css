@@ -31,29 +31,30 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   background: var(--color-bg); color: var(--color-text); font-size: 14px; }
 
 /* Topbar */
-.prep-topbar { background: linear-gradient(135deg, #0c4a46, var(--color-primary)); color: #fff; padding: 0 1rem;
-  display: flex; align-items: center; height: 52px; flex-shrink: 0; gap: 0.75rem; border-bottom: 1px solid #0c4a46; }
-.prep-topbar-title { font-size: 1rem; font-weight: 600; flex: 1; }
-.prep-topbar-dbpath { font-size: 11px; opacity: 0.75; max-width: min(420px, 42vw);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.prep-topbar-db-btn {
-  background: rgba(255,255,255,0.13);
-  border: 1px solid rgba(255,255,255,0.25);
+/* CHR-01 — les règles de `.prep-topbar` sont parties avec elle. Ne restent que les
+   boutons du bandeau d'erreur d'ouverture de base, qui empruntaient `.prep-topbar-db-btn`.
+   Cet emprunt était un défaut : ce style peint du blanc à 90 % sur un fond blanc à 13 %,
+   pensé pour la barre teal foncé — sur le jaune clair du bandeau (#fff3cd), les trois
+   boutons « Réessayer », « Choisir un autre… » et « × » étaient donc illisibles, sur la
+   seule surface qui annonce une base impossible à ouvrir. Ils prennent ici la palette du
+   bandeau : ambre foncé sur blanc, comme son propre texte. */
+.prep-init-error-btn {
+  background: #fff;
+  border: 1px solid #d3a017;
   border-radius: 999px;
-  color: rgba(255,255,255,0.9);
+  color: #856404;
   font-size: 0.76rem;
+  font-weight: 600;
   padding: 4px 10px;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.13s;
 }
-.prep-topbar-db-btn:hover  { background: rgba(255,255,255,0.22); }
-.prep-topbar-db-btn.active { background: rgba(255,255,255,0.30); border-color: rgba(255,255,255,0.6); }
+.prep-init-error-btn:hover { background: #fdf3d6; }
 
-/* ── Journal drawer ────────────────────────────────────────────────────── */
 .prep-journal-drawer {
   position: fixed;
-  top: var(--prep-topbar-h, 54px);
+  top: var(--prep-topbar-h, 44px);
   right: 0;
   bottom: 0;
   width: 360px;
@@ -189,10 +190,9 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
    deux lignes au lieu de tronquer la question qu'il pose. La règle est portée par l'ID et
    non par `.audit-batch-bar` : la classe n'a qu'un hôte aujourd'hui, mais un futur hôte en
    corps de panneau n'aurait que faire d'un positionnement pensé pour une topbar. */
-.prep-topbar { position: relative; }
 #app-pending-confirm {
   position: absolute;
-  top: calc(100% - 4px);
+  top: 4px;
   right: 1rem;
   z-index: 200;
   margin-left: 0;
@@ -4775,8 +4775,8 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
   border-radius: 8px;
   overflow: hidden;
   background: var(--prep-card-bg, #fff);
-  /* 54px topbar + ~24px padding/header above */
-  height: calc(100vh - var(--prep-topbar-h, 54px) - 24px);
+  /* 44px de header shell + ~24px de marge/en-tête au-dessus */
+  height: calc(100vh - var(--prep-topbar-h, 44px) - 24px);
   min-height: 900px;
 }
 

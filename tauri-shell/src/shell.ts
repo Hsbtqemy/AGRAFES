@@ -2414,6 +2414,13 @@ async function _toggleConstituerJournal(): Promise<void> {
   const btn = document.getElementById("shell-journal-btn");
   btn?.classList.toggle("active", ouvert);
   btn?.setAttribute("aria-expanded", String(ouvert));
+  // QAS-01 — à la fermeture d'un panneau, le focus doit revenir à son déclencheur ;
+  // sinon il retombe sur <body> et la tabulation suivante repart du haut de la page.
+  // La revue prescrivait un `btn?.focus()` dans `_toggleJournal` de prep, sur le
+  // bouton de sa barre — parti avec elle. Le déclencheur vit ici désormais, donc le
+  // retour de focus aussi. Le chemin par la ✕ du tiroir reste à traiter dans QAS-01 :
+  // prep ne connaît pas ce bouton, et ne doit pas le connaître.
+  if (!ouvert) btn?.focus();
 }
 
 function _dbBadgeText(): string {

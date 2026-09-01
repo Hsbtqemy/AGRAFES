@@ -9,7 +9,6 @@ import type { Conn } from "./lib/sidecarClient.ts";
 import { ensureRunning, SidecarError, getCorpusInfo, updateCorpusInfo } from "./lib/sidecarClient.ts";
 import { getCurrentDbPath, setCurrentDbPath, getOrCreateDefaultDbPath } from "./lib/db.ts";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
-import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { ImportScreen } from "./screens/ImportScreen.ts";
 import { ShareDocsImportScreen } from "./screens/ShareDocsImportScreen.ts";
 import { ActionsScreen } from "./screens/ActionsScreen.ts";
@@ -47,7 +46,9 @@ export class App {
   private _tabBtns: Record<TabId, HTMLButtonElement> = {} as never;
   private _screenEls: Record<TabId, HTMLElement> = {} as never;
   private _screenControllers: Record<TabId, GuardableScreen> = {} as never;
-  private _dbPathEl!: HTMLElement;
+  /** `.prep-shell` — hôte du garde de sortie d'onglet et point d'ancrage du
+   *  bandeau d'erreur, depuis que la barre a disparu (CHR-01). */
+  private _shellEl!: HTMLElement;
   private _logEl!: HTMLElement;
   private _journalOpen = false;
   /** Racine montée par `_buildUI`. Gardée pour les commandes publiques appelées
@@ -92,8 +93,6 @@ export class App {
       this._actions.openAlignmentOnFamily(familyId, mode);
     });
     this._exports.setJobCenter(this._jobCenter, showToast);
-
-    void this._refreshTopbarDbLabel();
 
     // Start sidecar in background — screens will refresh when connection is ready.
     if (dbPath) void this._onDbChanged(dbPath);
@@ -185,68 +184,12 @@ export class App {
     skipLink.textContent = "Aller au contenu";
     root.appendChild(skipLink);
 
-    // Topbar
-    const topbar = document.createElement("div");
-    topbar.className = "prep-topbar";
-    topbar.setAttribute("role", "banner");
-
-    const titleEl = document.createElement("span");
-    titleEl.className = "prep-topbar-title";
-    titleEl.textContent = "Constituer";
-
-    const dbPathEl = document.createElement("span");
-    dbPathEl.id = "topbar-dbpath";
-    dbPathEl.className = "prep-topbar-dbpath";
-    dbPathEl.textContent = this._dbBadge();
-
-    const openBtn = document.createElement("button");
-    openBtn.className = "prep-topbar-db-btn";
-    openBtn.textContent = "Ouvrir\u2026";
-    openBtn.title = "Ouvrir une base de données existante";
-    openBtn.addEventListener("click", () => void this._onOpenDb());
-
-    const createBtn = document.createElement("button");
-    createBtn.className = "prep-topbar-db-btn";
-    createBtn.textContent = "Cr\u00e9er\u2026";
-    createBtn.title = "Créer une nouvelle base de données";
-    createBtn.addEventListener("click", () => void this._onCreateDb(root));
-
-    const corpusInfoBtn = document.createElement("button");
-    corpusInfoBtn.className = "prep-topbar-db-btn";
-    corpusInfoBtn.textContent = "\uD83D\uDCC4 Fiche corpus";
-    corpusInfoBtn.title = "Qualifier le corpus : titre, descriptif, métadonnées";
-    corpusInfoBtn.addEventListener("click", () => void this._showCorpusInfoModal());
-
-    const openConcordancierBtn = document.createElement("button");
-    openConcordancierBtn.className = "prep-topbar-db-btn";
-    openConcordancierBtn.textContent = "\u2197 Shell";
-    openConcordancierBtn.title = "Ouvrir la DB active dans AGRAFES Shell (app unifiée)";
-    openConcordancierBtn.addEventListener("click", () => void this._openInConcordancier());
-
-    const journalBtn = document.createElement("button");
-    journalBtn.id = "prep-journal-btn";
-    journalBtn.className = "prep-topbar-db-btn";
-    journalBtn.textContent = "📋 Journal";
-    journalBtn.title = "Afficher le journal des opérations";
-    journalBtn.addEventListener("click", () => this._toggleJournal(root));
-
-    topbar.appendChild(titleEl);
-    topbar.appendChild(dbPathEl);
-    topbar.appendChild(openBtn);
-    topbar.appendChild(createBtn);
-    topbar.appendChild(corpusInfoBtn);
-    topbar.appendChild(openConcordancierBtn);
-    topbar.appendChild(journalBtn);
-
-    const pendingConfirmBar = document.createElement("div");
-    pendingConfirmBar.id = "app-pending-confirm";
-    pendingConfirmBar.className = "audit-batch-bar";
-    pendingConfirmBar.style.display = "none";
-    topbar.appendChild(pendingConfirmBar);
-
-    this._dbPathEl = dbPathEl;
-    root.appendChild(topbar);
-
+    // CHR-01 — la barre « Constituer » est partie. Elle redisait le nom de la base,
+    // « Ouvrir » et « Créer », que le menu de la base du shell fait mieux (avec les
+    // récentes et l'épinglage) ; « ↗ Shell » se déclenchait depuis le shell lui-même ;
+    // la Fiche corpus et le Journal sont remontés d'un cran au lot 4. Restaient deux
+    // choses qui n'y étaient QUE par accident d'implantation, et qui vivent maintenant
+    // dans `.prep-shell` : le garde de sortie d'onglet, et le bandeau d'erreur.
     // ── Journal drawer (global, fixed) ────────────────────────────────────────
     const drawer = document.createElement("div");
     drawer.id = "prep-journal-drawer";
@@ -269,6 +212,19 @@ export class App {
     const shell = document.createElement("div");
     shell.className = "prep-shell";
     shell.id = "prep-shell-main";
+    this._shellEl = shell;
+
+    // CHR-01 — le garde de sortie d'onglet (« modifications non enregistrées »)
+    // pendait sous la barre, qui portait `position: relative` pour lui. `.prep-shell`
+    // la porte déjà : le bandeau garde donc son ancrage absolu, en haut à droite du
+    // contenu, sans peser sur le flex de la barre latérale. Hôte toujours présent —
+    // sans lui, `inlineConfirm` n'a nulle part où s'écrire et le garde ne demande
+    // plus rien, en silence.
+    const pendingConfirmBar = document.createElement("div");
+    pendingConfirmBar.id = "app-pending-confirm";
+    pendingConfirmBar.className = "audit-batch-bar";
+    pendingConfirmBar.style.display = "none";
+    shell.appendChild(pendingConfirmBar);
 
     // Sidebar nav
     const nav = document.createElement("nav");
@@ -457,7 +413,6 @@ export class App {
   private _toggleJournal(root: HTMLElement): void {
     this._journalOpen = !this._journalOpen;
     const drawer = root.querySelector<HTMLElement>("#prep-journal-drawer");
-    const btn = root.querySelector<HTMLButtonElement>("#prep-journal-btn");
     if (drawer) {
       drawer.classList.toggle("open", this._journalOpen);
       drawer.setAttribute("aria-hidden", String(!this._journalOpen));
@@ -467,7 +422,8 @@ export class App {
         if (log) log.scrollTop = log.scrollHeight;
       }
     }
-    if (btn) btn.classList.toggle("active", this._journalOpen);
+    // CHR-01 — le déclencheur n'est plus ici mais dans le header shell, qui reflète
+    // lui-même son état actif. Prep ne le connaît pas, et n'a pas à le connaître.
   }
 
   // ─── Commandes publiques (appelées par le shell) ───────────────────────────
@@ -528,98 +484,6 @@ export class App {
     return p.replace(/\\/g, "/").split("/").pop() ?? p;
   }
 
-  /** Met à jour le libellé topbar (titre du corpus + nom de fichier) et le title (chemin complet). */
-  private async _refreshTopbarDbLabel(): Promise<void> {
-    const p = getCurrentDbPath();
-    const file = this._dbBadge();
-    if (!this._conn) {
-      this._dbPathEl.textContent = file;
-      this._dbPathEl.title = p ? `Chemin complet : ${p.replace(/\\/g, "/")}` : "";
-      return;
-    }
-    try {
-      const info = await getCorpusInfo(this._conn);
-      const t = info.title?.trim();
-      this._dbPathEl.textContent = t ? `${t} \u2014 ${file}` : file;
-      this._dbPathEl.title = p ? `Chemin complet : ${p.replace(/\\/g, "/")}` : "";
-    } catch {
-      this._dbPathEl.textContent = file;
-      this._dbPathEl.title = p ? `Chemin complet : ${p.replace(/\\/g, "/")}` : "";
-    }
-  }
-
-  private _buildShellOpenDbDeepLink(dbPath: string): string {
-    return `agrafes-shell://open-db?mode=explorer&path=${encodeURIComponent(dbPath)}`;
-  }
-
-  private _buildStandaloneOpenDbDeepLink(dbPath: string): string {
-    return `agrafes://open-db?path=${encodeURIComponent(dbPath)}`;
-  }
-
-  private async _openInConcordancier(): Promise<void> {
-    const dbPath = getCurrentDbPath();
-    if (!dbPath) {
-      showToast("Aucune DB active à transmettre.", true);
-      return;
-    }
-
-    const shellUri = this._buildShellOpenDbDeepLink(dbPath);
-    const standaloneUri = this._buildStandaloneOpenDbDeepLink(dbPath);
-
-    let opened = false;
-    try {
-      await shellOpen(shellUri);
-      opened = true;
-    } catch {
-      try {
-        await shellOpen(standaloneUri);
-        opened = true;
-      } catch {
-        try {
-          const w = window.open(shellUri, "_blank");
-          opened = w !== null;
-        } catch {
-          opened = false;
-        }
-      }
-    }
-
-    if (opened) {
-      showToast("Ouverture Concordancier/Shell demandée (deep-link).");
-      return;
-    }
-
-    try {
-      const w = window.open(standaloneUri, "_blank");
-      opened = w !== null;
-    } catch {
-      opened = false;
-    }
-
-    if (opened) {
-      showToast("Ouverture Concordancier standalone demandée (fallback).");
-      return;
-    }
-
-    // All open attempts failed — copy to clipboard as last resort
-    let copied = false;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shellUri);
-        copied = true;
-      }
-    } catch {
-      copied = false;
-    }
-
-    if (copied) {
-      showToast("Deep-link Shell copié. Ouvre-le depuis le presse-papiers si nécessaire.");
-      return;
-    }
-
-    showToast(`Deep-link prêt: ${shellUri}`);
-  }
-
   private async _onOpenDb(): Promise<void> {
     let picked: string | string[] | null;
     try {
@@ -632,7 +496,6 @@ export class App {
     const p = Array.isArray(picked) ? picked[0] : picked;
     if (!p) return;
     setCurrentDbPath(p);
-    this._dbPathEl.textContent = this._dbBadge();
     await this._onDbChanged(p);
     showToast(`DB active\u00a0: ${this._dbBadge()}`);
   }
@@ -650,11 +513,6 @@ export class App {
     if (!/\.(db|sqlite|sqlite3)$/i.test(savePath)) savePath += ".db";
 
     setCurrentDbPath(savePath);
-    this._dbPathEl.textContent = this._dbBadge();
-
-    // Show init state
-    const createBtns = root.querySelectorAll<HTMLButtonElement>(".prep-topbar-db-btn");
-    createBtns.forEach(b => { b.disabled = true; });
 
     // Remove any stale error banner
     root.querySelector(".prep-init-error")?.remove();
@@ -664,8 +522,6 @@ export class App {
       showToast(`DB initialis\u00e9e\u00a0: ${this._dbBadge()}`);
     } catch (err) {
       this._showPrepInitError(root, savePath, String(err));
-    } finally {
-      createBtns.forEach(b => { b.disabled = false; });
     }
   }
 
@@ -677,12 +533,15 @@ export class App {
       <span style="color:#856404;font-size:1.1rem">&#9888;</span>
       <span style="font-weight:600;color:#856404;white-space:nowrap">Impossible d&rsquo;initialiser la DB</span>
       <code class="prep-init-error-detail">${msg.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</code>
-      <button id="prep-retry-btn" class="prep-topbar-db-btn">R&eacute;essayer</button>
-      <button id="prep-change-btn" class="prep-topbar-db-btn">Choisir un autre&hellip;</button>
-      <button id="prep-dismiss-btn" class="prep-topbar-db-btn">&times;</button>
+      <button id="prep-retry-btn" class="prep-init-error-btn">R&eacute;essayer</button>
+      <button id="prep-change-btn" class="prep-init-error-btn">Choisir un autre&hellip;</button>
+      <button id="prep-dismiss-btn" class="prep-init-error-btn">&times;</button>
     `));
-    // Insert after topbar
-    root.querySelector(".prep-topbar")?.insertAdjacentElement("afterend", banner);
+    // CHR-01 — juste au-dessus de `.prep-shell`, et par une référence gardée plutôt
+    // que par un sélecteur optionnel : l'ancien `querySelector(".prep-topbar")?.` avalait
+    // son échec, si bien que retirer la barre aurait fait disparaître ce bandeau sans un
+    // mot — sur la seule surface qui signale une base illisible.
+    this._shellEl.insertAdjacentElement("beforebegin", banner);
     banner.querySelector("#prep-retry-btn")?.addEventListener("click", () => {
       banner.remove();
       void this._onCreateDb(root);
@@ -783,7 +642,6 @@ export class App {
           meta: nextMeta,
         });
         overlay.remove();
-        await this._refreshTopbarDbLabel();
         showToast("Fiche corpus enregistr\u00e9e.");
       } catch (err) {
         showToast(`Enregistrement : ${String(err)}`, true);
@@ -820,7 +678,6 @@ export class App {
     this._shareDocs.setJobCenter(this._jobCenter, showToast);
     this._actions.setJobCenter(this._jobCenter, showToast);
     this._exports.setJobCenter(this._jobCenter, showToast);
-    await this._refreshTopbarDbLabel();
   }
 
   /** Stop all background timers and remove event listeners. Called by tauri-shell on unmount. */

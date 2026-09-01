@@ -299,7 +299,7 @@
   flex-direction: column;
   position: sticky;
   top: 0;
-  max-height: calc(100vh - var(--prep-topbar-h, 54px) - 8px);
+  max-height: calc(100vh - var(--prep-topbar-h, 44px) - 8px);
   overflow: hidden;
 }
 

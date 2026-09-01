@@ -17,17 +17,22 @@ statut: à venir
 - [x] Supprimer les presets globaux du shell : bouton `⚙ Presets`, store, modale, `_migratePresetsFromPrep`, les deux clés `localStorage`, le CSS
 - [x] Retirer `global_presets_count` de `diagnostics.ts` et ses deux assertions dans `diagnostics.test.ts:94` et `:184`
 - [x] Retirer les symboles devenus morts que rien ne signale : `appendHtml`, `writeTextFile`, `readTextFile` dans `app.ts`, `_getJson` dans `diagnostics.ts` — `noUnusedLocals: false` dans les DEUX tsconfig, et l'ESLint du dépôt ne les voit pas non plus
-- [ ] Réancrer le bandeau d'erreur d'ouverture de base : `insertAdjacentElement` sur `.prep-topbar` (`app.ts:732`) échoue **silencieusement** une fois la barre partie
-- [ ] Réancrer `#app-pending-confirm` en tête de `.prep-shell`, sinon le garde de sortie d'onglet devient muet
-- [ ] Passer `--prep-topbar-h` de 54 à 44px (`tokens.css:62`) et revérifier ses quatre consommateurs
-- [ ] Supprimer la barre elle-même : titre « Constituer », chemin de la base, `Ouvrir…`, `Créer…`, `Presets`, `Fiche corpus`, `↗ Shell`, `Journal`
-- [ ] Garder `_onOpenDb`, `_onCreateDb` et la classe `.prep-topbar-db-btn` : le bandeau d'erreur s'en sert encore (`app.ts:727-729`)
-- [ ] Trancher le sort de la boucle qui désactive tous les `.prep-topbar-db-btn` pendant la création d'une base (`app.ts:703`) — sans barre elle ne trouve plus que les boutons du bandeau
+- [x] Réancrer le bandeau d'erreur d'ouverture de base : `insertAdjacentElement` sur `.prep-topbar` (`app.ts:732`) échoue **silencieusement** une fois la barre partie
+- [x] Réancrer `#app-pending-confirm` en tête de `.prep-shell`, sinon le garde de sortie d'onglet devient muet
+- [x] Passer `--prep-topbar-h` de 54 à 44px (`tokens.css:62`) et revérifier ses quatre consommateurs
+- [x] Supprimer la barre elle-même : titre « Constituer », chemin de la base, `Ouvrir…`, `Créer…`, `Presets`, `Fiche corpus`, `↗ Shell`, `Journal`
+- [x] Garder `_onOpenDb`, `_onCreateDb` et la classe `.prep-topbar-db-btn` : le bandeau d'erreur s'en sert encore (`app.ts:727-729`)
+- [x] Trancher le sort de la boucle qui désactive tous les `.prep-topbar-db-btn` pendant la création d'une base (`app.ts:703`) — sans barre elle ne trouve plus que les boutons du bandeau
 - [x] Ouvrir un pont shell → `constituerModule` → `App` : une commande nommée, sans élargir `ShellContext` qui est délibérément minimal
 - [x] Ajouter « 📄 Fiche corpus… » au menu de la base du shell — toujours visible, bascule sur Constituer si on vient d'Explorer
 - [x] Ajouter l'icône `📋` Journal au header shell, **rendue seulement en mode Constituer**
 - [x] Poser la garde du pont — `modules/__tests__/constituerCommands.test.ts`, 4 cas : une commande appelée module démonté doit être sans effet, pas lever (prouvé au rouge en retirant les appels optionnels : `TypeError` sur les deux)
-- [ ] Réancrer le tiroir Journal sous le header shell (`app.css:56`, `top: var(--prep-topbar-h)`)
+- [x] Réancrer le tiroir Journal sous le header shell (`app.css:56`, `top: var(--prep-topbar-h)`)
+- [x] Rendre lisibles les trois boutons du bandeau d'erreur — ils empruntaient `.prep-topbar-db-btn`, soit du blanc à 90 % sur fond jaune clair ; défaut préexistant, sur la seule surface qui annonce une base illisible
+- [x] Rendre au header shell le repère ARIA `banner`, que la barre portait et que rien ne portait plus
+- [x] Rendre le focus au déclencheur à la fermeture du Journal (QAS-01, chemin header)
+- [ ] Restituer le titre du corpus quelque part : la barre affichait « Titre — fichier.db », le déclencheur du shell n'affiche que le nom de fichier
+- [ ] QAS-01 — le retour de focus par la ✕ du tiroir reste ouvert : prep ne connaît pas son déclencheur, et l'item de la revue prescrit un correctif sur un bouton qui n'existe plus
 - [ ] Ajouter le raccourci « Fiche corpus » dans l'en-tête de l'écran Documents, par callback sur le modèle de `setOnOpenExporter`
 - [ ] Écrire la passe de QA `qa/chrome-constituer.md`, et la jouer
 

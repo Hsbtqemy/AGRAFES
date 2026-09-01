@@ -49,7 +49,7 @@ const CONSTITUER_CSS = `
    Le calc() de .prep-seg-split-layout est conçu pour le mode autonome
    (100vh = toute la fenêtre) ; ici la fenêtre utile est 100vh - 44px. */
 .con-subcontent .prep-seg-split-layout {
-  height: calc(100vh - var(--prep-topbar-h, 54px) - 254px);
+  height: calc(100vh - var(--prep-topbar-h, 44px) - 254px);
 }
 `;
 

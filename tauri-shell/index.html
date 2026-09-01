@@ -14,7 +14,10 @@
     </style>
   </head>
   <body>
-    <div id="shell-header"></div>
+    <!-- role="banner" : le repère ARIA était porté par la barre de prep, retirée
+         par CHR-01. Le header shell est le vrai en-tête du produit — marque, onglets,
+         base active — donc c'est lui qui doit le porter, et non plus un écran. -->
+    <div id="shell-header" role="banner"></div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
