@@ -484,6 +484,8 @@ Ajouter dans `vite.config.ts` (ou `vitest.config.ts`) : `test: { environment: "j
 
 > ✅ **FAIT** — les presets projet sont persistés dans `corpus_info.meta.presets` (par DB), via `_loadPresetsFromDb`/`_savePresetsToDb` dans `tauri-prep/src/app.ts` (lecture/écriture `getCorpusInfo`/`updateCorpusInfo`, merge non destructif dans `meta`). Pas de table dédiée — le design retenu réutilise `corpus_info.meta_json`, exactement ce que recommandait la spec.
 
+> ⛔ **PUIS RETIRÉ** — CHR-01 lot 2 (`bf78fd1`, 2026-09-01). La fonctionnalité était morte côté usage : `applyPreset()` ne posait plus que deux champs — les cibles des autres avaient disparu avec SegmentationView et CurationView — et seulement si l'écran Actions était monté ; les presets globaux du shell, eux, n'avaient aucun « Appliquer » nulle part. Mesure du même jour sur les cinq bases locales : **aucune** clé `presets` dans `corpus_info.meta_json`. Le stockage spécifié ci-dessous a bien été construit, jamais rempli. À noter pour qui recouperait les documents : `HANDOFF_PREP.md` décrivait, lui, des presets portant `rules: [{pattern, replacement}]` — une forme que ni cette spec ni l'implémentation n'ont jamais eue ; elle y a été corrigée par `28cd916`.
+
 **Priorité :** Moyenne | **Effort :** M (4–6 h)
 **Fichiers :** `tauri-prep/src/app.ts`, `tauri-prep/src/lib/sidecarClient.ts`, `src/multicorpus_engine/sidecar.py`
 

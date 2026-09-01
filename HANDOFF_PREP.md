@@ -206,8 +206,11 @@ savoir avant de rétablir quoi que ce soit sur la foi de ce qui était écrit ic
 - La clé `presets` telle qu'elle était décrite — des presets portant
   `rules: [{pattern, replacement, flags}]` — **n'a jamais eu d'écrivain**, ni dans les
   fronts ni dans le moteur. Le `ProjectPreset` réellement livré portait `languages`,
-  `pivot_language`, `alignment_strategy`, `similarity_threshold` : pas de `rules`. La forme
-  documentée venait de la spec D-1 (`docs/BACKLOG_PREP_AUDIT.md`), pas de ce qui a été codé.
+  `pivot_language`, `alignment_strategy`, `similarity_threshold` : pas de `rules`. Et elle ne
+  venait pas non plus de la spec, qui montre `presets: [{ id, name, … }]` et `ProjectPreset[]`
+  sans `rules` (`docs/BACKLOG_PREP_AUDIT.md` § D-1) — la confusion la plus probable est le
+  voisinage du paragraphe suivant, les presets de *curation* portant bien des règles
+  `pattern`/`replacement`. Hypothèse, pas certitude : l'origine de cette forme reste inconnue.
 - Aucune base ne contient de clé `presets` — mesuré le 2026-09-01 sur les cinq bases locales,
   la seule clé rencontrée étant `active_models`. Il n'y a donc rien à migrer ni à purger.
 

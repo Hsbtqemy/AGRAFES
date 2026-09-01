@@ -20,7 +20,7 @@ Last updated: 2026-04-20 (audit sécurité ✅, feat #39 segments adjacents ✅,
 | C-1 | Tests Vitest — fingerprints, persistence localStorage curation | Haute | M | ✅ done (`curationFingerprint.test.ts`, `curationReview.test.ts`) |
 | C-2 | Tests Vitest — normalisation import + parsing CoNLL-U | Moyenne | S | ✅ done (`screens/__tests__/ImportScreen.test.ts`, 32 tests) |
 | C-3 | Tests Vitest — diff LCS + extraction `diff.ts` | Basse | S | ✅ done (`lib/diff.ts` extrait + `diff.test.ts`, 21 tests) |
-| D-1 | Persister les Presets projet en base de données | Moyenne | M | ✅ done (`corpus_info.meta.presets`, `app.ts` `_loadPresetsFromDb`/`_savePresetsToDb`) |
+| D-1 | Persister les Presets projet en base de données | Moyenne | M | ✅ done (`corpus_info.meta.presets`, `app.ts` `_loadPresetsFromDb`/`_savePresetsToDb`) — **puis retiré** (CHR-01, `bf78fd1`, 2026-09-01) : la fonctionnalité était morte côté usage, et aucune base n'a jamais contenu de preset |
 | D-2 | Preview CoNLL-U via sidecar (`POST /import/preview`) | Basse | M | ✅ done |
 | E-1 | Namespacing CSS : préfixer classes de `app.css` | Basse | L | ✅ done |
 | E-2 | Focus management et navigation clavier (a11y) | Moyenne | M | ✅ done (focus restitution, nav clavier diff-list, `aria-selected`, toasts `aria-live`, structure `role="table"`/`row`/`cell` sur l'audit alignement) |
