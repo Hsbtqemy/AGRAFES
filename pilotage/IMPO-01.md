@@ -229,7 +229,15 @@ l'écran affiche une coche verte.
       rattrapage pour un document 100 % `structure`. La commande rend `status: "ok"` sur un
       document qu'elle ne peut pas traiter (aucune unité `line` à lire), sans un mot. Même
       famille que le défaut de la fiche : une opération qui se déclare réussie en n'ayant
-      rien fait. À vérifier aussi côté sidecar (`POST /segment`) avant de trancher le remède
+      rien fait. À vérifier aussi côté sidecar (`POST /segment`) avant de trancher le remède.
+      **Reproduit de bout en bout le 1er septembre**, en deux commandes, sur un fichier réel
+      et sain — `testparagraphesAgrafes.docx`, 18 `<w:p>`, aucun `<w:br/>`, aucun marqueur
+      `[N]`. Importé en `docx_numbered_lines` : `status: ok`, `warnings: []`,
+      `units_line: 0`, `units_structure: 17`. Puis `segment` : `units_input: 0`,
+      `units_output: 0`, `status: ok`. **Le compteur qui prouve le défaut est déjà dans la
+      réponse de l'import** — `units_line: 0` — et personne ne le lit ; c'est un filet à
+      poser, pas une mesure à ajouter. Le même fichier en `docx_paragraphs` rend 17 unités
+      `line` : la comparaison isole le mode comme seule variable
 - [ ] **ShareDocs garde le défaut qu'on vient de retirer en local** — **promu en chantier
       propre le 28 août, voir `SD-01`**, dont la première tranche est livrée.
       Rappel du constat : `#prep-sd-profile`
