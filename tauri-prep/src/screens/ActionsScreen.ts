@@ -367,15 +367,6 @@ export class ActionsScreen {
       void this._toggleHubHierarchyView();
     });
 
-    // T0 (refonte « texte central ») — accès prototype au canvas unifié.
-    // Cohabite avec les écrans legacy ; cf. docs/DESIGN_prep_text_canvas.md.
-    const protoBtn = document.createElement("button");
-    protoBtn.type = "button";
-    protoBtn.className = "prep-canvas-proto-launch";
-    protoBtn.textContent = "🧪 Canvas Texte (prototype)";
-    protoBtn.addEventListener("click", () => this._switchSubViewDOM(root, "texte"));
-    el.appendChild(protoBtn);
-
     // Peindre les cartes tout de suite : sur un corpus vide elles doivent dire
     // « aucun document », pas rester muettes en attendant un chargement.
     this._paintHubCards(el);

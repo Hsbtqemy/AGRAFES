@@ -5296,13 +5296,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 .prep-conv-text-start-clear:hover { background: #f8d7da; }
 
-/* ── Refonte T0 : canvas texte central (prep-canvas-*) — cf. docs/DESIGN_prep_text_canvas.md ── */
-.prep-canvas-proto-launch {
-  margin-top: 0.75rem; padding: 0.4rem 0.8rem; border: 1px dashed #a855f7;
-  border-radius: 6px; background: #faf5ff; color: #7e22ce; cursor: pointer; font-size: 0.85rem;
-}
-.prep-canvas-proto-launch:hover { background: #f3e8ff; }
-.prep-canvas-root {
+/* ── Refonte T0 : canvas texte central (prep-canvas-*) — cf. docs/DESIGN_prep_text_canvas.md ── */.prep-canvas-root {
   container-type: inline-size;
   display: flex; flex-direction: column; gap: 0.5rem; height: 100%; min-height: 0;
 }
