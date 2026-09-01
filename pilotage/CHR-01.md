@@ -210,13 +210,20 @@ L'inversion est peu chère parce que `_setMode` est déjà `async` : l'entrée d
 sur Constituer, attend le montage, puis appelle.
 
 **Ce que ce chantier a mis au jour et passé à un autre.** Le bandeau d'erreur réancré au
-lot 3 n'a plus d'entrée — son seul appelant, le `catch` de `_onCreateDb`, n'est atteint que
-par le bouton « Réessayer » du bandeau lui-même — et le vrai chemin d'échec ne dit rien du
-tout. Le réancrage reste juste : il garde une porte que plus rien n'ouvre. Rouvrir cette
-porte demande de décider ce que l'application montre quand une base ne s'ouvre pas, sujet
-transversal aux trois modules : c'est **DEG-01**, ouvert le 1er septembre 2026. Il porte
-aussi la conclusion que CHR-01 a établie sans la chercher — prep ne choisit pas la base,
-et ses deux dialogues n'ont pas à revenir.
+lot 3 n'a plus d'entrée : son seul appelant, le `catch` de `_onCreateDb`, n'est atteint que
+par le bouton « Réessayer » du bandeau lui-même. Le réancrage reste juste — il garde une
+porte que plus rien n'ouvre.
+
+Le réflexe était de la rouvrir. La vérification a montré le contraire : le shell porte
+**déjà** sa propre bannière d'échec, `_showInitError`, posée par `_initDb` au démarrage
+comme au changement de base, et visible dans les quatre modes. Le bandeau de prep n'est donc
+pas une surface à rétablir mais un doublon mort à retirer — avec `_onOpenDb` et
+`_onCreateDb`, dont la disparition au lot 3 a fermé sans le savoir une vraie
+désynchronisation : prep ne choisit pas la base, et ses dialogues n'ont pas à revenir.
+
+Le tout est passé à **DEG-01**, ouvert le 1er septembre 2026, qui porte aussi le défaut
+trouvé en chemin — un bouton du shell qui promet de choisir un fichier et ouvre un
+enregistreur.
 
 **Collisions connues.** `ActionsScreen.ts` est aussi le terrain d'ACT-01 et de R2, mais ce
 chantier n'y touche que l'interface `ProjectPreset` et `applyPreset`, deux blocs isolés en
