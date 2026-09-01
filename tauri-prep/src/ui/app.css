@@ -4197,6 +4197,33 @@ button.prep-matrix-remove-choice:hover {
   color: #64748b;
 }
 
+/* Les trois piles du bandeau de filtre. Elles resserrent la liste au sein de la
+   capacité choisie — « jamais commencé », « en cours », ou les deux. Un segment vide
+   se désactive plutôt que de disparaître : sa présence dit que la pile existe et
+   qu'elle est à zéro, ce qu'une absence ne dirait pas. */
+.prep-acts-hub-piles { display: inline-flex; gap: 4px; margin-left: 8px; }
+.prep-acts-hub-pile {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.prep-acts-hub-pile:hover:not(:disabled) { border-color: var(--prep-accent, #0f766e); }
+.prep-acts-hub-pile:focus-visible {
+  outline: 2px solid var(--prep-accent, #0f766e);
+  outline-offset: 1px;
+}
+.prep-acts-hub-pile:disabled { opacity: 0.45; cursor: default; }
+.prep-acts-hub-pile--on {
+  border-color: var(--prep-accent, #0f766e);
+  background: color-mix(in srgb, var(--prep-accent, #0f766e) 12%, #fff);
+  color: var(--prep-accent, #0f766e);
+  font-weight: 600;
+}
+
 /* Colonne « Ouvrir » — les quatre gestes, ou le seul geste filtré. */
 .prep-acts-hub-row-actions { white-space: nowrap; }
 .prep-acts-hub-row-btn {

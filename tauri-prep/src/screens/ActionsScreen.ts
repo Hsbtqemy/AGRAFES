@@ -32,7 +32,9 @@ import {
   stepCounts,
   stepMark, stepState,
 } from "../lib/actionsHubState.ts";
-import type { HubSortCol, HubStep, SortDir, StepState } from "../lib/actionsHubState.ts";
+import type {
+  HubPile, HubSortCol, HubStep, SortDir, StepState,
+} from "../lib/actionsHubState.ts";
 import { AlignPanel } from "./AlignPanel.ts";
 import { AlignMatrixView } from "./AlignMatrixView.ts";
 import { TextCanvasView } from "./TextCanvasView.ts";
@@ -79,6 +81,8 @@ export class ActionsScreen {
   private _hubHierarchyView = false;
   // ACT-01 — capacité choisie dans les cartes ; null = tout le corpus.
   private _hubFilter: HubStep | null = null;
+  /** La pile au sein de la capacité filtrante. Remise à `any` à chaque changement. */
+  private _hubPile: HubPile = "any";
   // Tri de la liste. Mêmes conventions que l'écran Documents (th[data-sort],
   // .sort-ind, .sort-active) : deux tables aux mêmes colonnes doivent se manier
   // pareil. « id » = ordre d'arrivée, c'est-à-dire le défaut.
@@ -338,6 +342,15 @@ export class ActionsScreen {
     el.querySelector<HTMLButtonElement>("#act-hub-filter-clear")
       ?.addEventListener("click", () => this._setHubFilter(null));
 
+    // Les trois piles. Elles ne vivent que sous filtre : hors filtre, « jamais
+    // commencé » n'a pas de capacité à quoi se rapporter.
+    el.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-pile").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pile = btn.dataset.pile as HubPile | undefined;
+        if (pile) this._setHubPile(pile);
+      });
+    });
+
     // Un seul bouton d'actualisation (il y en avait deux) : le plus fort des deux —
     // setConn re-tire les documents ET ré-émet aux sous-vues (Curation, Segmentation,
     // Alignement, Annotation). Sans connexion, il recharge au moins la liste.
@@ -358,9 +371,24 @@ export class ActionsScreen {
     return el;
   }
 
-  /** Change la capacité filtrante et re-peint cartes + liste. */
+  /**
+   * Change la capacité filtrante et re-peint cartes + liste.
+   *
+   * La pile retombe à `any` : elle qualifie une capacité, elle ne se transporte pas
+   * d'une capacité à l'autre. Passer de « les 2 en cours de la curation » à
+   * l'alignement en gardant « en cours » afficherait 21 documents sans que rien ne
+   * l'ait demandé.
+   */
   private _setHubFilter(step: HubStep | null): void {
     this._hubFilter = step;
+    this._hubPile = "any";
+    this._paintHubCards();
+    this._renderDocList();
+  }
+
+  /** Resserre la liste sur une pile de la capacité courante. */
+  private _setHubPile(pile: HubPile): void {
+    this._hubPile = pile;
     this._paintHubCards();
     this._renderDocList();
   }
@@ -416,13 +444,37 @@ export class ActionsScreen {
     // dire ce qu'on regarde même quand on regarde tout.
     const label = find<HTMLElement>("#act-hub-filter-label");
     const clear = find<HTMLElement>("#act-hub-filter-clear");
+    const piles = find<HTMLElement>("#act-hub-filter-piles");
+    if (piles) piles.hidden = this._hubFilter === null;
+    if (this._hubFilter !== null) {
+      const { none, started } = counts[this._hubFilter];
+      const taille: Record<HubPile, number> = { none, started, any: none + started };
+      // Une pile qu'on vient de vider ne peut pas rester sélectionnée : la liste
+      // serait vide sous un segment désactivé, sans rien qui explique pourquoi.
+      // C'est le cas normal de sortie — on coche le dernier « en cours » de la pile.
+      if (this._hubPile !== "any" && taille[this._hubPile] === 0) this._hubPile = "any";
+      const dit: Record<HubPile, string> = {
+        none: `${none} jamais commencé${none > 1 ? "s" : ""}`,
+        started: `${started} en cours`,
+        any: `Tous (${none + started})`,
+      };
+      piles?.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-pile").forEach((btn) => {
+        const pile = btn.dataset.pile as HubPile;
+        btn.textContent = dit[pile];
+        // `any` ne se désactive jamais : c'est le retour en arrière, y compris quand
+        // la capacité ne concerne plus personne.
+        btn.disabled = pile !== "any" && taille[pile] === 0;
+        btn.setAttribute("aria-pressed", String(this._hubPile === pile));
+        btn.classList.toggle("prep-acts-hub-pile--on", this._hubPile === pile);
+      });
+    }
     if (label) {
       if (this._hubFilter === null) {
         label.textContent = total === 0
           ? "Aucun document"
           : `${total} document${total > 1 ? "s" : ""}`;
       } else {
-        const shown = docsForStep(this._docs, this._hubFilter).length;
+        const shown = docsForStep(this._docs, this._hubFilter, this._hubPile).length;
         label.textContent =
           `${STEP_LABEL[this._hubFilter]} — ${shown} document${shown > 1 ? "s" : ""} sur ${total}`;
       }
@@ -733,7 +785,7 @@ export class ActionsScreen {
       el.innerHTML = '<p class="empty-hint">Aucun document import&#233;.</p>';
       return;
     }
-    const shown = docsForStep(this._docs, this._hubFilter);
+    const shown = docsForStep(this._docs, this._hubFilter, this._hubPile);
     if (shown.length === 0) {
       // Sous filtre uniquement : la liste complète n'est jamais vide ici.
       el.innerHTML = '<p class="empty-hint">Rien &#224; faire ici : aucun document n&rsquo;attend cette &#233;tape.</p>';
@@ -880,9 +932,12 @@ export class ActionsScreen {
       const quand = mark.validated_at.slice(0, 10);
       dit = `${nom} — validé le ${quand}, puis modifié (${mark.stale_reason ?? "?"})`;
     } else {
+      // « aucune trace enregistrée » et non « rien de fait » : l'outil ne sait rien du
+      // document, il ne sait que ce qu'il a vu. Un texte curé dans Word avant l'import
+      // arrive ici sans trace, et « rien de fait » serait faux à son sujet.
       dit = state === "started"
         ? `${nom} — commencé, jamais validé`
-        : `${nom} — rien de fait`;
+        : `${nom} — aucune trace enregistrée`;
     }
     box.title = `${dit} · « ${doc.title} »`;
     box.setAttribute("aria-label", `${dit} sur ${doc.title}`);

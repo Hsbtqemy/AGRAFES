@@ -894,3 +894,125 @@ describe("hub Actions — revenir au hub recharge l'état (ACT-01, tri-état)", 
     expect(docCalls()).toBe(1);
   });
 });
+/**
+ * Le double filtre, dans le bandeau.
+ *
+ * Le filtre avait cessé de trier : tant qu'aucune coche n'existe, les quatre capacités
+ * concernent le corpus entier et « Voir les 58 » est vrai quatre fois. Les piles
+ * discriminent tout de suite, et la petite — « en cours » — est celle qu'on ne pouvait
+ * pas atteindre : finir ce qui est commencé.
+ *
+ * Elles vivent dans le bandeau et non sur les cartes : quatre cartes à deux boutons
+ * feraient huit contrôles pour un raffinement, alors que les cartes servent à choisir
+ * UNE capacité. Le bandeau n'apparaît qu'une fois la capacité choisie.
+ */
+describe("hub Actions — les trois piles du bandeau (ACT-01)", () => {
+  const FRAIS = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
+  // P1 rien, P2 commencé sans validation, P3 validé — un par état de la curation.
+  const P1 = { doc_id: 1, title: "Rien", language: "fr", doc_role: null, unit_count: 1 };
+  const P2 = {
+    doc_id: 2, title: "Commencé", language: "fr", doc_role: null,
+    unit_count: 900, curated_at: "2026-08-01T00:00:00Z",
+  };
+  const P3 = { ...P2, doc_id: 3, title: "Validé", step_status: { curation: FRAIS } };
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  async function monter(suite?: unknown[]): Promise<{ root: HTMLElement }> {
+    let appels = 0;
+    const view = new ActionsScreen();
+    const root = view.render();
+    document.body.appendChild(root);
+    view.setConn({
+      get: vi.fn(async (path: string) => {
+        if (path.startsWith("/documents")) {
+          appels += 1;
+          const d = appels > 1 && suite ? suite : [P1, P2, P3];
+          return { documents: d, count: d.length };
+        }
+        if (path.startsWith("/doc_relations/all")) return { relations: [] };
+        return {};
+      }),
+      post: vi.fn(async () => ({})),
+    } as unknown as Conn);
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll("#act-doc-list tbody tr").length).toBe(3);
+    });
+    return { root };
+  }
+
+  const pile = (root: HTMLElement, nom: string): HTMLButtonElement =>
+    root.querySelector<HTMLButtonElement>(`.prep-acts-hub-pile[data-pile="${nom}"]`)!;
+  const lignes = (root: HTMLElement): number =>
+    root.querySelectorAll("#act-doc-list tbody tr").length;
+
+  it("les piles n'apparaissent qu'une fois une capacité choisie", async () => {
+    const { root } = await monter();
+    const boite = root.querySelector<HTMLElement>("#act-hub-filter-piles")!;
+    expect(boite.hidden).toBe(true);
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-curation")!.click();
+    await vi.waitFor(() => expect(boite.hidden).toBe(false));
+  });
+
+  it("chaque pile annonce son compte, et « Tous » leur somme", async () => {
+    const { root } = await monter();
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-curation")!.click();
+    await vi.waitFor(() => expect(pile(root, "none").textContent).toBeTruthy());
+    expect(pile(root, "none").textContent).toBe("1 jamais commencé");
+    expect(pile(root, "started").textContent).toBe("1 en cours");
+    expect(pile(root, "any").textContent).toBe("Tous (2)");
+  });
+
+  it("« en cours » resserre la liste sur ce qui est commencé sans être validé", async () => {
+    const { root } = await monter();
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-curation")!.click();
+    await vi.waitFor(() => expect(lignes(root)).toBe(2));   // P1 + P2, P3 validé sort
+    pile(root, "started").click();
+    await vi.waitFor(() => expect(lignes(root)).toBe(1));
+    expect(root.querySelector("#act-doc-list tbody tr")!.getAttribute("data-doc-id")).toBe("2");
+  });
+
+  it("une pile vide se désactive ; « Tous » ne se désactive jamais", async () => {
+    // Sur l'alignement, aucun des trois n'a de lien : « en cours » est à zéro. Le
+    // segment reste visible — sa présence dit que la pile existe et vaut zéro, ce
+    // qu'une disparition ne dirait pas.
+    const { root } = await monter();
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-alignement")!.click();
+    await vi.waitFor(() => expect(pile(root, "started").textContent).toBe("0 en cours"));
+    expect(pile(root, "started").disabled).toBe(true);
+    expect(pile(root, "any").disabled).toBe(false);
+  });
+
+  it("changer de capacité remet la pile à « Tous »", async () => {
+    // Elle qualifie une capacité, elle ne se transporte pas : garder « en cours » en
+    // passant à l'alignement resserrerait sur une pile que personne n'a demandée.
+    const { root } = await monter();
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-curation")!.click();
+    await vi.waitFor(() => expect(pile(root, "started")).toBeTruthy());
+    pile(root, "started").click();
+    await vi.waitFor(() => expect(pile(root, "started").getAttribute("aria-pressed")).toBe("true"));
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-alignement")!.click();
+    await vi.waitFor(() => expect(pile(root, "any").getAttribute("aria-pressed")).toBe("true"));
+    expect(pile(root, "started").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("vider la pile sélectionnée retombe sur « Tous », pas sur une liste vide", async () => {
+    // Le cas normal de sortie : on coche le dernier « en cours ». Sans ce repli, la
+    // liste serait vide sous un segment désactivé, et rien n'expliquerait pourquoi.
+    const P2_VALIDE = { ...P2, step_status: { curation: FRAIS } };
+    const { root } = await monter([P1, P2_VALIDE, P3]);
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-curation")!.click();
+    await vi.waitFor(() => expect(pile(root, "started")).toBeTruthy());
+    pile(root, "started").click();
+    await vi.waitFor(() => expect(lignes(root)).toBe(1));
+    // Cocher la curation de P2 : le second GET rend la liste où il est validé.
+    root.querySelector<HTMLButtonElement>(
+      'tr[data-doc-id="2"] .prep-acts-hub-box',
+    )!.click();
+    await vi.waitFor(() => expect(pile(root, "any").getAttribute("aria-pressed")).toBe("true"));
+    expect(pile(root, "started").disabled).toBe(true);
+    expect(lignes(root)).toBe(1);   // P1 seul reste à faire
+  });
+});

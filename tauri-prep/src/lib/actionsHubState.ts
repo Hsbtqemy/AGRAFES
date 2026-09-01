@@ -88,9 +88,33 @@ export function stepMark(doc: DocumentRecord, step: HubStep): StepMark | null {
  * deux premiers états. Un document « en cours » concerne toujours la capacité — c'est
  * même celui sur lequel il reste le plus à décider.
  */
-export function docsForStep(docs: DocumentRecord[], step: HubStep | null): DocumentRecord[] {
+/**
+ * La pile, au sein d'une capacité. `any` = tout ce qui n'est pas validé, la seule que
+ * la page ait connue jusqu'ici.
+ *
+ * Elle existe parce que le filtre avait cessé de trier : tant qu'aucune coche n'est
+ * posée, les quatre capacités concernent le corpus entier et « Voir les 58 » est vrai
+ * quatre fois. Les deux piles, elles, discriminent tout de suite — 56·2 pour la
+ * curation, 37·21 pour l'alignement, 50·8 pour l'annotation le 1er septembre — et la
+ * petite, « en cours », est celle qu'on ne pouvait pas atteindre : finir ce qui est
+ * commencé.
+ *
+ * La segmentation reste à `any` par force, et c'est correct : l'import produit toujours
+ * un découpage, donc sa pile « jamais commencé » est vide par construction. Son travail
+ * n'est pas de découper mais de VÉRIFIER le découpage, et cette progression-là ne passe
+ * que par les coches.
+ */
+export type HubPile = "any" | "none" | "started";
+
+export function docsForStep(
+  docs: DocumentRecord[], step: HubStep | null, pile: HubPile = "any",
+): DocumentRecord[] {
   if (step === null) return docs.slice();
-  return docs.filter((d) => stepState(d, step) !== "done");
+  return docs.filter((d) => {
+    const state = stepState(d, step);
+    if (state === "done") return false;
+    return pile === "any" || state === pile;
+  });
 }
 
 /** Ce qu'une carte annonce : jamais commencé d'un côté, commencé sans conclusion de l'autre. */

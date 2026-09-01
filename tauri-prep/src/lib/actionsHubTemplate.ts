@@ -90,6 +90,11 @@ export function actionsHubTemplate(): string {
         </div>
         <p id="act-hub-filter-strip" class="prep-acts-hub-filter-strip" aria-live="polite">
           <span id="act-hub-filter-label" class="prep-acts-hub-filter-label"></span>
+          <span id="act-hub-filter-piles" class="prep-acts-hub-piles" hidden>
+            <button type="button" class="prep-acts-hub-pile" data-pile="none" aria-pressed="false"></button>
+            <button type="button" class="prep-acts-hub-pile" data-pile="started" aria-pressed="false"></button>
+            <button type="button" class="prep-acts-hub-pile" data-pile="any" aria-pressed="true"></button>
+          </span>
           <button type="button" id="act-hub-filter-clear" class="prep-acts-hub-filter-clear" hidden>Tout afficher</button>
         </p>
         <div id="act-doc-list" class="prep-acts-hub-doc-list"></div>

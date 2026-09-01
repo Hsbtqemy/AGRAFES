@@ -276,3 +276,58 @@ describe("tri de la liste", () => {
     expect([...niveau].sort(cmp).map((d) => d.doc_id)).toEqual([2, 3]);
   });
 });
+/**
+ * Le double filtre. `docsForStep` ne prenait qu'un critère — la capacité — et rendait
+ * tout ce qui n'est pas validé. Tant qu'aucune coche n'existe, c'est le corpus entier
+ * pour les quatre capacités : le filtre avait cessé de trier.
+ */
+describe("docsForStep — les trois piles", () => {
+  const rien = doc({ doc_id: 1, unit_count: 1 });
+  const encours = doc({ doc_id: 2, unit_count: 900, curated_at: "2026-08-01T00:00:00Z" });
+  const valide = doc({
+    doc_id: 3, unit_count: 900, curated_at: "2026-08-01T00:00:00Z",
+    step_status: {
+      curation: { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" },
+    },
+  });
+  const tous = [rien, encours, valide];
+
+  it("`any` garde tout ce qui n'est pas validé — le comportement d'avant", () => {
+    expect(docsForStep(tous, "curation").map((d) => d.doc_id)).toEqual([1, 2]);
+    expect(docsForStep(tous, "curation", "any").map((d) => d.doc_id)).toEqual([1, 2]);
+  });
+
+  it("`none` ne garde que ce qui n'a aucune trace", () => {
+    expect(docsForStep(tous, "curation", "none").map((d) => d.doc_id)).toEqual([1]);
+  });
+
+  it("`started` ne garde que ce qui est commencé sans être validé", () => {
+    expect(docsForStep(tous, "curation", "started").map((d) => d.doc_id)).toEqual([2]);
+  });
+
+  it("aucune pile ne rend un document validé", () => {
+    for (const pile of ["any", "none", "started"] as const) {
+      expect(docsForStep(tous, "curation", pile).some((d) => d.doc_id === 3), pile).toBe(false);
+    }
+  });
+
+  it("une coche PÉRIMÉE retombe dans `started`, jamais dans `none`", () => {
+    // Elle a bien été posée : le document n'est pas vierge, et le prétendre le
+    // renverrait dans la pile de ce qu'on n'a jamais touché.
+    const perime = doc({
+      doc_id: 4, unit_count: 900, curated_at: "2026-08-01T00:00:00Z",
+      step_status: {
+        curation: {
+          validated_at: "2026-08-30T10:00:00Z", stale: true,
+          stale_reason: "update_text", basis: "history",
+        },
+      },
+    });
+    expect(docsForStep([perime], "curation", "started").map((d) => d.doc_id)).toEqual([4]);
+    expect(docsForStep([perime], "curation", "none")).toEqual([]);
+  });
+
+  it("sans capacité, la pile n'a rien à quoi se rapporter — tout est rendu", () => {
+    expect(docsForStep(tous, null, "started")).toHaveLength(3);
+  });
+});
