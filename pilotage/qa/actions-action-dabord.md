@@ -2,7 +2,7 @@
 passe: Actions — action d'abord
 chantier: ACT-01
 duree: 25 min
-derniere: —
+derniere: 2026-08-31
 ---
 
 # QA — la page Actions, « action d'abord »
