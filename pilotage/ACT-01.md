@@ -5,14 +5,29 @@ statut: interrompu
 
 # ACT-01 — la page Actions : une liste de documents qui ne sert à rien
 
-**Arrêté sur** — tout est livré, 31 août 2026 : la refonte « action d'abord », sa passe
-de QA jouée en entier (71/71), les trois décisions tranchées, et le **modèle tri-état de
-bout en bout** — moteur (contrat 1.6.88, migration 038) et front. Reste à jouer une passe
-de QA du tri-état : celle d'« action d'abord » décrit l'écran d'avant sur trois zones,
-et le dit maintenant en tête.
+**Arrêté sur** — 1er septembre 2026, tout livré et poussé, **trois passes de QA jouées
+en entier** : « action d'abord » 71/71, le tri-état 59/59, le double filtre 26/26. Le
+modèle tri-état va de bout en bout (contrat 1.6.88, migration 038) et le filtre trie de
+nouveau. Un seul item ouvert, né de la dernière passe : la pile « faits ».
 
 ## Reste
 
+- [ ] **Une quatrième pile, « faits », et le libellé « Tous » qui ment** — les deux vont
+      ensemble, relevés le 1er septembre. Aujourd'hui le segment « Tous (58) » ne compte
+      pas le corpus : il vaut `jamais commencé + en cours`, donc tout ce qui n'est PAS
+      validé. Sans coche les deux coïncident et le mot passe ; à la première coche il
+      affichera « Tous (45) » sur 58 documents, et le mensonge grandira avec le travail.
+      Et un document déclaré fini sort du filtre sans être isolable : on peut le
+      retrouver en ôtant le filtre, parmi les 58, mais rien ne montre « ce que j'ai
+      validé en curation » — or c'est ce qu'on veut relire, ne serait-ce que pour
+      décocher ce qu'on a coché trop vite. Forme retenue :
+      `À traiter (58) · 56 jamais commencés · 2 en cours · 0 faits` — le premier reste le
+      défaut et devient honnête (somme des deux suivants), le dernier est leur
+      complément, et les trois derniers partitionnent le corpus : leur total fait
+      toujours 58. **À trancher dans le lot** : sous le filtre « faits », la ligne porte
+      une case déjà cochée dont le clic RETIRE la validation. C'est le geste voulu, il ne
+      doit pas surprendre. Coût : une valeur de plus dans `HubPile`, un segment, deux
+      libellés, les tests
 - [x] **Trancher le geste central de la page** — tranché : **action d'abord**. Les quatre
       cartes ne sont plus des étapes mais des filtres ; cliquer une carte réduit la liste
       aux documents que la capacité concerne encore, et on choisit ensuite un document
@@ -243,6 +258,67 @@ et le dit maintenant en tête.
   préambule, plus rien à redemander.
 
 ## Contexte
+
+### Le double filtre — pourquoi le filtre avait cessé de trier (1er septembre)
+
+Le tri-état a livré la page avec un filtre inerte, et personne ne l'a vu avant de s'en
+servir. Le filtre retire les documents **validés** ; tant qu'aucune coche n'existe, aucun
+ne l'est. Les quatre boutons annonçaient donc « Voir les 58 » et n'ôtaient aucune ligne.
+
+Le modèle d'avant discriminait — 57/1/37/53 — mais sur un mensonge : « ce document a plus
+d'une unité » y valait « segmentation faite », ce qui classait 57 documents comme
+découpés quand **15 seulement** ont reçu un geste de découpage. Le filtre a perdu son
+tranchant en même temps qu'il a cessé de mentir ; ce n'est pas une régression, c'est la
+facture de l'honnêteté.
+
+La carte énonçait déjà la distinction utile — « 56 à faire · 2 en cours » — et le bouton
+la jetait pour proposer leur somme. Les piles sont donc dans le **bandeau** et non sur
+les cartes : quatre cartes à deux boutons feraient huit contrôles pour un raffinement,
+alors que les cartes servent à choisir UNE capacité. Capacité d'abord, pile ensuite.
+
+Ce qui vaut la peine : la pile « en cours » est petite et actionnable — 2 en curation,
+21 en alignement, 8 en annotation — et elle était **inatteignable**. Finir ce qu'on a
+commencé n'avait pas de chemin.
+
+### La segmentation n'a pas d'état « rien », et c'est correct
+
+Question posée pendant la passe, et elle a corrigé une conclusion que j'avais tirée trop
+vite. L'import produit **toujours** un découpage : zéro document sur 58 est en un seul
+bloc. La pile « jamais commencé » de la segmentation est donc vide par construction, et
+`unit_count ≤ 1` n'est pas une étape mais un détecteur de panne — il ne s'allume que si
+l'import a rendu un bloc unique, ce qui était le défaut R2.3, corrigé.
+
+J'en avais conclu que la segmentation n'a « pas de progression mesurable ». C'est faux :
+son travail n'est pas de créer un découpage mais de **vérifier** celui de l'import, et
+cette progression passe entièrement par les coches. Elle est la seule des quatre
+capacités où le dérivé ne peut rien dire de plus que « ça existe » — donc la seule où la
+couche manuelle porte toute la valeur.
+
+Basculer son signal sur l'historique (« porte un geste enregistré ») donnerait 15 en
+cours et 43 à faire, mais **34 des 58 documents ont été importés en avril 2026**, avant
+que `prep_action_history` existe (7 mai) : ils seraient tous déclarés « jamais commencé ».
+Faux dans l'autre sens, et sur une majorité. L'angle mort se résorbe à chaque import —
+83 % en juin, 62 % en août, 59 % le 1er septembre — donc un corpus constitué après mai
+n'a pas le problème. Ne rien changer aujourd'hui, c'est éviter de casser 34 documents
+pour en réparer 15.
+
+Un tri dérivé du « à vérifier en priorité » a été testé et écarté : les trois documents
+dont les unités sont les plus longues (466, 286, 197 caractères contre 72 de médiane)
+sont tous de la même famille de fichiers. Le signal repère un **type de document**, pas
+un mauvais découpage.
+
+### Un motif récurrent dans les libellés, non traité
+
+Trois fois le 1er septembre, un libellé a affirmé quelque chose **sur le document** alors
+que l'outil ne connaît que ce qu'il a vu : « rien de fait » pour une case vide (corrigé
+en « aucune trace enregistrée »), « déjà curés » dans un item de la passe (corrigé), et
+« commencé, jamais validé » — qui reste, et qui est inexact pour la segmentation, où
+personne n'a commencé : c'est l'import.
+
+« En cours » ne recouvre d'ailleurs pas la même chose selon la capacité — une passe de
+curation appliquée, des liens qui existent, des tokens qui existent, un découpage produit
+par l'import — et le libellé unique le cache. Quatre infobulles disant chacune ce
+qu'elle observe coûteraient quatre chaînes. Non tranché.
 
 ### Ce que la mesure a corrigé dans le cadrage initial
 
