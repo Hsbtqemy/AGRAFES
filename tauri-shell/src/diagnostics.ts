@@ -27,7 +27,6 @@ export interface PrefsDiag {
   last_qa_policy: string | null;
   last_tei_profile: string | null;
   onboarding_step: number | null;
-  global_presets_count: number;
 }
 
 export interface EnvDiag {
@@ -90,7 +89,6 @@ export const TEI_PROFILES_DIAG = ["generic", "parcolab_like", "parcolab_strict"]
 // localStorage keys (replicated from shell.ts to avoid circular imports)
 const LS_DB_RECENT     = "agrafes.db.recent";
 const LS_ONBOARDING    = "agrafes.onboarding.demo.step";
-const LS_PRESETS_GLOBAL = "agrafes.presets.global";
 
 // ── Path redaction (pure function) ───────────────────────────────────────────
 
@@ -177,18 +175,11 @@ function _readPrefs(): PrefsDiag {
   const _getInt = (k: string): number | null => {
     const v = _get(k); return v !== null ? parseInt(v, 10) || 0 : null;
   };
-  const _getJson = (k: string): unknown => {
-    try { return JSON.parse(_get(k) ?? "null"); } catch { return null; }
-  };
-
-  const presets = _getJson(LS_PRESETS_GLOBAL);
-  const presetsCount = Array.isArray(presets) ? presets.length : 0;
 
   return {
     last_qa_policy: _get("agrafes.last_qa_policy"),
     last_tei_profile: _get("agrafes.last_tei_profile"),
     onboarding_step: _getInt(LS_ONBOARDING),
-    global_presets_count: presetsCount,
   };
 }
 
@@ -238,7 +229,7 @@ export async function collectDiagnostics(opts: {
   const mruStats = _readMruStats();
 
   // Prefs
-  let prefs: PrefsDiag = { last_qa_policy: null, last_tei_profile: null, onboarding_step: null, global_presets_count: 0 };
+  let prefs: PrefsDiag = { last_qa_policy: null, last_tei_profile: null, onboarding_step: null };
   try { prefs = _readPrefs(); } catch (e) { errors.push(`prefs read failed: ${e}`); }
 
   // Environment
@@ -331,7 +322,6 @@ export function formatDiagnosticsText(diag: Diag): string {
     `QA policy        : ${diag.prefs.last_qa_policy ?? "(not set)"}`,
     `TEI profile      : ${diag.prefs.last_tei_profile ?? "(not set)"}`,
     `Onboarding step  : ${diag.prefs.onboarding_step ?? "(not set)"}`,
-    `Global presets   : ${diag.prefs.global_presets_count}`,
     "",
   ];
 

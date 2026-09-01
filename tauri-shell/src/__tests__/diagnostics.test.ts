@@ -91,7 +91,6 @@ const BASE_DIAG: Diag = {
     last_qa_policy: "strict",
     last_tei_profile: "parcolab_strict",
     onboarding_step: 3,
-    global_presets_count: 2,
   },
   log_tail: [],
   errors: [],
@@ -181,7 +180,6 @@ describe("formatDiagnosticsText", () => {
         last_qa_policy: null,
         last_tei_profile: null,
         onboarding_step: null,
-        global_presets_count: 0,
       },
     });
     expect(txt).toContain("QA policy        : (not set)");

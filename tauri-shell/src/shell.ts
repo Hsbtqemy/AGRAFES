@@ -751,23 +751,6 @@ const SHELL_CSS = `
   }
   .shell-shortcuts-table td:last-child { color: #495057; padding-left: 1rem; }
 
-  /* ── Presets button in header ───────────────────────────────── */
-  .shell-presets-btn {
-    background: none;
-    border: 1px solid rgba(255,255,255,0.25);
-    color: rgba(255,255,255,0.7);
-    font-size: 0.78rem;
-    padding: 3px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-    white-space: nowrap;
-  }
-  .shell-presets-btn:hover {
-    background: rgba(255,255,255,0.12);
-    color: #fff;
-  }
-
   /* ── Loading indicator ─────────────────────────────────────── */
   .shell-loading {
     display: flex;
@@ -1029,8 +1012,6 @@ async function _installDemo(): Promise<void> {
 
 const LS_MODE              = "agrafes.lastMode";
 const LS_DB                = "agrafes.lastDbPath";
-const LS_PRESETS_GLOBAL    = "agrafes.presets.global";
-const LS_PRESETS_PREP      = "agrafes.prep.presets"; // source for migration
 const LS_ONBOARDING_STEP   = "agrafes.onboarding.demo.step";  // 0..3
 const LS_DB_RECENT         = "agrafes.db.recent";             // MruEntry[]
 const LS_CRASH_MARKER      = "agrafes.session.crash_marker";  // ISO timestamp if crashed
@@ -2206,14 +2187,6 @@ function _buildHeader(): void {
   tabs.appendChild(_makeTab("Constituer", "⌘2", "constituer"));
   header.appendChild(tabs);
 
-  // Presets button
-  const presetsBtn = document.createElement("button");
-  presetsBtn.className = "shell-presets-btn";
-  presetsBtn.textContent = "⚙ Presets";
-  presetsBtn.title = "Gérer les presets globaux (langues, alignement, curation)";
-  presetsBtn.addEventListener("click", () => _openPresetsModal());
-  tabs.appendChild(presetsBtn);
-
   // Shortcuts button
   const shortcutsBtn = document.createElement("button");
   shortcutsBtn.className = "shell-shortcuts-btn";
@@ -2722,153 +2695,6 @@ function _freshContainer(): HTMLElement {
   fresh.style.minHeight = "100vh";
   old.replaceWith(fresh);
   return fresh;
-}
-
-// ─── Global Presets Store ─────────────────────────────────────────────────────
-
-interface GlobalPreset {
-  id: string;
-  name: string;
-  description?: string;
-  languages?: string[];
-  pivot_language?: string;
-  alignment_strategy?: string;
-  curation_preset?: string;
-  created_at: number;
-}
-
-function _loadGlobalPresets(): GlobalPreset[] {
-  try {
-    const raw = localStorage.getItem(LS_PRESETS_GLOBAL);
-    return raw ? (JSON.parse(raw) as GlobalPreset[]) : [];
-  } catch { return []; }
-}
-
-function _saveGlobalPresets(presets: GlobalPreset[]): void {
-  try { localStorage.setItem(LS_PRESETS_GLOBAL, JSON.stringify(presets)); } catch { /* */ }
-}
-
-/** Migrate presets from tauri-prep's store into global store (additive, no overwrite). */
-function _migratePresetsFromPrep(): number {
-  try {
-    const raw = localStorage.getItem(LS_PRESETS_PREP);
-    if (!raw) return 0;
-    const prepPresets = JSON.parse(raw) as GlobalPreset[];
-    const existing = _loadGlobalPresets();
-    const existingIds = new Set(existing.map(p => p.id));
-    const toAdd = prepPresets.filter(p => !existingIds.has(p.id));
-    if (toAdd.length === 0) return 0;
-    _saveGlobalPresets([...existing, ...toAdd]);
-    return toAdd.length;
-  } catch { return 0; }
-}
-
-function _openPresetsModal(): void {
-  const existing = document.getElementById("shell-presets-overlay");
-  if (existing) { existing.remove(); return; }
-
-  const overlay = document.createElement("div");
-  overlay.id = "shell-presets-overlay";
-  overlay.style.cssText = [
-    "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:50000",
-    "display:flex;align-items:center;justify-content:center",
-  ].join(";");
-
-  const modal = document.createElement("div");
-  modal.style.cssText = [
-    "background:#fff;border-radius:10px;width:540px;max-width:95vw;max-height:80vh",
-    "display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.22)",
-  ].join(";");
-
-  const _refresh = (): void => {
-    const presets = _loadGlobalPresets();
-    setHtml(listEl, rawHtml(presets.length === 0
-      ? `<p style="color:#6c757d;font-size:0.85rem;padding:0.5rem 0">Aucun preset global. Créez-en dans Constituer (tab Actions) puis migrez ici.</p>`
-      : presets.map(p => `
-          <div class="shell-preset-row" data-id="${p.id}" style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid #eee;font-size:0.83rem">
-            <div style="flex:1">
-              <span style="font-weight:600">${_esc(p.name)}</span>
-              ${p.description ? `<span style="color:#6c757d;margin-left:0.4rem">${_esc(p.description)}</span>` : ""}
-              <div style="font-size:0.75rem;color:#adb5bd">
-                ${_esc(p.languages?.join(", ") ?? "")}${p.alignment_strategy ? ` · ${_esc(p.alignment_strategy)}` : ""}
-              </div>
-            </div>
-            <button class="shell-preset-del" data-id="${p.id}" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:0.95rem;padding:2px 5px" title="Supprimer">✕</button>
-          </div>
-        `).join("")));
-    listEl.querySelectorAll(".shell-preset-del").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const id = (e.currentTarget as HTMLElement).dataset.id!;
-        const updated = _loadGlobalPresets().filter(p => p.id !== id);
-        _saveGlobalPresets(updated);
-        _refresh();
-      });
-    });
-  };
-
-  modal.innerHTML = `
-    <div style="display:flex;align-items:center;padding:1rem 1.2rem;border-bottom:1px solid #eee">
-      <h3 style="margin:0;font-size:1rem;font-weight:700;flex:1">Presets globaux</h3>
-      <button id="shell-presets-close" style="border:none;background:none;cursor:pointer;font-size:1.2rem;color:#6c757d">✕</button>
-    </div>
-    <div style="flex:1;overflow-y:auto;padding:0.75rem 1.2rem">
-      <div id="shell-preset-list"></div>
-    </div>
-    <div style="padding:0.75rem 1.2rem;border-top:1px solid #eee;display:flex;gap:0.5rem;flex-wrap:wrap">
-      <button id="shell-presets-migrate" style="font-size:0.8rem;padding:5px 10px;border:1px solid #adb5bd;border-radius:5px;background:#f8f9fa;cursor:pointer">
-        ↓ Migrer depuis Constituer
-      </button>
-      <button id="shell-presets-export" style="font-size:0.8rem;padding:5px 10px;border:1px solid #adb5bd;border-radius:5px;background:#f8f9fa;cursor:pointer">
-        ↑ Exporter JSON
-      </button>
-      <label id="shell-presets-import-label" style="font-size:0.8rem;padding:5px 10px;border:1px solid #adb5bd;border-radius:5px;background:#f8f9fa;cursor:pointer">
-        ↓ Importer JSON
-        <input id="shell-presets-import-file" type="file" accept=".json" style="display:none">
-      </label>
-    </div>
-  `;
-
-  const listEl = modal.querySelector<HTMLElement>("#shell-preset-list")!;
-  _refresh();
-
-  modal.querySelector("#shell-presets-close")!.addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
-
-  modal.querySelector("#shell-presets-migrate")!.addEventListener("click", () => {
-    const n = _migratePresetsFromPrep();
-    _showToast(n > 0 ? `${n} preset(s) migré(s) depuis Constituer` : "Aucun nouveau preset à migrer");
-    _refresh();
-  });
-
-  modal.querySelector("#shell-presets-export")!.addEventListener("click", () => {
-    const presets = _loadGlobalPresets();
-    const blob = new Blob([JSON.stringify(presets, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `agrafes_presets_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-  });
-
-  modal.querySelector("#shell-presets-import-file")!.addEventListener("change", (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const imported = JSON.parse(reader.result as string) as GlobalPreset[];
-        const existing = _loadGlobalPresets();
-        const existingIds = new Set(existing.map(p => p.id));
-        const toAdd = imported.filter(p => p.id && p.name && !existingIds.has(p.id));
-        _saveGlobalPresets([...existing, ...toAdd]);
-        _showToast(`${toAdd.length} preset(s) importé(s)`);
-        _refresh();
-      } catch { _showToast("Fichier JSON invalide", 3000); }
-    };
-    reader.readAsText(file);
-  });
-
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
 }
 
 function _esc(s: string): string {

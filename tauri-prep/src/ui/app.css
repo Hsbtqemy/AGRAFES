@@ -316,7 +316,7 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   text-align: center;
 }
 
-/* ── Coquille de modale — Fiche corpus, presets ────────────────────────── */
+/* ── Coquille de modale — Fiche corpus ─────────────────────────────────── */
 .prep-dialog-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
   display: flex; align-items: center; justify-content: center; z-index: 9000;
@@ -336,21 +336,6 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   padding: 0.6rem 1.1rem; border-top: 1px solid #dee2e6;
   display: flex; gap: 0.5rem; justify-content: flex-end; flex-wrap: wrap;
 }
-.prep-preset-row {
-  display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem;
-  border: 1px solid #dee2e6; border-radius: 6px; margin-bottom: 0.4rem;
-  background: #f8f9fa;
-}
-.prep-preset-row:hover { background: #edf7f5; }
-.prep-preset-name { font-weight: 600; font-size: 0.88rem; flex: 1; }
-.prep-preset-desc { font-size: 0.78rem; color: #6c757d; display: block; }
-.prep-preset-chips { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.2rem; }
-.prep-preset-chip {
-  background: #e8f5f3; color: #0c4a46; border-radius: 99px;
-  padding: 0.05rem 0.45rem; font-size: 0.72rem; font-weight: 500;
-}
-.prep-presets-empty { color: #6c757d; font-style: italic; padding: 1rem 0; }
-
 /* Fiche corpus modal */
 .prep-corpus-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem; color: #333; }
 .prep-corpus-input, .prep-corpus-textarea {

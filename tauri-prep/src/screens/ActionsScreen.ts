@@ -37,22 +37,6 @@ import { AlignPanel } from "./AlignPanel.ts";
 import { AlignMatrixView } from "./AlignMatrixView.ts";
 import { TextCanvasView } from "./TextCanvasView.ts";
 
-// ─── Project Presets (shared type) ───────────────────────────────────────────
-
-export interface ProjectPreset {
-  id: string;
-  name: string;
-  description?: string;
-  languages: string[];
-  pivot_language?: string;
-  segmentation_lang?: string;
-  segmentation_pack?: string;
-  curation_preset?: string;
-  alignment_strategy?: string;
-  similarity_threshold?: number;
-  created_at: number;
-}
-
 interface ActionsExportPrefill {
   stage?: "alignment" | "publication" | "segmentation" | "curation" | "runs" | "qa";
   product?: "aligned_table" | "tei_xml" | "tei_package" | "run_report" | "qa_report" | "readable_text";
@@ -642,24 +626,6 @@ export class ActionsScreen {
 
   setOnOpenExporter(cb: ((prefill?: ActionsExportPrefill) => void) | null): void {
     this._openExporterTab = cb;
-  }
-
-  /** Apply a project preset to the current form fields (non-destructive). */
-  applyPreset(preset: ProjectPreset): void {
-    const root = this._wfRoot;
-    if (!root) return;
-    const setVal = (sel: string, val: string | undefined): void => {
-      if (!val) return;
-      const el = root.querySelector<HTMLInputElement | HTMLSelectElement>(sel);
-      if (el) { el.value = val; el.dispatchEvent(new Event("change")); }
-    };
-    // Retrait Seg/Curation : les champs de langue/pack de segmentation (SegmentationView) et
-    // le preset de curation (CurationView) ont disparu ; la segmentation/curation canvas gère
-    // ses presets elle-même. Seuls les champs d'alignement encore présents sont appliqués ici.
-    setVal("#act-align-strategy", preset.alignment_strategy);
-    if (preset.similarity_threshold !== undefined) {
-      setVal("#act-sim-threshold", String(preset.similarity_threshold));
-    }
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
