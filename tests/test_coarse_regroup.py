@@ -99,10 +99,11 @@ def db(tmp_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def _doc(conn: sqlite3.Connection) -> int:
+def _doc(conn: sqlite3.Connection, *, text_start_n: int | None = None) -> int:
     cur = conn.execute(
-        "INSERT INTO documents (title, language, source_path, source_hash, created_at)"
-        " VALUES ('Doc', 'fr', 'x.txt', 'abc', '2024-01-01T00:00:00')",
+        "INSERT INTO documents (title, language, source_path, source_hash, created_at,"
+        " text_start_n) VALUES ('Doc', 'fr', 'x.txt', 'abc', '2024-01-01T00:00:00', ?)",
+        (text_start_n,),
     )
     conn.commit()
     return cur.lastrowid  # type: ignore[return-value]
@@ -312,3 +313,53 @@ def test_regroup_without_changes_records_nothing(db: sqlite3.Connection) -> None
     assert again["action_id"] is None
     after = db.execute("SELECT count(*) FROM prep_action_history").fetchone()[0]
     assert after == before
+
+
+# --- borne de paratexte (R2) ----------------------------------------------------
+#
+# Les deux gestes qui écrivent `meta_json.parent_n` ne s'accordaient pas sur la borne :
+# `POST /segment/paragraph_boundary` (¶ par segment) refuse le paratexte en 400, quand
+# « Pré-remplir » descendait jusqu'à n=1. Le moteur énonce pourtant la règle — le grain
+# de paragraphe s'arrête au texte — et l'un des deux écrivains l'ignorait
+# (audit alignement §11.9, troisième occurrence du motif « aperçu↔apply et bornes
+# text_start_n »). Mesuré avant de corriger : la base vive n'en portait aucune trace,
+# la copie de travail deux unités sur le seul doc 416.
+
+
+def test_paratext_keeps_no_parent_n(db: sqlite3.Connection) -> None:
+    """RED avant le correctif : les trois lignes de paratexte repartaient avec parent_n=1."""
+    doc = _doc(db, text_start_n=4)
+    _insert_lines(db, doc, ["Titre", "Auteur", "1975", "— Bonjour.", "Et toi ?"])
+    report = regroup_document_coarse(db, doc, preset="tours")
+
+    rows = db.execute(
+        "SELECT n, json_extract(meta_json, '$.parent_n') AS pn FROM units"
+        " WHERE doc_id = ? AND n < 4 ORDER BY n", (doc,),
+    ).fetchall()
+    assert [(r["n"], r["pn"]) for r in rows] == [(1, None), (2, None), (3, None)]
+    assert report["units_grouped"] == 2  # le texte seul, pas les cinq lignes
+
+
+def test_text_unit_is_never_anchored_in_the_paratext(db: sqlite3.Connection) -> None:
+    """RED : c'est le résidu observé en base — doc 416, n=4 ancré sur parent_n=1.
+
+    La première ligne de texte ne porte pas la frontière ; sans borne, elle héritait donc
+    de l'ancre du paratexte au lieu d'ouvrir son propre paragraphe.
+    """
+    doc = _doc(db, text_start_n=4)
+    _insert_lines(db, doc, ["Titre", "Auteur", "1975", "Il était une fois.", "— Bonjour.", "Suite"])
+    regroup_document_coarse(db, doc, preset="tours")
+
+    rows = db.execute(
+        "SELECT n, json_extract(meta_json, '$.parent_n') AS pn FROM units"
+        " WHERE doc_id = ? AND n >= 4 ORDER BY n", (doc,),
+    ).fetchall()
+    assert [(r["n"], r["pn"]) for r in rows] == [(4, 4), (5, 5), (6, 5)]
+
+
+def test_absent_text_start_n_still_groups_everything(db: sqlite3.Connection) -> None:
+    """La borne est facultative : sans elle (colonne NULL), rien ne change."""
+    doc = _doc(db)  # text_start_n NULL
+    _insert_lines(db, doc, ["— A", "suite", "— B"])
+    report = regroup_document_coarse(db, doc, preset="tours")
+    assert report["units_grouped"] == 3

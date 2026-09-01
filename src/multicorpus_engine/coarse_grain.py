@@ -299,6 +299,10 @@ def regroup_document_coarse(
 ) -> dict[str, Any]:
     """Persist an ascendant coarse regrouping onto a document's line units (R5.4c).
 
+    **Text-scope only**: paratext (``n < documents.text_start_n``) is excluded, like every
+    other writer of the coarse grain. See the comment at the query below for why this was
+    once not the case.
+
     Non-destructive: only ``meta_json.parent_n`` is rewritten (other meta keys are kept);
     the fine units, their text, ``alignment_links`` and FTS are all untouched (parent_n
     does not feed text_norm). Idempotent — a line already carrying the target ``parent_n``
@@ -314,10 +318,25 @@ def regroup_document_coarse(
     Raises ``ValueError`` (→ 400) on a bad preset/pattern.
     """
     boundary = resolve_coarse_boundary(preset, pattern)
+    # Text-scope only, comme :func:`set_paragraph_boundary_document` plus bas — et comme la
+    # règle que le moteur énonce déjà. Sans cette borne, « Pré-remplir » écrivait `parent_n`
+    # sur le paratexte que ``POST /segment/paragraph_boundary`` refuse en 400 : les deux
+    # chemins du *même* geste ne s'accordaient pas (audit alignement §11.9). Troisième
+    # occurrence du motif « aperçu↔apply et bornes ``text_start_n`` », cette fois entre deux
+    # fonctions voisines du même fichier.
+    #
+    # Le grain des documents déjà regroupés change — c'est ce qui avait fait différer le
+    # correctif. Mesuré avant de le poser : la base vive n'en portait **aucune** trace (0
+    # unité sur 53 documents), la copie de travail deux, sur le seul doc 416. La correction
+    # est donc rétroactivement gratuite, et le geste reste annulable (Mode A).
+    row = conn.execute(
+        "SELECT text_start_n FROM documents WHERE doc_id = ?", (doc_id,)
+    ).fetchone()
+    text_start_n = (row["text_start_n"] if row is not None else None) or 0
     rows = conn.execute(
         "SELECT unit_id, n, text_norm, meta_json FROM units"
-        " WHERE doc_id = ? AND unit_type = 'line' ORDER BY n",
-        (doc_id,),
+        " WHERE doc_id = ? AND unit_type = 'line' AND n >= ? ORDER BY n",
+        (doc_id, text_start_n),
     ).fetchall()
     units = [{"n": r["n"], "unit_type": "line", "text_norm": r["text_norm"]} for r in rows]
     assignments = regroup_by_boundary(units, boundary)
