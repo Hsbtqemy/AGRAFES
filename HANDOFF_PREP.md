@@ -175,8 +175,8 @@ curate_apply_history (id, doc_id, applied_at,
                       units_modified, rules_signature) -- log apply, sig = hash
 
 corpus_info      (singleton — title, description, meta_json)
-                                                      -- meta_json contient les
-                                                      -- presets de projet
+                                                      -- meta_json : qualifier,
+                                                      -- tags, active_models
 ```
 
 ### Le couple `text_raw` / `text_norm`
@@ -198,29 +198,44 @@ C'est **le concept central** de la prep, et l'endroit où les invariants sont le
 
 Toute proposition d'amélioration qui suppose « text_raw est l'original immuable » est fausse. C'est l'original **du dernier découpage**, pas du fichier source.
 
-### Stockage des presets de projet
+### Contenu de `corpus_info.meta_json`
 
-Dans `corpus_info.meta_json` (singleton de la DB). Format approximatif :
+~~**Stockage des presets de projet**~~ — **retiré** (CHR-01, `bf78fd1`). Deux choses à
+savoir avant de rétablir quoi que ce soit sur la foi de ce qui était écrit ici :
+
+- La clé `presets` telle qu'elle était décrite — des presets portant
+  `rules: [{pattern, replacement, flags}]` — **n'a jamais eu d'écrivain**, ni dans les
+  fronts ni dans le moteur. Le `ProjectPreset` réellement livré portait `languages`,
+  `pivot_language`, `alignment_strategy`, `similarity_threshold` : pas de `rules`. La forme
+  documentée venait de la spec D-1 (`docs/BACKLOG_PREP_AUDIT.md`), pas de ce qui a été codé.
+- Aucune base ne contient de clé `presets` — mesuré le 2026-09-01 sur les cinq bases locales,
+  la seule clé rencontrée étant `active_models`. Il n'y a donc rien à migrer ni à purger.
+
+Ce que `meta_json` contient réellement :
 
 ```json
 {
-  "presets": [
-    {
-      "id": "preset-123",
-      "name": "Romans FR — strict",
-      "rules": [
-        { "pattern": "[ \\t]+([!?;])", "replacement": " $1", "flags": "g", "description": "..." }
-      ]
-    }
-  ],
   "qualifier": "...",
-  "tags": ["..."]
+  "tags": ["..."],
+  "active_models": { }
 }
 ```
 
-Les presets **built-in** vivent dans le code TS ([curationPresets.ts](tauri-prep/src/lib/curationPresets.ts)) et sont compilés au build, jamais persistés. Seuls les presets **custom utilisateur** sont en DB.
+Trois clés, deux écrivains. `qualifier` et `tags` viennent de la Fiche corpus (`app.ts`, via
+`updateCorpusInfo`) — seul écrivain de `meta` restant dans les fronts. `active_models` est
+écrit côté moteur par `set_active_model` (`services/models_service.py`), qui fusionne dans
+`meta.active_models` : le front ne le touche jamais.
 
-C'est ce qui rend [scripts/validate_regex_migration.py](scripts/validate_regex_migration.py) pertinent uniquement pour les DBs où des utilisateurs ont créé des presets custom — sur la DB de référence : 0 patterns custom, donc migration `re`→`regex` PyPI sans risque.
+Les presets **built-in** de curation vivent dans le code TS
+([curationPresets.ts](tauri-prep/src/lib/curationPresets.ts)) et sont compilés au build,
+jamais persistés. Inchangé, et sans rapport avec les presets de projet retirés — les deux
+notions partageaient le mot, pas le mécanisme.
+
+C'est ce qui rend [scripts/validate_regex_migration.py](scripts/validate_regex_migration.py)
+pertinent uniquement pour les DBs où des patterns custom auraient été persistés en `meta`.
+Il n'y en a aucun, et la garantie est structurelle : `extract_patterns_from_meta` ne retient
+que les dicts portant à la fois `pattern` et `replacement`, qu'aucune clé écrite en
+`meta_json` ne produit. Migration `re` → `regex` PyPI sans risque.
 
 ### Exceptions persistantes
 
