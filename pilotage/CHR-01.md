@@ -35,15 +35,24 @@ statut: à venir
 - [ ] QAS-01 — le retour de focus par la ✕ du tiroir reste ouvert : prep ne connaît pas son déclencheur, et l'item de la revue prescrit un correctif sur un bouton qui n'existe plus
 - [x] Poser la garde des trois réancrages — `ui/__tests__/prepChrome.test.ts`, 5 cas, chacun prouvé au rouge (ancêtre positionné retiré, repli du token dérivé, ancrage optionnel rétabli)
 - [ ] Purger trois blocs CSS morts que la passe du lot 3 a mis au jour : `.prep-seg-split-layout` (`app.css:4771` + la surcharge de `constituerModule.ts:51`) et `.curate-preview-card` (`prep-vnext.css`) ne sont appliqués par AUCUN code — survivants des retraits de SegmentationView et CurationView, que la purge `aa7ded3` a manqués
+- [ ] Trancher le sort du bandeau d'erreur, devenu INATTEIGNABLE : il n'est montré que par le `catch` de `_onCreateDb`, lui-même appelé seulement par le bouton « Réessayer » du bandeau — un cycle fermé depuis que « Créer… » a quitté prep
+- [ ] Le vrai chemin d'échec n'a AUCUN signal visible : `_onDbChanged` met `_conn` à `null` et se contente d'un `console.error`, puis chaque écran reçoit `setConn(null)` et se rend vide — l'application a l'air normale et ne fait rien
 - [ ] Ajouter le raccourci « Fiche corpus » dans l'en-tête de l'écran Documents, par callback sur le modèle de `setOnOpenExporter`
-- [ ] Écrire la passe de QA `qa/chrome-constituer.md`, et la jouer
+- [x] Écrire la passe de QA `qa/chrome-constituer.md`
+- [ ] La jouer
 
 ## QA
 
-Aucune passe écrite à ce jour. Celle à écrire — `qa/chrome-constituer.md` — porte moins
-sur ce qui disparaît que sur les trois réancrages : un bandeau d'erreur qui ne s'insère
-plus, un garde de sortie d'onglet qui ne demande plus rien, un tiroir qui passe sous le
-header. Trois défauts silencieux, dont aucun ne se voit tant qu'on ne provoque pas le cas.
+- qa/chrome-constituer.md
+
+Écrite le 1er septembre 2026, pas encore jouée. Elle porte moins sur ce qui disparaît que
+sur les trois réancrages : un bandeau d'erreur qui ne s'insère plus, un garde de sortie
+d'onglet qui ne demande plus rien, un tiroir qui passe sous le header. Trois défauts
+silencieux, dont aucun ne se voit tant qu'on ne provoque pas le cas.
+
+Son préambule porte deux choses qu'il faut avoir sous la main pour l'exécuter : la sonde de
+console qui départage les barres de défilement réelles, et la raison pour laquelle le
+bandeau d'erreur ne peut PAS être provoqué — il n'a plus d'entrée du tout.
 
 ## Contexte
 
