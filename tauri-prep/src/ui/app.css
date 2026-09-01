@@ -4140,10 +4140,19 @@ button.prep-matrix-remove-choice:hover {
    regard sur toute la liste, ce qu'un chapelet de pastilles de largeurs différentes
    interdisait. Elle garantit aussi que la ligne ne change pas de hauteur selon son
    contenu — le défaut que la passe de QA du 31 août a fait tomber ailleurs. */
+/* Le pas de la colonne « À faire », défini UNE fois : les cases, le rappel de leur
+   ordre et la LARGEUR de la colonne en dépendent tous les trois, et trois valeurs
+   recopiées finissent toujours par diverger d'un lot à l'autre. Déclaré sur la table
+   parce que la largeur se pose sur le `th` autant que sur le `td` — ni la cellule
+   d'état ni la légende n'est l'ancêtre des deux. Un test lit cette feuille. */
+.prep-acts-hub-table {
+  --acts-box-w: 1.15rem;
+  --acts-box-gap: 4px;
+}
 .prep-acts-hub-box {
-  width: 1.15rem;
-  height: 1.15rem;
-  margin-right: 4px;
+  width: var(--acts-box-w, 1.15rem);
+  height: var(--acts-box-w, 1.15rem);
+  margin-right: var(--acts-box-gap, 4px);
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -4180,6 +4189,27 @@ button.prep-matrix-remove-choice:hover {
   background: #f0fdf4;
   color: #166534;
   font-weight: 700;
+}
+
+/* Le rappel de l'ordre, sous l'en-tête. Même largeur et même gouttière que les cases,
+   pour que chaque étiquette surplombe la sienne — et pour que la colonne ne change pas
+   de largeur en gagnant sa légende. Le texte peut déborder dans la gouttière : c'est
+   pour ça que la ligne n'est pas coupée. */
+.prep-acts-hub-legend {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.prep-acts-hub-legend-item {
+  display: inline-block;
+  width: var(--acts-box-w, 1.15rem);
+  margin-right: var(--acts-box-gap, 4px);
+  font-size: 0.55rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-align: center;
+  color: #64748b;
 }
 
 /* Colonne « Ouvrir » — les quatre gestes, ou le seul geste filtré. */
@@ -4226,18 +4256,31 @@ button.prep-matrix-remove-choice:hover {
    tiennent les deux états de la colonne « Ouvrir » : quatre boutons-icônes hors
    filtre, et le plus long des libellés filtrés (« Segmentation → »). */
 .prep-acts-hub-table { table-layout: fixed; }
-/* Largeurs mesurées, pas estimées — comptage des pastilles sur les 58 documents de
-   la base de travail le 31 août : maximum réel 4 (17 documents), combinaison la plus
-   longue 40 caractères (« Curation + Alignement + Annotation + Index périmé »).
-   « À faire » est donc taillée pour ce cas-là, et c'est « Titre » — la seule colonne
-   élastique — qui cède la place, avec élision et infobulle.
+/* Largeurs mesurées, pas estimées. « À faire » valait 21rem : elle était taillée pour
+   le pire cas des PASTILLES — « Curation + Alignement + Annotation + Index périmé »,
+   40 caractères, 17 documents concernés. Ce cas n'existe plus depuis que les quatre
+   capacités sont des cases : le pire cas est maintenant quatre cases plus la seule
+   pastille survivante, « Index périmé ». D'où le calcul, qui suit le pas des cases au
+   lieu de le recopier.
+
+   Les 7.5rem ajoutés sont calibrés sur l'ancienne colonne, pas devinés : ses 21rem
+   tenaient 40 caractères de pastilles et quatre jeux de bordure+marge, ce qui donne
+   ~5.9px par caractère et ~17px par pastille, et lui laissait ~30px de marge.
+   « Index périmé » fait 12 caractères, soit ~88px ; 7.5rem en offre 120 et rend la
+   même marge. Le compte importe parce que la cellule est en `overflow: hidden` :
+   trop juste, elle rognerait la pastille sans rien dire.
+
+   Les ~8rem rendus vont à « Titre », la seule colonne élastique — c'est elle qui
+   élidait.
    Le cinquième cas (Segmentation en plus) est possible mais n'existe sur aucun
    document aujourd'hui : il se replie proprement en « +1 », pas en ligne plus haute. */
 .prep-acts-hub-table th:nth-child(1), .prep-acts-hub-table td:nth-child(1) { width: 3rem; }
 .prep-acts-hub-table th:nth-child(3), .prep-acts-hub-table td:nth-child(3) { width: 5.6rem; }
 .prep-acts-hub-table th:nth-child(4), .prep-acts-hub-table td:nth-child(4) { width: 5.8rem; }
 .prep-acts-hub-table th:nth-child(5), .prep-acts-hub-table td:nth-child(5) { width: 5rem; }
-.prep-acts-hub-table th:nth-child(6), .prep-acts-hub-table td:nth-child(6) { width: 21rem; }
+.prep-acts-hub-table th:nth-child(6), .prep-acts-hub-table td:nth-child(6) {
+  width: calc(4 * (var(--acts-box-w, 1.15rem) + var(--acts-box-gap, 4px)) + 7.5rem);
+}
 .prep-acts-hub-table th:nth-child(7), .prep-acts-hub-table td:nth-child(7) { width: 9.4rem; }
 /* UNE LIGNE PAR DOCUMENT, sans exception : dès qu'une cellule se replie, sa ligne
    grandit et la liste cesse de se lire en diagonale. Le titre s'élide donc au lieu

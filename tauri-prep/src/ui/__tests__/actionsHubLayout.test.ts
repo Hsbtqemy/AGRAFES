@@ -30,6 +30,33 @@ function ruleBody(selector: string): string {
   return CSS.slice(open + 1, close);
 }
 
+describe("colonne « À faire » — le rappel de l'ordre doit tomber sur les cases", () => {
+  it("les cases et les étiquettes lisent la MÊME variable de largeur", () => {
+    // Deux valeurs recopiées finissent par diverger d'un lot à l'autre, et une légende
+    // décalée d'un demi-pas désigne la case d'à côté — un défaut qui ne casse rien et
+    // ment à chaque lecture.
+    for (const sel of [".prep-acts-hub-box", ".prep-acts-hub-legend-item"]) {
+      const body = ruleBody(sel);
+      expect(body, sel).toMatch(/width:\s*var\(--acts-box-w/);
+      expect(body, sel).toMatch(/margin-right:\s*var\(--acts-box-gap/);
+    }
+  });
+
+  it("la variable est déclarée pour les deux contextes : la cellule ET l'en-tête", () => {
+    // Les cases vivent dans un `td`, la légende dans un `th` : aucun ancêtre commun ne
+    // porterait la déclaration pour les deux. Déclarée d'un seul côté, l'autre retombe
+    // sur sa valeur de repli et le pas se sépare en silence.
+    // Sur la TABLE, seul ancêtre commun des trois usages : les cases (`td`), le rappel
+    // d'ordre (`span` dans le `th`) et la largeur de colonne, qui se pose sur le `th`
+    // autant que sur le `td`. Déclaré plus bas, le `th` retomberait sur la valeur de
+    // repli et la colonne se désolidariserait de ce qu'elle contient.
+    const at = CSS.indexOf("--acts-box-w:");
+    expect(at, "--acts-box-w introuvable dans app.css").toBeGreaterThan(-1);
+    const selecteurs = CSS.slice(CSS.lastIndexOf("}", at) + 1, at);
+    expect(selecteurs).toContain(".prep-acts-hub-table");
+  });
+});
+
 describe("liste du hub Actions — la barre de défilement ne doit pas décaler les colonnes", () => {
   it("réserve la gouttière de défilement", () => {
     expect(ruleBody(".prep-acts-hub-doc-list")).toMatch(/scrollbar-gutter:\s*stable/);
@@ -48,8 +75,9 @@ describe("liste du hub Actions — la barre de défilement ne doit pas décaler 
     // Six des sept colonnes portent une largeur en rem ; la deuxième (« Titre »)
     // n'en a pas, et absorbe donc seule toute variation de largeur disponible.
     for (const n of [1, 3, 4, 5, 6, 7]) {
-      expect(CSS).toMatch(
-        new RegExp(`\\.prep-acts-hub-table td:nth-child\\(${n}\\)[^}]*width:\\s*[\\d.]+rem`),
+      expect(CSS, `colonne ${n}`).toMatch(
+        // `calc(` accepté depuis que « À faire » dérive sa largeur du pas des cases.
+        new RegExp(`\\.prep-acts-hub-table td:nth-child\\(${n}\\)[^}]*width:\\s*(?:calc\\(|[\\d.]+rem)`),
       );
     }
     expect(CSS).not.toMatch(/\.prep-acts-hub-table td:nth-child\(2\)[^}]*width:/);

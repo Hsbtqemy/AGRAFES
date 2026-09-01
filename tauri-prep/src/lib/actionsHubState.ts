@@ -137,6 +137,22 @@ export const STEP_LABEL: Record<HubStep, string> = {
   annotation: "Annotation",
 };
 
+/**
+ * Le rappel de l'ordre, sous l'en-tête de la colonne « À faire ».
+ *
+ * Quatre cases muettes obligent à survoler pour savoir laquelle est laquelle : le nom
+ * ne vivait que dans l'infobulle, donc nulle part pour qui regarde la colonne entière.
+ *
+ * Trois lettres et pas une : `Alignement` et `Annotation` partagent leur initiale, et
+ * `Al`/`An` se confondent au coup d'œil à la taille où ces étiquettes sont lues.
+ */
+export const STEP_ABBR: Record<HubStep, string> = {
+  curation: "Cur",
+  segmentation: "Seg",
+  alignement: "Ali",
+  annotation: "Ann",
+};
+
 export interface DocBadge {
   /** Rendu en texte, jamais en HTML. */
   label: string;

@@ -28,7 +28,8 @@ import { actionsHubTemplate } from "../lib/actionsHubTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { registerLevel, unregisterLevel, sync as navSync } from "../lib/navHistory.ts";
 import {
-  HUB_STEPS, STEP_LABEL, docBadges, docsForStep, hubComparator, sortDocs, stepCounts,
+  HUB_STEPS, STEP_ABBR, STEP_LABEL, docBadges, docsForStep, hubComparator, sortDocs,
+  stepCounts,
   stepMark, stepState,
 } from "../lib/actionsHubState.ts";
 import type { HubSortCol, HubStep, SortDir, StepState } from "../lib/actionsHubState.ts";
@@ -814,6 +815,25 @@ export class ActionsScreen {
         th.addEventListener("keydown", (ev) => {
           if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); activate(); }
         });
+      }
+      // Sous « À faire », le rappel de l'ordre des quatre cases. Il vit dans l'en-tête
+      // et non en légende flottante : une légende ailleurs sur la page se perd dès que
+      // la liste défile, et c'est en défilant qu'on oublie quelle case est laquelle.
+      // `aria-hidden` parce que chaque case porte déjà son nom complet en `aria-label` —
+      // sans ça, un lecteur d'écran annoncerait « Cur Seg Ali Ann » dans le nom de la
+      // colonne, et le bouton de tri s'appellerait autrement que ce qu'il est.
+      if (col === "todo") {
+        const legend = document.createElement("span");
+        legend.className = "prep-acts-hub-legend";
+        legend.setAttribute("aria-hidden", "true");
+        for (const step of HUB_STEPS) {
+          const item = document.createElement("span");
+          item.className = "prep-acts-hub-legend-item";
+          item.dataset.step = step;
+          item.textContent = STEP_ABBR[step];
+          legend.appendChild(item);
+        }
+        th.appendChild(legend);
       }
       tr.appendChild(th);
     }

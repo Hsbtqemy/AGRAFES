@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ActionsScreen } from "../ActionsScreen.ts";
 import type { Conn } from "../../lib/sidecarClient.ts";
+import { STEP_LABEL, type HubStep } from "../../lib/actionsHubState.ts";
 
 /** Une coche fraîche, non démentie. */
 const OK = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
@@ -247,6 +248,53 @@ describe("hub Actions — la liste porte l'état et le geste (ACT-01)", () => {
     expect(titres.every((t) => t.includes("Brouillon"))).toBe(true);
     expect(titres[0]).toContain("Curation");
     expect(titres[3]).toContain("Annotation");
+  });
+
+  it("l'en-tête rappelle l'ordre des cases, hors infobulle", async () => {
+    // Sans lui, une case muette oblige à survoler pour savoir laquelle est laquelle :
+    // le nom ne vivait que dans l'infobulle, donc nulle part pour qui balaie la colonne.
+    const { root } = await mountWithDocs();
+    const items = root.querySelectorAll<HTMLElement>(
+      '#act-doc-list th[data-sort="todo"] .prep-acts-hub-legend-item',
+    );
+    expect(Array.from(items).map((e) => e.textContent)).toEqual(["Cur", "Seg", "Ali", "Ann"]);
+  });
+
+  it("chaque abréviation appartient à l'étape qu'elle surplombe", async () => {
+    // La garde qui compte, et la seule non tautologique des deux : comparer l'ordre de
+    // la légende à celui des cases ne prouve rien, les deux bouclent sur `HUB_STEPS` et
+    // ne PEUVENT pas diverger. Ce qui peut diverger, c'est le contenu de `STEP_ABBR` —
+    // « Ali » écrit en face d'`annotation` désignerait la mauvaise case sans rien
+    // casser. On exige donc que l'abréviation soit un préfixe du libellé de son étape.
+    const { root } = await mountWithDocs();
+    const items = Array.from(
+      root.querySelectorAll<HTMLElement>(".prep-acts-hub-legend-item"),
+    );
+    expect(items).toHaveLength(4);
+    for (const item of items) {
+      const step = item.dataset.step as HubStep;
+      expect(STEP_LABEL[step].startsWith(item.textContent ?? ""), `${step} / ${item.textContent}`)
+        .toBe(true);
+    }
+  });
+
+  it("la légende est bâtie sur l'ordre des cases, jamais sur une liste recopiée", async () => {
+    // Faible par construction (voir ci-dessus), gardée quand même : elle mordrait si
+    // quelqu'un remplaçait la boucle de l'en-tête par un tableau écrit à la main.
+    const { root } = await mountWithDocs();
+    const pos = (sel: string): Array<string | undefined> =>
+      Array.from(root.querySelectorAll<HTMLElement>(sel)).map((e) => e.dataset.step);
+    expect(pos(".prep-acts-hub-legend-item"))
+      .toEqual(pos('tr[data-doc-id="10"] .prep-acts-hub-box'));
+  });
+
+  it("le rappel ne s'ajoute pas au nom accessible de la colonne", async () => {
+    // Chaque case porte déjà son nom complet en `aria-label`. Sans `aria-hidden`, un
+    // lecteur d'écran annoncerait le bouton de tri « À faire Cur Seg Ali Ann ».
+    const { root } = await mountWithDocs();
+    const legende = root.querySelector(".prep-acts-hub-legend");
+    expect(legende).not.toBeNull();
+    expect(legende!.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("chaque ligne porte quatre cases, dans le même ordre, à trois états", async () => {
