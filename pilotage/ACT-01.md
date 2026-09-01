@@ -221,7 +221,8 @@ et le dit maintenant en tête.
   Le modèle à trois états est couvert par 60 tests (29 moteur, 31 front) et par mesure en
   base, mais n'a été vu tourner par personne — l'état exact où « action d'abord » était
   avant sa passe, qui a trouvé deux vrais défauts. Points de départ mesurés : les cartes
-  doivent afficher 56·2 / 58 / 37·21 / 52·6, et **aucune coche n'existe** dans le corpus.
+  doivent afficher 56·2 / 58 / 37·21 / 50·8 — à re-mesurer, ce dernier couple a bougé de
+  52·6 en quarante minutes le jour même — et **aucune coche n'existe** dans le corpus.
   Chaque item est ancré sur un document vérifié en base — `#375` pour une case vide et
   une case « en cours », `#377` pour une coche faible, `#368` pour une coche forte,
   `#364` pour la périmer — parce que cinq items de la passe précédente, écrits d'après
