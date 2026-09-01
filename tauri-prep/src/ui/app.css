@@ -316,23 +316,23 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   text-align: center;
 }
 
-/* ── Presets modal ─────────────────────────────────────────────────────── */
-.prep-presets-overlay {
+/* ── Coquille de modale — Fiche corpus, presets ────────────────────────── */
+.prep-dialog-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
   display: flex; align-items: center; justify-content: center; z-index: 9000;
 }
-.prep-presets-modal {
+.prep-dialog {
   background: #fff; border-radius: 8px; width: min(640px, 95vw);
   max-height: 80vh; display: flex; flex-direction: column;
   box-shadow: 0 8px 32px rgba(0,0,0,0.22);
 }
-.prep-presets-modal-head {
+.prep-dialog-head {
   padding: 0.9rem 1.1rem 0.7rem; border-bottom: 1px solid #dee2e6;
   display: flex; align-items: center; gap: 0.5rem;
 }
-.prep-presets-modal-head h3 { margin: 0; font-size: 1rem; flex: 1; }
-.prep-presets-modal-body { overflow-y: auto; flex: 1; padding: 0.75rem 1.1rem; }
-.prep-presets-modal-foot {
+.prep-dialog-head h3 { margin: 0; font-size: 1rem; flex: 1; }
+.prep-dialog-body { overflow-y: auto; flex: 1; padding: 0.75rem 1.1rem; }
+.prep-dialog-foot {
   padding: 0.6rem 1.1rem; border-top: 1px solid #dee2e6;
   display: flex; gap: 0.5rem; justify-content: flex-end; flex-wrap: wrap;
 }

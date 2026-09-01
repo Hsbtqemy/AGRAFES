@@ -757,14 +757,14 @@ export class App {
     }
 
     const overlay = document.createElement("div");
-    overlay.className = "prep-presets-overlay";
+    overlay.className = "prep-dialog-overlay";
 
     const modal = document.createElement("div");
-    modal.className = "prep-presets-modal";
+    modal.className = "prep-dialog";
     overlay.appendChild(modal);
 
     const head = document.createElement("div");
-    head.className = "prep-presets-modal-head";
+    head.className = "prep-dialog-head";
     head.innerHTML = `<h3>\uD83D\uDCC4 Fiche corpus</h3>`;
     const closeX = document.createElement("button");
     closeX.className = "btn btn-secondary btn-sm";
@@ -774,7 +774,7 @@ export class App {
     modal.appendChild(head);
 
     const body = document.createElement("div");
-    body.className = "prep-presets-modal-body";
+    body.className = "prep-dialog-body";
     const metaBase: Record<string, unknown> = { ...info.meta };
     const q0 = typeof metaBase.qualifier === "string" ? metaBase.qualifier : "";
     const tags0 = Array.isArray(metaBase.tags)
@@ -807,7 +807,7 @@ export class App {
     modal.appendChild(body);
 
     const foot = document.createElement("div");
-    foot.className = "prep-presets-modal-foot";
+    foot.className = "prep-dialog-foot";
     const saveBtn = document.createElement("button");
     saveBtn.className = "btn btn-primary btn-sm";
     saveBtn.textContent = "Enregistrer";
@@ -853,14 +853,14 @@ export class App {
 
   private _showPresetsModal(): void {
     const overlay = document.createElement("div");
-    overlay.className = "prep-presets-overlay";
+    overlay.className = "prep-dialog-overlay";
 
     const modal = document.createElement("div");
-    modal.className = "prep-presets-modal";
+    modal.className = "prep-dialog";
     overlay.appendChild(modal);
 
     const head = document.createElement("div");
-    head.className = "prep-presets-modal-head";
+    head.className = "prep-dialog-head";
     head.innerHTML = `<h3>\uD83D\uDCCB Presets de projet</h3>`;
     const closeX = document.createElement("button");
     closeX.className = "btn btn-secondary btn-sm";
@@ -870,11 +870,11 @@ export class App {
     modal.appendChild(head);
 
     const body = document.createElement("div");
-    body.className = "prep-presets-modal-body";
+    body.className = "prep-dialog-body";
     modal.appendChild(body);
 
     const foot = document.createElement("div");
-    foot.className = "prep-presets-modal-foot";
+    foot.className = "prep-dialog-foot";
     modal.appendChild(foot);
 
     const renderList = (): void => {
@@ -1045,18 +1045,18 @@ export class App {
     };
 
     const overlay = document.createElement("div");
-    overlay.className = "prep-presets-overlay";
+    overlay.className = "prep-dialog-overlay";
     overlay.style.zIndex = "9100";
 
     const modal = document.createElement("div");
-    modal.className = "prep-presets-modal";
+    modal.className = "prep-dialog";
     overlay.appendChild(modal);
 
     setHtml(modal, raw(`
-      <div class="prep-presets-modal-head">
+      <div class="prep-dialog-head">
         <h3>${isNew ? "Nouveau preset" : "Modifier preset"}</h3>
       </div>
-      <div class="prep-presets-modal-body">
+      <div class="prep-dialog-body">
         <label style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.5rem;font-size:0.85rem">
           Nom <input id="pe-name" type="text" value="${_escHtmlApp(draft.name)}" style="padding:0.25rem 0.4rem;border:1px solid #dee2e6;border-radius:4px" />
         </label>
@@ -1101,10 +1101,10 @@ export class App {
           </label>
         </div>
       </div>
-      <div class="prep-presets-modal-foot"></div>
+      <div class="prep-dialog-foot"></div>
     `));
 
-    const foot = modal.querySelector(".prep-presets-modal-foot")!;
+    const foot = modal.querySelector(".prep-dialog-foot")!;
     const saveBtn = document.createElement("button");
     saveBtn.className = "btn btn-primary btn-sm";
     saveBtn.textContent = "Enregistrer";
