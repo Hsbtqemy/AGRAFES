@@ -46,6 +46,9 @@ import {
   type SegSurface,
   type CustomSpecState,
 } from "../lib/segmentControls.ts";
+import {
+  coarseRegroupGuard, type CoarseAnchoredUnit, type CoarseRegroupGuard,
+} from "../lib/coarseRegroup.ts";
 import { computeAnomalyView, type AnomalyView } from "../lib/segmentAnomalies.ts";
 import { formatUndoActionLabel, formatUndoTooltip, isUndoDisabled, formatUndoLinkSuffix } from "../lib/prepUndo.ts";
 
@@ -81,6 +84,10 @@ export class SegmentPane {
     role: string | null; textRaw: string; textSource: string | null;
     parentN: number | null;
   }[] = [];
+  /** Did the last `_loadUnits` succeed? An empty `_units` means "no units" only when this is
+   *  true; after a failed read it means "unknown" — which the QA-06 guard must not read as
+   *  "nothing to lose". */
+  private _unitsLoaded = false;
   /** Paratext boundary (documents.text_start_n): line units with n < this are paratext and
    *  carry no paragraph number / ¶ toggle (mirrors the matrix + the engine's text scope). */
   private _textStartN: number | null = null;
@@ -291,8 +298,13 @@ export class SegmentPane {
         role: u.unit_role ?? null, textRaw: u.text_raw ?? "", textSource: u.text_source ?? null,
         parentN: u.parent_n ?? null,
       }));
+      this._unitsLoaded = true;
     } catch {
-      if (docId === this._docId) this._units = [];
+      // Un échec de lecture rend `_units` vide — indiscernable d'un document vide. La
+      // distinction compte pour le garde-fou QA-06 : sur un document vide il n'y a rien à
+      // perdre, sur une lecture ratée on ne sait pas, et se taire ferait de la garde une
+      // décoration exactement dans le cas où elle sert.
+      if (docId === this._docId) { this._units = []; this._unitsLoaded = false; }
     }
   }
 
@@ -1004,22 +1016,76 @@ export class SegmentPane {
     }
   }
 
+  /** Text-scope line units, shaped for the coarse mirror (`coarseRegroup.ts`).
+   *
+   *  Bounded on `_textStartN` here, because the pure helper is not — same contract as its
+   *  Python miroir, whose `regroup_document_coarse` bounds its own query (`n >= text_start_n`)
+   *  and leaves `regroup_by_boundary` scope-free. An unbounded call would make the aperçu
+   *  describe paratext the apply will not touch: the very divergence closed in September.
+   *
+   *  Structural-role lines are deliberately KEPT. The ¶ toggle refuses them as section walls,
+   *  but « Pré-remplir » writes them like any other line — an aperçu that dropped them would
+   *  under-report what is about to happen. */
+  private _coarseScopeUnits(): CoarseAnchoredUnit[] {
+    const start = this._textStartN;
+    const out: CoarseAnchoredUnit[] = [];
+    for (const u of this._units) {
+      if (!u.isLine) continue;
+      if (start != null && u.n < start) continue;
+      out.push({ n: u.n, text: u.text, isLine: true, parentN: u.parentN });
+    }
+    return out;
+  }
+
   /** Bootstrap the coarse grouping from the dialogue-dash / custom regex boundary (one shot),
-   *  then leave it editable by hand. Non-destructive (alignment kept). The pattern is sent RAW
-   *  — the engine compiles it untrimmed, so a trailing space is significant. */
+   *  then leave it editable by hand. Non-destructive for the fine grain (alignment kept), but
+   *  it DOES overwrite the coarse one → QA-06 garde-fou below. The pattern is sent RAW — the
+   *  engine compiles it untrimmed, so a trailing space is significant. */
   private async _prefillTours(): Promise<void> {
     const conn = this._getConn();
-    if (!conn || this._docId === null || this._busy) return;
+    const docId = this._docId;
+    if (!conn || docId === null || this._busy) return;
+    const hasPattern = this._toursPattern.trim().length > 0;
+
+    // QA-06 correctifs 2 et 3, d'un seul calcul : rejouer le regroupement localement, le
+    // comparer aux paragraphes en place, et n'ouvrir le modalConfirm que si l'un d'eux
+    // serait défait. Le compte rendu de ce calcul EST l'aperçu à blanc — pas d'écran
+    // intermédiaire. Jusqu'ici « Pré-remplir » était le seul geste destructeur de cette
+    // couche à n'avoir aucune garde : les deux autres (resegmenter, propager) en ont une.
+    const guard: CoarseRegroupGuard = this._unitsLoaded
+      ? coarseRegroupGuard(this._coarseScopeUnits(), {
+          preset: hasPattern ? null : "tours",
+          pattern: hasPattern ? this._toursPattern : null,
+        })
+      : {
+          confirm: true,
+          preview: null,
+          message:
+            "Les segments de ce document n'ont pas pu être relus : impossible de dire ce que"
+            + " « Pré-remplir » regrouperait, ni quels paragraphes il déferait.\n"
+            + "« Annuler » (↶) rend le geste.\nContinuer ?",
+        };
+    if (guard.confirm) {
+      const ok = await modalConfirm({
+        message: guard.message,
+        confirmLabel: "Pré-remplir",
+        danger: true,
+      });
+      if (!ok) return;
+      // Le document a pu changer pendant la modale — ne jamais appliquer à un autre
+      // document la garde calculée sur celui-ci.
+      if (this._docId !== docId || this._busy) return;
+    }
+
     this._busy = true;
     const btn = this._root.querySelector<HTMLButtonElement>("#prep-seg-canvas-tours-prefill");
     if (btn) { btn.disabled = true; btn.textContent = "Regroupement…"; }
-    const hasPattern = this._toursPattern.trim().length > 0;
     try {
       const resp = await regroupCoarse(
         conn,
         hasPattern
-          ? { doc_id: this._docId, pattern: this._toursPattern }
-          : { doc_id: this._docId, preset: "tours" },
+          ? { doc_id: docId, pattern: this._toursPattern }
+          : { doc_id: docId, preset: "tours" },
       );
       const nn = resp.units_changed;
       this._notify(`Pré-rempli : ${resp.blocks} tour${resp.blocks > 1 ? "s" : ""} — ${nn} unité${nn > 1 ? "s" : ""} modifiée${nn > 1 ? "s" : ""}.`);

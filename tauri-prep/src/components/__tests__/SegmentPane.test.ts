@@ -369,6 +369,97 @@ describe("SegmentPane — Tours surface (R6 manual paragraphs)", () => {
     await flush();
     expect(calls.find((c) => c.path === "/segment/coarse")?.body).toMatchObject({ pattern: "^— " });
   });
+
+  // ── QA-06 : garde-fou + aperçu à blanc de « Pré-remplir » ──────────────────
+  //
+  // Le geste écrase parent_n sur tout le document. Ses deux voisins destructeurs
+  // (resegmenter, propager) demandent confirmation depuis toujours ; celui-ci partait
+  // sans rien dire. La garde est conditionnelle : elle ne se déclenche que si un
+  // paragraphe réellement en place serait défait, et son message EST l'aperçu à blanc.
+
+  /** Doc où « tours » défait un ¶ : [2,3] ancré en 2, absorbé dans le bloc ouvert en 1. */
+  const TOURS_UNITS_ANCHORED = [
+    unit(1, { text_norm: "— Bien sûr." }),
+    unit(2, { text_norm: "Suite du tour." }),
+    unit(3, { text_norm: "Fin du ¶ manuel.", parent_n: 2 }),
+  ];
+
+  it("ne demande rien quand aucun paragraphe n'est en jeu", async () => {
+    const calls: Call[] = [];
+    await mountTours(fakeConn({ units: TOURS_UNITS, calls }));
+    (host.querySelector("#prep-seg-canvas-tours-prefill") as HTMLButtonElement).click();
+    await flush();
+    expect(document.querySelector("[data-mc-ok]")).toBeNull();
+    expect(calls.some((c) => c.path === "/segment/coarse")).toBe(true);
+  });
+
+  it("demande confirmation avant de défaire un paragraphe, et annuler n'écrit rien", async () => {
+    const calls: Call[] = [];
+    await mountTours(fakeConn({ units: TOURS_UNITS_ANCHORED, calls }));
+    (host.querySelector("#prep-seg-canvas-tours-prefill") as HTMLButtonElement).click();
+    await flush();
+    const body = document.querySelector(".prep-modal-confirm-body")!;
+    expect(body.textContent).toContain("1 paragraphe sur 1");
+    expect(body.textContent).toContain("2 segments concernés");
+    (document.querySelector("[data-mc-cancel]") as HTMLButtonElement).click();
+    await flush();
+    expect(calls.some((c) => c.path === "/segment/coarse")).toBe(false);
+    // Le bouton reste utilisable — un refus n'immobilise pas la surface.
+    expect(host.querySelector<HTMLButtonElement>("#prep-seg-canvas-tours-prefill")!.disabled).toBe(false);
+  });
+
+  it("confirmer laisse passer le regroupement", async () => {
+    const calls: Call[] = [];
+    await mountTours(fakeConn({ units: TOURS_UNITS_ANCHORED, calls }));
+    (host.querySelector("#prep-seg-canvas-tours-prefill") as HTMLButtonElement).click();
+    await flush();
+    (document.querySelector("[data-mc-ok]") as HTMLButtonElement).click();
+    await flush();
+    expect(calls.find((c) => c.path === "/segment/coarse")?.body).toMatchObject({ doc_id: 1, preset: "tours" });
+  });
+
+  it("borne l'aperçu sur text_start_n — un ¶ du paratexte ne déclenche pas la garde", async () => {
+    // Le ¶ [1,2] vit dans le paratexte et « tours » ne le reproduirait pas : sans la borne,
+    // l'aperçu annoncerait une perte que l'apply ne provoquera pas — le moteur borne sa
+    // requête depuis le 1er septembre. En portée de texte, aucun paragraphe → rien à demander.
+    const calls: Call[] = [];
+    const conn = fakeConn({ units: [
+      unit(1, { text_norm: "Page de titre" }),
+      unit(2, { text_norm: "— Mention légale.", parent_n: 1 }), // ¶ [1,2], hors portée
+      unit(3, { text_norm: "— Un tour." }),
+      unit(4, { text_norm: "Suite." }),
+    ], calls });
+    const pane = new SegmentPane(host, () => conn, () => {}, null, () => {});
+    await pane.setDocument(1, "fr", 3); // text_start_n = 3
+    (host.querySelector('[data-surface="tours"]') as HTMLButtonElement).click();
+    await flush();
+    (host.querySelector("#prep-seg-canvas-tours-prefill") as HTMLButtonElement).click();
+    await flush();
+    expect(document.querySelector("[data-mc-ok]")).toBeNull();
+    expect(calls.some((c) => c.path === "/segment/coarse")).toBe(true);
+  });
+
+  it("demande confirmation quand les segments n'ont pas pu être relus", async () => {
+    // `_units` vide après un échec de lecture est indiscernable d'un document vide. Se taire
+    // ferait de la garde une décoration exactement dans le cas où on ne sait rien.
+    const calls: Call[] = [];
+    const base = fakeConn({ units: TOURS_UNITS_ANCHORED, calls });
+    const conn = {
+      ...base,
+      get: async (path: string) => {
+        if (path.startsWith("/units")) throw new Error("sidecar injoignable");
+        return (base as unknown as { get: (p: string) => Promise<unknown> }).get(path);
+      },
+    } as unknown as Conn;
+    await mountTours(conn);
+    (host.querySelector("#prep-seg-canvas-tours-prefill") as HTMLButtonElement).click();
+    await flush();
+    expect(document.querySelector(".prep-modal-confirm-body")?.textContent)
+      .toContain("n'ont pas pu être relus");
+    (document.querySelector("[data-mc-cancel]") as HTMLButtonElement).click();
+    await flush();
+    expect(calls.some((c) => c.path === "/segment/coarse")).toBe(false);
+  });
 });
 
 describe("SegmentPane — Propager la segmentation (tranche 4)", () => {
