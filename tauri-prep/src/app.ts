@@ -50,6 +50,9 @@ export class App {
   private _dbPathEl!: HTMLElement;
   private _logEl!: HTMLElement;
   private _journalOpen = false;
+  /** Racine montée par `_buildUI`. Gardée pour les commandes publiques appelées
+   *  depuis le shell (CHR-01), qui n'ont pas de `root` sous la main. */
+  private _root!: HTMLElement;
 
   /** beforeunload handler stored so dispose() can remove it cleanly. */
   private _beforeUnloadHandler: ((e: BeforeUnloadEvent) => void) | null = null;
@@ -173,6 +176,7 @@ export class App {
 
   private _buildUI(): void {
     const root = document.getElementById("app")!;
+    this._root = root;
 
     // Skip link (A11y)
     const skipLink = document.createElement("a");
@@ -464,6 +468,23 @@ export class App {
       }
     }
     if (btn) btn.classList.toggle("active", this._journalOpen);
+  }
+
+  // ─── Commandes publiques (appelées par le shell) ───────────────────────────
+  // CHR-01 : ces deux gestes vivaient dans la barre de prep, qui disparaît au
+  // profit du header shell. Le shell n'atteint `App` que par `constituerModule`,
+  // d'où ces deux entrées — et rien d'autre : la surface reste étroite exprès.
+
+  /** Ouvre la Fiche corpus (métadonnées de la base). Sans effet si aucune base. */
+  openCorpusInfo(): void {
+    void this._showCorpusInfoModal();
+  }
+
+  /** Ouvre ou ferme le tiroir du Journal. Renvoie son nouvel état, dont le shell
+   *  se sert pour refléter l'icône active. */
+  toggleJournal(): boolean {
+    this._toggleJournal(this._root);
+    return this._journalOpen;
   }
 
   private _switchTab(tab: TabId, force = false): void {

@@ -23,9 +23,10 @@ statut: à venir
 - [ ] Supprimer la barre elle-même : titre « Constituer », chemin de la base, `Ouvrir…`, `Créer…`, `Presets`, `Fiche corpus`, `↗ Shell`, `Journal`
 - [ ] Garder `_onOpenDb`, `_onCreateDb` et la classe `.prep-topbar-db-btn` : le bandeau d'erreur s'en sert encore (`app.ts:727-729`)
 - [ ] Trancher le sort de la boucle qui désactive tous les `.prep-topbar-db-btn` pendant la création d'une base (`app.ts:703`) — sans barre elle ne trouve plus que les boutons du bandeau
-- [ ] Ouvrir un pont shell → `constituerModule` → `App` : une commande nommée, sans élargir `ShellContext` qui est délibérément minimal
-- [ ] Ajouter « 📄 Fiche corpus… » au menu de la base du shell — toujours visible, bascule sur Constituer si on vient d'Explorer
-- [ ] Ajouter l'icône `📋` Journal au header shell, **rendue seulement en mode Constituer**
+- [x] Ouvrir un pont shell → `constituerModule` → `App` : une commande nommée, sans élargir `ShellContext` qui est délibérément minimal
+- [x] Ajouter « 📄 Fiche corpus… » au menu de la base du shell — toujours visible, bascule sur Constituer si on vient d'Explorer
+- [x] Ajouter l'icône `📋` Journal au header shell, **rendue seulement en mode Constituer**
+- [x] Poser la garde du pont — `modules/__tests__/constituerCommands.test.ts`, 4 cas : une commande appelée module démonté doit être sans effet, pas lever (prouvé au rouge en retirant les appels optionnels : `TypeError` sur les deux)
 - [ ] Réancrer le tiroir Journal sous le header shell (`app.css:56`, `top: var(--prep-topbar-h)`)
 - [ ] Ajouter le raccourci « Fiche corpus » dans l'en-tête de l'écran Documents, par callback sur le modèle de `setOnOpenExporter`
 - [ ] Écrire la passe de QA `qa/chrome-constituer.md`, et la jouer
@@ -157,10 +158,19 @@ dans l'en-tête, pas un bouton d'action, et par le même callback que la modale 
 530 lignes de front supprimées, et deux notions homonymes de « presets » qui cessent de
 coexister.
 
-**Ordre des lots.** Le renommage CSS d'abord, puisqu'il est le préalable ; puis le retrait
-des presets ; puis le retrait de la barre avec ses trois réancrages ; puis le pont et les
-deux remontées ; puis le raccourci Documents. Les trois premiers lots sont indépendants
-des deux derniers et se testent séparément.
+**Ordre des lots — corrigé en cours de route.** Le cadrage plaçait le retrait de la barre
+avant le pont, en les disant indépendants. Ils le sont pour les tests, pas pour l'usage :
+la barre porte les **seuls** accès à la Fiche corpus et au Journal, que le pont rétablit un
+cran plus haut. Fait dans cet ordre, l'application perd les deux entre les deux lots.
+
+L'ordre tenu est donc : renommage CSS (préalable) → retrait des presets → **pont et deux
+remontées** → retrait de la barre et ses trois réancrages → raccourci Documents. Le pont
+d'abord coûte une duplication temporaire — deux entrées pour la Fiche corpus tant que la
+barre est là — ce que le menu de la base fait déjà pour « Ouvrir » et « Créer ». L'inverse
+coûtait une régression fonctionnelle.
+
+L'inversion est peu chère parce que `_setMode` est déjà `async` : l'entrée de menu bascule
+sur Constituer, attend le montage, puis appelle.
 
 **Collisions connues.** `ActionsScreen.ts` est aussi le terrain d'ACT-01 et de R2, mais ce
 chantier n'y touche que l'interface `ProjectPreset` et `applyPreset`, deux blocs isolés en

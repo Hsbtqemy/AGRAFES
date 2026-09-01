@@ -653,8 +653,8 @@ const SHELL_CSS = `
     font-size: 0.84rem;
   }
 
-  /* ── About + Shortcuts ──────────────────────────────────────── */
-  .shell-about-btn, .shell-shortcuts-btn {
+  /* ── About + Shortcuts + Journal ────────────────────────────── */
+  .shell-about-btn, .shell-shortcuts-btn, .shell-journal-btn {
     background: none;
     border: none;
     cursor: pointer;
@@ -665,8 +665,13 @@ const SHELL_CSS = `
     transition: background 0.15s, color 0.15s;
     white-space: nowrap;
   }
-  .shell-about-btn:hover, .shell-shortcuts-btn:hover {
+  .shell-about-btn:hover, .shell-shortcuts-btn:hover, .shell-journal-btn:hover {
     background: rgba(255,255,255,0.15);
+    color: #fff;
+  }
+  /* Tiroir ouvert — l'icône reste enfoncée tant qu'il l'est. */
+  .shell-journal-btn.active {
+    background: rgba(255,255,255,0.28);
     color: #fff;
   }
   .shell-about-modal {
@@ -2187,6 +2192,20 @@ function _buildHeader(): void {
   tabs.appendChild(_makeTab("Constituer", "⌘2", "constituer"));
   header.appendChild(tabs);
 
+  // Journal button (CHR-01) — le compte-rendu d'opérations de Constituer, qu'alimentent
+  // cinq écrans. Rendu SEULEMENT en mode Constituer : le shell a déjà son propre journal
+  // sous « ? » → « Exporter logs… », et une icône permanente ferait attendre celui-là à
+  // qui la presse depuis Explorer. Sa portée reste lisible depuis sa place.
+  const journalBtn = document.createElement("button");
+  journalBtn.id = "shell-journal-btn";
+  journalBtn.className = "shell-journal-btn";
+  journalBtn.textContent = "📋";
+  journalBtn.title = "Journal des opérations (Constituer)";
+  journalBtn.setAttribute("aria-label", "Afficher le journal des opérations");
+  journalBtn.hidden = _currentMode !== "constituer";
+  journalBtn.addEventListener("click", () => void _toggleConstituerJournal());
+  tabs.appendChild(journalBtn);
+
   // Shortcuts button
   const shortcutsBtn = document.createElement("button");
   shortcutsBtn.className = "shell-shortcuts-btn";
@@ -2307,6 +2326,19 @@ function _buildHeader(): void {
   itemCreate.textContent = "Cr\u00e9er\u2026";
   itemCreate.addEventListener("click", () => { _closeDbMenu(); void _onCreateDb(); });
 
+  // CHR-01 — la Fiche corpus qualifie la base ouverte : sa place est ici, dans le
+  // menu de la base, et non dans la barre de prep. Toujours visible plutôt que
+  // grisée hors Constituer : elle bascule d'abord, puis ouvre.
+  const itemCorpusInfo = document.createElement("button");
+  itemCorpusInfo.className = "shell-db-menu-item";
+  itemCorpusInfo.textContent = "📄 Fiche corpus…";
+  itemCorpusInfo.addEventListener("click", () => { _closeDbMenu(); void _openCorpusInfo(); });
+
+  const sepInfo = document.createElement("div");
+  sepInfo.className = "shell-db-menu-sep";
+
+  menu.appendChild(itemCorpusInfo);
+  menu.appendChild(sepInfo);
   menu.appendChild(itemOpen);
   menu.appendChild(sep);
   menu.appendChild(itemCreate);
@@ -2337,6 +2369,38 @@ function _updateHeaderTabs(mode: Mode): void {
     const el = btn as HTMLElement;
     el.classList.toggle("active", el.dataset.mode === mode);
   });
+  // CHR-01 — le Journal suit le mode. En quittant Constituer, le module est démonté
+  // et son tiroir part avec : l'icône ne doit pas rester « active » au retour.
+  const journalBtn = document.getElementById("shell-journal-btn");
+  if (journalBtn) {
+    journalBtn.hidden = mode !== "constituer";
+    if (mode !== "constituer") journalBtn.classList.remove("active");
+  }
+}
+
+// ─── Commandes remontées de Constituer (CHR-01) ───────────────────────────────
+
+/** Ouvre la Fiche corpus de la base active, en basculant sur Constituer si besoin. */
+async function _openCorpusInfo(): Promise<void> {
+  if (!_currentDbPath) {
+    _showToast("Ouvrez ou créez une base pour éditer sa fiche.");
+    return;
+  }
+  if (_currentMode !== "constituer") await _setMode("constituer");
+  const mod = await import("./modules/constituerModule.ts");
+  if (!mod.isMounted()) {
+    _showToast("Constituer n'est pas encore prêt — réessayez dans un instant.");
+    return;
+  }
+  mod.openCorpusInfo();
+}
+
+/** Bascule le tiroir du Journal de Constituer et reflète l'état sur l'icône. */
+async function _toggleConstituerJournal(): Promise<void> {
+  const mod = await import("./modules/constituerModule.ts");
+  if (!mod.isMounted()) return;
+  const ouvert = mod.toggleJournal();
+  document.getElementById("shell-journal-btn")?.classList.toggle("active", ouvert);
 }
 
 function _dbBadgeText(): string {

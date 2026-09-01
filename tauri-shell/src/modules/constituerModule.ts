@@ -107,6 +107,27 @@ export async function mount(
   _mounted = true;
 }
 
+// ─── Commandes (CHR-01) ────────────────────────────────────────────────────────
+// Le pont shell → prep. Le shell ne connaît pas `App` ; il passe par ici, et la
+// surface se limite aux deux gestes remontés au niveau de la base : la Fiche
+// corpus (menu de la base) et le Journal (icône du header). Chacune est sans
+// effet si le module n'est pas monté — le shell peut appeler sans vérifier.
+
+/** Vrai si l'app prep est montée et prête à recevoir une commande. */
+export function isMounted(): boolean {
+  return _mounted && _prepApp !== null;
+}
+
+/** Ouvre la Fiche corpus de la base active. */
+export function openCorpusInfo(): void {
+  _prepApp?.openCorpusInfo();
+}
+
+/** Ouvre ou ferme le tiroir du Journal. Renvoie son état après bascule. */
+export function toggleJournal(): boolean {
+  return _prepApp?.toggleJournal() ?? false;
+}
+
 export function dispose(): void {
   // Always restore id="app" on the outer container — even if _mounted is false
   // (e.g. after Vite HMR resets module-level state without calling dispose()).
