@@ -33,6 +33,8 @@ statut: à venir
 - [x] Rendre le focus au déclencheur à la fermeture du Journal (QAS-01, chemin header)
 - [ ] Restituer le titre du corpus quelque part : la barre affichait « Titre — fichier.db », le déclencheur du shell n'affiche que le nom de fichier
 - [ ] QAS-01 — le retour de focus par la ✕ du tiroir reste ouvert : prep ne connaît pas son déclencheur, et l'item de la revue prescrit un correctif sur un bouton qui n'existe plus
+- [x] Poser la garde des trois réancrages — `ui/__tests__/prepChrome.test.ts`, 5 cas, chacun prouvé au rouge (ancêtre positionné retiré, repli du token dérivé, ancrage optionnel rétabli)
+- [ ] Purger trois blocs CSS morts que la passe du lot 3 a mis au jour : `.prep-seg-split-layout` (`app.css:4771` + la surcharge de `constituerModule.ts:51`) et `.curate-preview-card` (`prep-vnext.css`) ne sont appliqués par AUCUN code — survivants des retraits de SegmentationView et CurationView, que la purge `aa7ded3` a manqués
 - [ ] Ajouter le raccourci « Fiche corpus » dans l'en-tête de l'écran Documents, par callback sur le modèle de `setOnOpenExporter`
 - [ ] Écrire la passe de QA `qa/chrome-constituer.md`, et la jouer
 
@@ -141,6 +143,13 @@ l'explique. L'icône du Journal ne pose pas `display`, donc rien ne casse — ma
 `.shell-journal-btn[hidden]` est posée d'avance, parce qu'ajouter un `display:inline-flex`
 pour centrer une icône est exactement le geste qui la rendrait visible hors Constituer, sans
 un mot.
+
+**Le token n'a qu'un seul consommateur vivant** — mesuré à la passe du lot 3. Sur ses
+quatre usages, seul `.prep-journal-drawer` (`app.css:57`) est appliqué par du code ; les
+trois autres — `.prep-seg-split-layout` deux fois et `.curate-preview-card` — sont des
+règles mortes, appliquées par aucun TS. Le passage de 54 à 44px est donc juste et utile
+pour le tiroir, qui vient enfin se poser sous le header au lieu de laisser dix pixels de
+contenu passer derrière ; il est inerte sur les trois autres. À purger séparément.
 
 **Les trois réancrages, et pourquoi ils comptent plus que le reste.** Retirer la barre
 détruit trois choses qui n'y sont que par accident d'implantation :
