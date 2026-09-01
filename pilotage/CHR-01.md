@@ -121,6 +121,22 @@ siens : `_dbBadgeText` (`shell.ts`), `_prependBackBtn`, `_runValidateMeta` et `_
 Deux mesures de fin de lot, à ne pas re-dériver : `app.ts` passe de 1190 à 827 lignes,
 `shell.ts` de 3665 à 3491, pour 613 suppressions et 16 ajouts au total.
 
+**Deux choses apprises au lot 4, à ne pas redécouvrir au lot 3.**
+
+`shell.ts` — 3491 lignes — n'est importé par **aucun** test. Les 83 suites du shell couvrent
+`rechercheModule`, `cloudSync`, `cqlHighlight`, `diagnostics` et `constituerModule`, jamais
+le fichier lui-même. Une erreur de syntaxe y passe donc le vitest au vert ; seul
+`npm run build` la voit. C'est arrivé : un backtick dans un commentaire CSS placé à
+l'intérieur de `SHELL_CSS`, qui est un littéral de gabarit. Pour toute modification de
+`shell.ts`, **construire avant de tester**, sinon le vert ne prouve rien.
+
+Et `[hidden]` de la feuille UA perd contre une règle de classe de la feuille auteur, à
+spécificité égale : `rechercheModule` porte deux surcharges explicites et le commentaire qui
+l'explique. L'icône du Journal ne pose pas `display`, donc rien ne casse — mais la surcharge
+`.shell-journal-btn[hidden]` est posée d'avance, parce qu'ajouter un `display:inline-flex`
+pour centrer une icône est exactement le geste qui la rendrait visible hors Constituer, sans
+un mot.
+
 **Les trois réancrages, et pourquoi ils comptent plus que le reste.** Retirer la barre
 détruit trois choses qui n'y sont que par accident d'implantation :
 

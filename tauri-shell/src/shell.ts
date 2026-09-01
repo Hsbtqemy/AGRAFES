@@ -674,6 +674,13 @@ const SHELL_CSS = `
     background: rgba(255,255,255,0.28);
     color: #fff;
   }
+  /* [hidden] de la feuille UA perd contre une règle de classe de la feuille auteur,
+     à spécificité égale. La règle ci-dessus ne pose pas display, donc rien ne casse
+     aujourd'hui — mais lui ajouter un display:inline-flex (le réflexe pour centrer
+     une icône) rendrait le bouton visible hors Constituer, sans un mot.
+     rechercheModule s'est fait prendre deux fois ; on pose la surcharge d'avance.
+     NB : ce bloc est un littéral de gabarit — pas de backtick dans les commentaires. */
+  .shell-journal-btn[hidden] { display: none; }
   .shell-about-modal {
     position: fixed;
     inset: 0;
@@ -2202,6 +2209,7 @@ function _buildHeader(): void {
   journalBtn.textContent = "📋";
   journalBtn.title = "Journal des opérations (Constituer)";
   journalBtn.setAttribute("aria-label", "Afficher le journal des opérations");
+  journalBtn.setAttribute("aria-expanded", "false");
   journalBtn.hidden = _currentMode !== "constituer";
   journalBtn.addEventListener("click", () => void _toggleConstituerJournal());
   tabs.appendChild(journalBtn);
@@ -2374,7 +2382,10 @@ function _updateHeaderTabs(mode: Mode): void {
   const journalBtn = document.getElementById("shell-journal-btn");
   if (journalBtn) {
     journalBtn.hidden = mode !== "constituer";
-    if (mode !== "constituer") journalBtn.classList.remove("active");
+    if (mode !== "constituer") {
+      journalBtn.classList.remove("active");
+      journalBtn.setAttribute("aria-expanded", "false");
+    }
   }
 }
 
@@ -2400,7 +2411,9 @@ async function _toggleConstituerJournal(): Promise<void> {
   const mod = await import("./modules/constituerModule.ts");
   if (!mod.isMounted()) return;
   const ouvert = mod.toggleJournal();
-  document.getElementById("shell-journal-btn")?.classList.toggle("active", ouvert);
+  const btn = document.getElementById("shell-journal-btn");
+  btn?.classList.toggle("active", ouvert);
+  btn?.setAttribute("aria-expanded", String(ouvert));
 }
 
 function _dbBadgeText(): string {
