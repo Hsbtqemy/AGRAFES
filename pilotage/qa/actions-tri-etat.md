@@ -134,7 +134,7 @@ sqlite3 "file:<chemin>?mode=ro" "select doc_id, step, validated_at from doc_step
 
 ### Ce que la coche vaut
 
-- [x] L'infobulle d'une case vide dit « rien de fait »
+- [x] L'infobulle d'une case vide dit « aucune trace enregistrée » — et non « rien de fait », qui affirmerait quelque chose sur le document alors que l'outil ne parle que de ce qu'il a vu
 - [x] Celle d'une case `/` dit « commencé, jamais validé »
 - [x] Coche Segmentation sur `#377 Nothomb-Stupeur_FR.docx` : l'infobulle dit « validé le …, **avant que l'historique existe** »
 - [x] Coche Segmentation sur `#368 Houellebecq-Plateforme_FR.docx` : elle dit « validé le …, **aucune modification enregistrée depuis** »

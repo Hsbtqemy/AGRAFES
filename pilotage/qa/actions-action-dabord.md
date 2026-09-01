@@ -67,7 +67,7 @@ et une trace ne vaut plus « fait » : trois zones ne décrivent plus ce qui est
 | zone | encore valable ? |
 |---|---|
 | Les quatre cartes | le premier item seulement est faux (deux nombres par carte désormais) |
-| Le filtre et la liste | **non** — les comptes ont changé, et le filtre retient aussi « en cours » |
+| Le filtre et la liste | **non** — remplacée par `qa/actions-double-filtre.md`, qui couvre le filtre tel qu'il est depuis les piles |
 | Le tri | oui |
 | L'état par ligne | **non** — la colonne porte quatre cases, plus des pastilles |
 | Les gestes de la ligne | oui |
