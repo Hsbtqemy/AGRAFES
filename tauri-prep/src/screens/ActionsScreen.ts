@@ -184,11 +184,19 @@ export class ActionsScreen {
 
   // ─── Sub-view management ───────────────────────────────────────────────────────────
 
-  /** Public API: called from app.ts sidebar tree links. */
+  /**
+   * Public API: called from app.ts sidebar tree links.
+   *
+   * L'affectation ne se fait ici QUE sans DOM : avec un DOM, `_switchSubViewDOM` s'en
+   * charge — et il a besoin de lire la vue qu'on quitte pour savoir qu'on revient au
+   * hub. Pré-affecter la rendait égale à la vue d'arrivée, et ce seul appelant sur neuf
+   * aurait perdu le rechargement, sans que rien ne le signale : la barre latérale et le
+   * retour d'historique NAV-01 passent tous deux par ici.
+   */
   setSubView(view: SubView): void {
+    if (this._root) { this._switchSubViewDOM(this._root, view); return; }
     this._activeSubView = view;
     try { localStorage.setItem(ActionsScreen.LS_ACTIVE_SUB, view); } catch { /* */ }
-    if (this._root) this._switchSubViewDOM(this._root, view);
   }
 
   /**
@@ -246,6 +254,7 @@ export class ActionsScreen {
   }
 
   private _switchSubViewDOM(root: HTMLElement, view: SubView): void {
+    const depuis = this._activeSubView;
     // Store the triggering button so focus can be restored when returning to hub
     if (this._activeSubView === "hub" && view !== "hub") {
       const active = document.activeElement;
@@ -267,6 +276,15 @@ export class ActionsScreen {
     // « source modifiée » (DOM persistant → render() ne se rejoue pas).
     if (view === "alignement") this._alignPanel?.onActivated();
     if (view === "matrice") this._matrixView?.onActivated();
+    // Et le hub, en revenant, se recharge. Même cause que les deux lignes au-dessus —
+    // le DOM des sous-vues persiste, `render()` ne se rejoue pas — mais une raison plus
+    // forte : ce qu'on vient de faire dans le canvas PÉRIME des coches. Sans ce
+    // rechargement, une case démentie continue d'afficher `✕` jusqu'à un ↺ manuel, et
+    // une coche qui survit à ce qui la dément est exactement le mensonge silencieux que
+    // le tri-état existe pour empêcher. Trouvé en QA le 31 août, à l'item « corriger une
+    // phrase au stylo : la case retombe à `/` » — elle n'y retombait qu'après ↺.
+    // Sur `depuis` et non sur la vue seule : au premier rendu, `setConn` a déjà chargé.
+    if (view === "hub" && depuis !== "hub" && this._conn) void this._loadDocs();
     // Restore focus to the hub card button that launched this sub-view
     if (view === "hub" && this._lastFocusedBtn) {
       const btn = this._lastFocusedBtn;

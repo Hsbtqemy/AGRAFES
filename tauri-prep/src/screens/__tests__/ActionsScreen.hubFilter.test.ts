@@ -832,3 +832,65 @@ describe("hub Actions — cocher une capacité (ACT-01, tri-état)", () => {
     expect(box(root, 20, 1).title).toContain("resegment");
   });
 });
+/**
+ * Revenir au hub doit RECHARGER — trouvé en QA le 31 août, à l'item « corriger une
+ * phrase au stylo : la case retombe à `/` ». Elle n'y retombait qu'après un ↺ manuel.
+ *
+ * Le DOM des sous-vues persiste et `render()` ne se rejoue pas : le hub repeignait des
+ * documents mis en cache avant la correction. Une coche que le travail vient de
+ * démentir continuait d'afficher `✕` — le mensonge silencieux exact que le tri-état
+ * existe pour empêcher. `alignement` et `matrice` avaient déjà leur `onActivated()`
+ * pour la même raison ; le hub n'avait rien.
+ */
+describe("hub Actions — revenir au hub recharge l'état (ACT-01, tri-état)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  async function mountCounting(): Promise<{
+    view: ActionsScreen; docCalls: () => number;
+  }> {
+    let n = 0;
+    const view = new ActionsScreen();
+    document.body.appendChild(view.render());
+    view.setConn({
+      get: vi.fn(async (path: string) => {
+        if (path.startsWith("/documents")) {
+          n += 1;
+          return { documents: DOCS, count: DOCS.length };
+        }
+        if (path.startsWith("/doc_relations/all")) return { relations: [] };
+        return {};
+      }),
+      post: vi.fn(async () => ({})),
+    } as unknown as Conn);
+    await vi.waitFor(() => expect(n).toBe(1));
+    return { view, docCalls: () => n };
+  }
+
+  it("revenir au hub par l'API publique recharge — le chemin de la barre latérale", async () => {
+    // Le chemin qui comptait, et celui qui a failli m'échapper : `setSubView` affectait
+    // la vue courante AVANT de déléguer, si bien que le code ne pouvait plus savoir
+    // d'où l'on venait. Un seul appelant sur neuf, mais c'est celui de la barre latérale
+    // et du retour d'historique NAV-01.
+    const { view, docCalls } = await mountCounting();
+    view.setSubView("texte");
+    view.setSubView("hub");
+    await vi.waitFor(() => expect(docCalls()).toBe(2));
+  });
+
+  it("le hub qui reprend la main depuis la matrice recharge aussi", async () => {
+    const { view, docCalls } = await mountCounting();
+    view.setSubView("matrice");
+    view.setSubView("hub");
+    await vi.waitFor(() => expect(docCalls()).toBe(2));
+  });
+
+  it("rester sur le hub ne recharge pas — sinon chaque clic de nav coûte un GET", async () => {
+    const { view, docCalls } = await mountCounting();
+    view.setSubView("hub");
+    view.setSubView("hub");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(docCalls()).toBe(1);
+  });
+});
