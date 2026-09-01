@@ -1,13 +1,16 @@
 ---
 chantier: DEG-01
-statut: à venir
+statut: interrompu
 ---
 
 # DEG-01 — base illisible : la bonne surface existe, un bouton ment, et prep en garde une copie morte
 
-**Point de départ** — cadrage du 1er septembre 2026, rien de codé. **Première version de
-cette fiche corrigée le jour même** : elle affirmait que rien n'était montré. C'est faux, et
-la suite dit ce qui l'est.
+**Arrêté sur** — le code est livré et poussé le 1er septembre 2026 (`bc359a3`) : le bouton
+qui promettait d'ouvrir et créait, la copie morte de prep et sa cascade, l'état d'erreur
+persistant du déclencheur, les deux rejets rattrapés. Ne reste qu'à jouer `qa/mode-degrade.md`.
+
+**La première version de cette fiche a été corrigée le jour même** : elle affirmait que rien
+n'était montré quand une base ne s'ouvre pas. C'est faux, et la suite dit ce qui l'est.
 
 ## Reste
 

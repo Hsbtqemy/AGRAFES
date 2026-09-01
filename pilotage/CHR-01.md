@@ -1,11 +1,15 @@
 ---
 chantier: CHR-01
-statut: à venir
+statut: interrompu
 ---
 
 # CHR-01 — la barre Constituer remonte d'un cran, et les presets tombent
 
-**Point de départ** — cadrage du 1er septembre 2026, rien de codé. La barre du haut de prep est un doublon du header shell dans quatre cas sur six ; le cinquième bouton est mort ; le sixième mérite de remonter au niveau de la base.
+**Arrêté sur** — quatre lots livrés et poussés le 1er septembre 2026 (`591d784`) : la coquille
+de modale renommée avec sa garde, les presets retirés des deux côtés, le pont shell → prep et
+les deux remontées, puis la barre elle-même avec ses trois réancrages. 98px de chrome ramenés
+à 44. Reste la passe de QA à jouer — un seul de ses points l'a été, celui du défilement, qui a
+trouvé un défaut vieux de six mois — et quatre items, tous petits.
 
 ## Reste
 
