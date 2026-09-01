@@ -99,7 +99,15 @@ export async function mount(
   const wrapper = document.createElement("div");
   wrapper.className = "con-prep-wrapper";
   wrapper.id = "app";
-  wrapper.style.paddingTop = "0"; // override index.html #app { padding-top: 44px }
+  // `index.html` déclare `#app { padding-top: 44px; min-height: 100vh; }`, et ce wrapper
+  // prend cet id pour que le `getElementById("app")` de prep le trouve. Les DEUX
+  // propriétés doivent donc être annulées : le padding l’était depuis l’origine, le
+  // `min-height` non — il forçait le wrapper à toute la hauteur de la fenêtre dans un
+  // `.con-subcontent` qui vaut 88px de moins, d’où une seconde barre de défilement,
+  // permanente et sans rapport avec le contenu. Mesuré en QA de CHR-01 : wrapper à
+  // 794px (100vh) dans un parent de 706px. Défaut d’origine, c417e9d (1er mars 2026).
+  wrapper.style.paddingTop = "0";
+  wrapper.style.minHeight = "0";
   subContainer.appendChild(wrapper);
 
   _prepApp = new App();

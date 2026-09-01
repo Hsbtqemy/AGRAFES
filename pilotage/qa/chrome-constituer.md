@@ -28,9 +28,16 @@ départage pas :
   .map(e => `${e.tagName}.${e.className}`.slice(0, 90))
 ```
 
-Attendu : **une seule entrée**, `DIV.prep-main`. Si `DIV.con-subcontent` apparaît aussi, les
-deux barres sont réelles et la chaîne de hauteur ne se résout pas ; noter alors sur quel
-écran, la sonde donnant un résultat différent selon la vue active.
+Attendu : `DIV.prep-main`, **et rien d'autre que des défileurs volontairement bornés** —
+sur Documents, `DIV.prep-meta-doc-list-wrap` s'y ajoute légitimement (`max-height: 440px`).
+Ce qui ne doit PAS apparaître, c'est `DIV.con-subcontent` : il est le filet du shell, et sa
+présence signifie que la chaîne de hauteur ne se résout pas au-dessus de `.prep-main`.
+
+Cet attendu a été écrit faux — « une seule entrée » — puis corrigé par la mesure du
+1er septembre, qui a justement trouvé `con-subcontent` en train de défiler : le wrapper de
+prep héritait d'un `min-height: 100vh` de la règle `#app` du shell, jamais annulé, et faisait
+794px dans un parent de 706. Corrigé dans `constituerModule`. La passe vérifie donc désormais
+que le correctif tient.
 
 **Provoquer le bandeau d'erreur** : on ne peut pas. C'est un constat du chantier, pas un
 oubli de la passe — le bandeau « Impossible d'initialiser la DB » n'a plus d'entrée depuis
@@ -77,8 +84,8 @@ changé, seul son point d'entrée a bougé.
 
 ### Défilement et hauteurs
 
-- [ ] La sonde de la console (voir en tête) rend **une seule** entrée sur l'écran Documents
-- [ ] Idem sur Importer, sur Actions (vue hub) et sur Exporter — noter les écrans où elle en rend deux
+- [ ] La sonde de la console (voir en tête) ne fait PAS apparaître `DIV.con-subcontent` sur l'écran Documents
+- [ ] Idem sur Importer, sur Actions (vue hub) et sur Exporter — noter les écrans où `con-subcontent` reparaît
 - [ ] Le rail de navigation de gauche reste fixe quand le contenu défile ; il ne défile pas avec lui
 - [ ] Le bas du dernier élément de la liste des documents est atteignable — rien n'est coupé sous la fenêtre
 - [ ] Sur une fenêtre réduite en hauteur (~600px), le contenu reste atteignable et le rail ne se tronque pas

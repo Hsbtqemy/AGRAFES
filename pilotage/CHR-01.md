@@ -35,6 +35,7 @@ statut: à venir
 - [ ] QAS-01 — le retour de focus par la ✕ du tiroir reste ouvert : prep ne connaît pas son déclencheur, et l'item de la revue prescrit un correctif sur un bouton qui n'existe plus
 - [x] Poser la garde des trois réancrages — `ui/__tests__/prepChrome.test.ts`, 5 cas, chacun prouvé au rouge (ancêtre positionné retiré, repli du token dérivé, ancrage optionnel rétabli)
 - [ ] Purger trois blocs CSS morts que la passe du lot 3 a mis au jour : `.prep-seg-split-layout` (`app.css:4771` + la surcharge de `constituerModule.ts:51`) et `.curate-preview-card` (`prep-vnext.css`) ne sont appliqués par AUCUN code — survivants des retraits de SegmentationView et CurationView, que la purge `aa7ded3` a manqués
+- [x] Seconde barre de défilement supprimée — le wrapper de prep héritait de `min-height: 100vh` de la règle `#app` de `tauri-shell/index.html`, dont seul le `padding-top` était annulé : 794px dans un parent de 706. Défaut d'origine (`c417e9d`, 1er mars 2026), trouvé par la sonde de la passe
 - [ ] Ajouter le raccourci « Fiche corpus » dans l'en-tête de l'écran Documents, par callback sur le modèle de `setOnOpenExporter`
 - [x] Écrire la passe de QA `qa/chrome-constituer.md`
 - [ ] La jouer
