@@ -39,11 +39,13 @@ prep héritait d'un `min-height: 100vh` de la règle `#app` du shell, jamais ann
 794px dans un parent de 706. Corrigé dans `constituerModule`. La passe vérifie donc désormais
 que le correctif tient.
 
-**Provoquer le bandeau d'erreur** : on ne peut pas. C'est un constat du chantier, pas un
-oubli de la passe — le bandeau « Impossible d'initialiser la DB » n'a plus d'entrée depuis
-que « Créer… » a quitté prep, et le vrai chemin d'échec (`_onDbChanged`) ne fait qu'un
-`console.error`. La zone correspondante ne demande donc que ce qui est observable : que le
-mode dégradé se voie, d'une manière ou d'une autre.
+**Le bandeau d'erreur ne se teste plus ici.** Ce paragraphe disait qu'on ne pouvait pas le
+provoquer ; DEG-01 l'a rendu faux le jour même, et dans les deux sens. Celui de prep était un
+doublon inatteignable : il a été supprimé, pas réparé. Celui du shell — `_showInitError`,
+« Impossible d'initialiser la DB » — est parfaitement atteignable, couvre les quatre modes, et
+laisse désormais une trace sur le déclencheur de base une fois écarté.
+
+Tout cela se vérifie dans `qa/mode-degrade.md`, écrite pour ça. Ne pas le refaire ici.
 
 **Ne pas tester** : la Fiche corpus elle-même (son contenu, sa sauvegarde) — elle n'a pas
 changé, seul son point d'entrée a bougé.
@@ -95,4 +97,4 @@ changé, seul son point d'entrée a bougé.
 - [ ] Le titre du corpus n'est plus affiché nulle part hors de la Fiche corpus — le confirmer, et dire si le nom de fichier seul suffit à l'usage
 - [ ] Aucun bouton ne propose plus d'« ouvrir dans le Shell » depuis Constituer
 - [ ] Aucune entrée « Presets » nulle part : ni dans Constituer, ni dans le bandeau du shell
-- [ ] Le mode dégradé se voit : ouvrir une base pendant que le sidecar est arrêté, et dire ce que l'écran montre — un message, des listes vides, ou rien du tout
+- [ ] Aucun bandeau d'erreur propre à prep ne subsiste en haut du contenu — celui du shell est le seul, et se vérifie dans `qa/mode-degrade.md`
