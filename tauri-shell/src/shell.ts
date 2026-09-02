@@ -1660,6 +1660,26 @@ export async function initShell(): Promise<void> {
       }, 150);
     })();
   });
+  // CHR-01 — l'icône 📋 reflète l'état du tiroir du Journal, lequel vit dans prep. Cet
+  // écouteur est le seul à peindre son ouverture : le tiroir se ferme aussi par sa propre
+  // ✕, à l'intérieur de prep, et peindre depuis le retour de `toggleJournal()` laissait
+  // dans ce cas une icône allumée sur un tiroir fermé — le clic suivant rouvrait ce
+  // qu'elle semblait proposer de fermer (QA de CHR-01, 2 septembre 2026).
+  // `_updateHeaderTabs` l'éteint par ailleurs à chaque navigation, où le module est démonté
+  // et son tiroir avec : c'est l'extinction d'un remontage, pas celle d'un geste.
+  window.addEventListener("agrafes:prep-journal", (e: Event) => {
+    const ouvert = (e as CustomEvent<{ open: boolean }>).detail?.open === true;
+    const btn = document.getElementById("shell-journal-btn");
+    if (!btn) return;
+    btn.classList.toggle("active", ouvert);
+    btn.setAttribute("aria-expanded", String(ouvert));
+    // QAS-01 — à la fermeture, le focus revient au déclencheur ; sinon il retombe sur
+    // <body> et la tabulation suivante repart du haut de la page. Passer par l'événement
+    // couvre du même coup le chemin par la ✕, que le point ouvert de QAS-01 visait sans
+    // pouvoir l'atteindre : prep ne connaît pas ce bouton, et n'a pas à le connaître.
+    if (!ouvert) btn.focus();
+  });
+
   document.body.dataset.mode = startMode;
   // Pré-démarrer le moteur au boot si une base est restaurée : le spinner du
   // bouton DB s'affiche pendant l'extraction du sidecar (~30 s au 1er lancement),
@@ -2393,15 +2413,25 @@ function _updateHeaderTabs(mode: Mode): void {
     const el = btn as HTMLElement;
     el.classList.toggle("active", el.dataset.mode === mode);
   });
-  // CHR-01 — le Journal suit le mode. En quittant Constituer, le module est démonté
-  // et son tiroir part avec : l'icône ne doit pas rester « active » au retour.
+  // CHR-01 — le Journal suit le mode. Le module est démonté et son tiroir part avec :
+  // l'icône ne doit pas rester « active » sur un tiroir qui n'existe plus.
+  //
+  // Le dépeint est INCONDITIONNEL, et c'est le correctif du 2 septembre 2026 : la
+  // condition `mode !== "constituer"` qu'il portait laissait passer le remontage à mode
+  // ÉGAL — `_setMode(_currentMode, { force: true })`, par où passe « Rafraîchir
+  // maintenant » après un changement de base. Le tiroir y est détruit comme ailleurs,
+  // l'icône restait allumée. `_setMode` est le seul appelant de cette fonction et démonte
+  // toujours le module juste après : après elle, le tiroir est fermé dans tous les cas.
+  //
+  // C'est aussi pourquoi le dépeint vit ici et non dans le `dispose()` du module, qui
+  // aurait pu annoncer sa fermeture : l'écouteur de `agrafes:prep-journal` rend le focus
+  // au déclencheur, ce qui est juste pour un geste et faux pour un démontage — le focus
+  // sauterait sur 📋 au milieu d'un changement de base.
   const journalBtn = document.getElementById("shell-journal-btn");
   if (journalBtn) {
     journalBtn.hidden = mode !== "constituer";
-    if (mode !== "constituer") {
-      journalBtn.classList.remove("active");
-      journalBtn.setAttribute("aria-expanded", "false");
-    }
+    journalBtn.classList.remove("active");
+    journalBtn.setAttribute("aria-expanded", "false");
   }
 }
 
@@ -2422,21 +2452,12 @@ async function _openCorpusInfo(): Promise<void> {
   mod.openCorpusInfo();
 }
 
-/** Bascule le tiroir du Journal de Constituer et reflète l'état sur l'icône. */
+/** Bascule le tiroir du Journal de Constituer. L'état de l'icône n'est PAS peint ici :
+ *  il suit l'événement `agrafes:prep-journal`, seul chemin qui voie aussi la ✕ du tiroir. */
 async function _toggleConstituerJournal(): Promise<void> {
   const mod = await import("./modules/constituerModule.ts");
   if (!mod.isMounted()) return;
-  const ouvert = mod.toggleJournal();
-  const btn = document.getElementById("shell-journal-btn");
-  btn?.classList.toggle("active", ouvert);
-  btn?.setAttribute("aria-expanded", String(ouvert));
-  // QAS-01 — à la fermeture d'un panneau, le focus doit revenir à son déclencheur ;
-  // sinon il retombe sur <body> et la tabulation suivante repart du haut de la page.
-  // La revue prescrivait un `btn?.focus()` dans `_toggleJournal` de prep, sur le
-  // bouton de sa barre — parti avec elle. Le déclencheur vit ici désormais, donc le
-  // retour de focus aussi. Le chemin par la ✕ du tiroir reste à traiter dans QAS-01 :
-  // prep ne connaît pas ce bouton, et ne doit pas le connaître.
-  if (!ouvert) btn?.focus();
+  mod.toggleJournal();
 }
 
 function _dbBadgeText(): string {

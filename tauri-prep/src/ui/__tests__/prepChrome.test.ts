@@ -58,6 +58,18 @@ function corpsDeRegle(css: string, selecteur: string): string | null {
   return css.slice(open + 1, css.indexOf("}", open));
 }
 
+/**
+ * Le corps d'une méthode `private nom(…)`, jusqu'à sa fermeture — l'accolade seule
+ * indentée de deux espaces. Les blocs internes de `app.ts` ferment à quatre au moins,
+ * donc la première rencontre est bien la fin de la méthode.
+ */
+function corpsDeMethode(ts: string, nom: string): string | null {
+  const at = ts.indexOf(`private ${nom}(`);
+  if (at === -1) return null;
+  const fin = ts.indexOf("\n  }", at);
+  return fin === -1 ? null : ts.slice(at, fin);
+}
+
 describe("le bandeau d'erreur de prep ne doit pas revenir", () => {
   it("ni son code, ni son CSS — le shell porte la seule bannière (DEG-01)", () => {
     // Prep en tenait un doublon, inatteignable depuis que « Créer… » a quitté la barre :
@@ -101,5 +113,39 @@ describe("--prep-topbar-h", () => {
         expect(m[1], `repli ${m[1]}px ≠ déclaration ${valeur}px`).toBe(valeur);
       }
     }
+  });
+});
+
+/**
+ * Quatrième garde, ajoutée le 2 septembre 2026 par ce que la passe de QA a trouvé.
+ *
+ * Le tiroir du Journal a DEUX fermetures : l'icône du header shell, et sa propre ✕, qui
+ * est à l'intérieur de prep. Le shell ne voit que la première. Tant qu'il peignait son
+ * icône depuis le retour de `toggleJournal()`, la seconde laissait l'icône allumée sur un
+ * tiroir fermé — et le clic suivant rouvrait ce qu'elle semblait proposer de fermer.
+ *
+ * D'où l'annonce : prep émet son état, le shell l'écoute. Le retirer ne casse ni le build
+ * ni le rendu ; ça ne se voit qu'en fermant par la ✕, puis en regardant l'icône.
+ */
+describe("le tiroir du Journal annonce son état", () => {
+  it("`_toggleJournal` émet `agrafes:prep-journal` à chaque bascule", () => {
+    const corps = corpsDeMethode(APP_TS_CODE, "_toggleJournal");
+    expect(corps, "méthode _toggleJournal introuvable dans app.ts").not.toBeNull();
+    expect(corps!, "sans cette annonce, la ✕ du tiroir ferme sans dépeindre l'icône du shell")
+      .toMatch(/dispatchEvent\(\s*new CustomEvent\(\s*"agrafes:prep-journal"/);
+    expect(corps!, "l'événement doit porter l'état, pas seulement signaler un changement")
+      .toMatch(/open:\s*this\._journalOpen/);
+  });
+
+  it("la ✕ du tiroir passe par cette même méthode, et non par un raccourci", () => {
+    // Si elle refermait le tiroir en propre, l'annonce lui échapperait — le défaut
+    // reviendrait par un autre chemin, avec la garde ci-dessus toujours au vert.
+    // Assertion portée par la ligne plutôt que par sa forme exacte : ce qui compte est
+    // qu'elle appelle `_toggleJournal`, pas la façon dont elle est écrite.
+    const ligne = APP_TS_CODE.split("\n").find(
+      (l) => l.includes("#prep-journal-close") && l.includes("addEventListener"),
+    );
+    expect(ligne, "câblage du bouton ✕ introuvable dans app.ts").toBeDefined();
+    expect(ligne!).toMatch(/_toggleJournal\(/);
   });
 });

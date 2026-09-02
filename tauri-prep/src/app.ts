@@ -416,8 +416,15 @@ export class App {
         if (log) log.scrollTop = log.scrollHeight;
       }
     }
-    // CHR-01 — le déclencheur n'est plus ici mais dans le header shell, qui reflète
-    // lui-même son état actif. Prep ne le connaît pas, et n'a pas à le connaître.
+    // CHR-01 — le déclencheur n'est plus ici mais dans le header shell. Prep ne le
+    // connaît pas, et n'a pas à le connaître : il annonce son état, le shell l'écoute.
+    // L'annonce est nécessaire parce que le tiroir se ferme aussi par sa PROPRE ✕, sans
+    // passer par l'icône : sans elle, l'icône restait peinte sur un tiroir fermé, et le
+    // clic suivant rouvrait ce qu'elle semblait proposer de fermer. Trouvé en jouant
+    // `qa/chrome-constituer.md`, le 2 septembre 2026.
+    window.dispatchEvent(new CustomEvent("agrafes:prep-journal", {
+      detail: { open: this._journalOpen },
+    }));
   }
 
   // ─── Commandes publiques (appelées par le shell) ───────────────────────────
@@ -484,7 +491,16 @@ export class App {
     try {
       info = await getCorpusInfo(this._conn);
     } catch (err) {
-      showToast(`Lecture fiche corpus : ${String(err)}`, true);
+      // CHR-01 — le détail technique part déjà dans la console par le client sidecar
+      // (« sidecarFetch loopback command failed … »), inutile de le répéter ici. Ce toast
+      // est lu par quelqu'un qui vient de cliquer une entrée de menu : il dit ce qui se
+      // passe, pas l'URL qui a échoué. Trouvé en jouant `qa/chrome-constituer.md` le
+      // 2 septembre 2026, sur une base illisible : l'entrée rendait 150 caractères de
+      // `sidecar_fetch_loopback: request to 'http://127.0.0.1:57263/corpus/info' failed…`
+      // dans une bulle de 400px, affichée trois secondes en bas à droite — l'utilisateur
+      // n'y a pas reconnu une réponse à son clic.
+      console.error("fiche corpus:", err);
+      showToast("Fiche corpus indisponible : le moteur n'a pas pu la lire pour cette base.", true);
       return;
     }
 

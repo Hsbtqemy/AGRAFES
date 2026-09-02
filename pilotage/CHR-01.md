@@ -8,8 +8,16 @@ statut: interrompu
 **Arrêté sur** — quatre lots livrés et poussés le 1er septembre 2026 (`591d784`) : la coquille
 de modale renommée avec sa garde, les presets retirés des deux côtés, le pont shell → prep et
 les deux remontées, puis la barre elle-même avec ses trois réancrages. 98px de chrome ramenés
-à 44. Reste la passe de QA à jouer — un seul de ses points l'a été, celui du défilement, qui a
-trouvé un défaut vieux de six mois — et quatre items, tous petits.
+à 44. **La passe de QA est jouée, 35 sur 35 le 2 septembre 2026.** Elle a trouvé trois défauts,
+tous corrigés le jour même : une seconde barre de défilement vieille de six mois ; l'icône du
+Journal qui restait peinte quand le tiroir se fermait par sa propre ✕, plus la seconde porte du
+même défaut — le remontage à mode égal — trouvée à la passe adverse du correctif ; et « Fiche
+corpus » qui rendait une URL de boucle locale sur une base illisible. Quatre de ses attendus
+ont par ailleurs été corrigés par la mesure, tous écrits d'après l'architecture plutôt que
+d'après l'écran.
+
+Restent trois items, tous petits, et aucun n'est bloquant : le raccourci dans Documents, la
+purge de trois blocs CSS morts, et le titre du corpus qui ne s'affiche plus nulle part.
 
 ## Reste
 
@@ -36,26 +44,33 @@ trouvé un défaut vieux de six mois — et quatre items, tous petits.
 - [x] Rendre au header shell le repère ARIA `banner`, que la barre portait et que rien ne portait plus
 - [x] Rendre le focus au déclencheur à la fermeture du Journal (QAS-01, chemin header)
 - [ ] Restituer le titre du corpus quelque part : la barre affichait « Titre — fichier.db », le déclencheur du shell n'affiche que le nom de fichier
-- [ ] QAS-01 — le retour de focus par la ✕ du tiroir reste ouvert : prep ne connaît pas son déclencheur, et l'item de la revue prescrit un correctif sur un bouton qui n'existe plus
+- [x] QAS-01 — le retour de focus par la ✕ du tiroir : réglé le 2 septembre par l'annonce d'état (`agrafes:prep-journal`), qui rend au shell les deux fermetures d'un coup. Prep ne connaît toujours pas son déclencheur — il n'a plus besoin de le connaître
+- [x] « Fiche corpus » sur une base illisible rendait une URL de boucle locale — `Lecture fiche corpus : sidecar_fetch_loopback: request to 'http://127.0.0.1:57263/corpus/info' failed…` — dans un toast de 400px affiché trois secondes en bas à droite, que l'utilisateur n'a pas reconnu comme une réponse à son clic. Toast réécrit en une phrase, détail laissé à la console où le client sidecar l'écrit déjà. Au passage : le garde sur `_conn` nul ne se déclenche PAS dans ce cas, prep obtenant bien une connexion — c'est la requête qui échoue
+- [x] Seconde porte du même défaut, trouvée à la passe adverse : `_updateHeaderTabs` ne dépeignait l'icône que si le mode changeait, or le remontage après un changement de base passe par `_setMode(_currentMode, { force: true })` — tiroir détruit, icône allumée. Dépeint rendu inconditionnel : `_setMode` est le seul appelant et démonte le module juste après. Le dépeint reste là plutôt que dans `dispose()`, dont l'annonce ferait sauter le focus sur 📋 au milieu d'un changement de base
+- [x] L'icône 📋 restait peinte quand le tiroir se fermait par sa PROPRE ✕ — le shell peignait depuis le retour de `toggleJournal()`, aveugle à ce chemin, et le clic suivant rouvrait ce qu'elle semblait proposer de fermer. Trouvé en jouant la passe le 2 septembre, corrigé avec le point ci-dessus : prep émet son état, un écouteur du shell est désormais le seul à peindre l'icône. Deux gardes posées de chaque côté, les quatre prouvées au rouge
 - [x] Poser la garde des trois réancrages — `ui/__tests__/prepChrome.test.ts`, 5 cas, chacun prouvé au rouge (ancêtre positionné retiré, repli du token dérivé, ancrage optionnel rétabli)
 - [ ] Purger trois blocs CSS morts que la passe du lot 3 a mis au jour : `.prep-seg-split-layout` (`app.css:4771` + la surcharge de `constituerModule.ts:51`) et `.curate-preview-card` (`prep-vnext.css`) ne sont appliqués par AUCUN code — survivants des retraits de SegmentationView et CurationView, que la purge `aa7ded3` a manqués
 - [x] Seconde barre de défilement supprimée — le wrapper de prep héritait de `min-height: 100vh` de la règle `#app` de `tauri-shell/index.html`, dont seul le `padding-top` était annulé : 794px dans un parent de 706. Défaut d'origine (`c417e9d`, 1er mars 2026), trouvé par la sonde de la passe
 - [ ] Ajouter le raccourci « Fiche corpus » dans l'en-tête de l'écran Documents, par callback sur le modèle de `setOnOpenExporter`
 - [x] Écrire la passe de QA `qa/chrome-constituer.md`
-- [ ] La jouer
+- [x] La jouer — 35 sur 35 le 2 septembre 2026, trois défauts trouvés et corrigés le jour même, et quatre de ses attendus corrigés par la mesure
 
 ## QA
 
 - qa/chrome-constituer.md
 
-Écrite le 1er septembre 2026, pas encore jouée. Elle porte moins sur ce qui disparaît que
+Écrite le 1er septembre 2026, jouée le 2 — 35 sur 35. Elle porte moins sur ce qui disparaît que
 sur les trois réancrages : un bandeau d'erreur qui ne s'insère plus, un garde de sortie
 d'onglet qui ne demande plus rien, un tiroir qui passe sous le header. Trois défauts
 silencieux, dont aucun ne se voit tant qu'on ne provoque pas le cas.
 
-Son préambule porte deux choses qu'il faut avoir sous la main pour l'exécuter : la sonde de
-console qui départage les barres de défilement réelles, et la raison pour laquelle le
-bandeau d'erreur ne peut PAS être provoqué — il n'a plus d'entrée du tout.
+Son préambule porte la sonde de console qui départage les barres de défilement réelles —
+à avoir sous la main pour la zone « Défilement », dont un point demande de la relancer sur
+Importer **chargé**, cet écran n'ayant de hauteur que par sa file de fichiers.
+
+Le bandeau d'erreur, lui, ne s'y teste plus : celui de prep était un doublon inatteignable et
+a été supprimé, celui du shell est parfaitement atteignable et se vérifie dans
+`qa/mode-degrade.md`. Le préambule le dit depuis DEG-01.
 
 ## Contexte
 
