@@ -44,6 +44,47 @@ function corpsDeFonction(ts: string, entete: string): string | null {
   return fin === -1 ? null : ts.slice(at, fin);
 }
 
+describe("l'écran de démarrage laisse une sortie", () => {
+  it("il crée un bouton après un délai, et son sous-titre ne promet plus « quelques secondes »", () => {
+    const corps = corpsDeFonction(SHELL_TS, "function _showSidecarOverlay(");
+    expect(corps, "fonction _showSidecarOverlay introuvable").not.toBeNull();
+
+    // Cet écran est modal et couvre toute la fenêtre. Sans sortie, il retenait l'utilisateur
+    // jusqu'au règlement d'`ensureRunning` — 90 s d'extraction plus 45 s de santé sous
+    // Windows au pire, subies le 3 septembre 2026.
+    expect(corps!, "l'écran doit offrir une sortie").toMatch(/shell-sidecar-dismiss/);
+    expect(corps!, "la sortie doit être différée, pas immédiate")
+      .toMatch(/SIDECAR_OVERLAY_ESCAPE_MS/);
+    // Deux promesses contradictoires dans la même fenêtre : le sous-titre disait « quelques
+    // secondes » là où l'infobulle du déclencheur annonce ~30 s au premier lancement.
+    expect(corps!, "sous-titre à rectifier").not.toMatch(/quelques secondes/);
+  });
+
+  it("le minuteur est annulé au retrait, sinon il se greffe sur l'écran suivant", () => {
+    const corps = corpsDeFonction(SHELL_TS, "function _hideSidecarOverlay(");
+    expect(corps, "fonction _hideSidecarOverlay introuvable").not.toBeNull();
+    // `_showSidecarOverlay` commence par retirer l'écran précédent : un minuteur laissé en
+    // vol y ajouterait un bouton de sortie sur un démarrage tout juste commencé.
+    expect(corps!).toMatch(/clearTimeout\(_sidecarOverlayTimer\)/);
+    // Et avant le `return` du cas « pas d'écran », sinon le minuteur survit.
+    const annulation = corps!.indexOf("clearTimeout(_sidecarOverlayTimer)");
+    const sortieHative = corps!.indexOf("if (!el) return");
+    expect(sortieHative, "le `return` du cas « pas d'écran » a disparu").toBeGreaterThan(-1);
+    expect(annulation).toBeLessThan(sortieHative);
+  });
+
+  it("l'écran est tenu en variable, pas retrouvé par son id", () => {
+    const corps = corpsDeFonction(SHELL_TS, "function _hideSidecarOverlay(");
+    // Le retrait est différé de 380 ms pour l'estompe : deux `_initDb` rapprochés — un
+    // double clic sur « Réessayer » suffit — laissent un instant deux éléments portant le
+    // même id, et `getElementById` rend le premier. Le second écran restait alors à
+    // l'écran pour de bon, c'est-à-dire le blocage que ce chantier combat.
+    expect(corps!, "retrouver l'écran par son id rouvre le blocage")
+      .not.toMatch(/getElementById\("shell-sidecar-overlay"\)/);
+    expect(corps!).toMatch(/_sidecarOverlayEl/);
+  });
+});
+
 describe("la primitive distingue « absent » de « je n'ai pas pu regarder »", () => {
   const MAIN_RS = readFileSync(resolve(process.cwd(), "src-tauri/src/main.rs"), "utf-8");
 

@@ -939,6 +939,20 @@ const SHELL_CSS = `
     margin-top: -0.5rem;
     text-align: center;
   }
+  /* DEG-01 — la sortie de l'ecran de demarrage. Elle n'apparait qu'au bout de quelques
+     secondes : un demarrage tiede se termine avant, et proposer d'abandonner tout de suite
+     ferait douter d'une attente normale. */
+  .shell-sidecar-dismiss {
+    background: rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.16);
+    border-radius: 5px;
+    color: #495057;
+    font-size: 0.78rem;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .shell-sidecar-dismiss:hover { background: rgba(0,0,0,0.11); }
 `;
 
 // ─── Demo corpus ──────────────────────────────────────────────────────────────
@@ -1433,20 +1447,26 @@ async function _switchDb(path: string): Promise<void> {
   const _cloudSynced = _warnIfCloudSynced(path);
 
   try {
-    await _initDb(path);
-    _shellLog("info", "db_switch", `DB ready: ${_pathLabel(path)}`);
+    const pret = await _initDb(path);
+    _shellLog(pret ? "info" : "warn", "db_switch", `DB ${pret ? "ready" : "not ready"}: ${_pathLabel(path)}`);
     // Notify subscribers now that the sidecar is healthy.
     _dbListeners.forEach(cb => cb(_currentDbPath));
+    // DEG-01 — sur un échec, `_initDb` a déjà posé sa bannière ambre : annoncer « DB
+    // changée » par-dessus donnait deux messages contradictoires pour un seul geste. On
+    // saute le toast et le bandeau bleu, et RIEN d'autre : les abonnés sont prévenus comme
+    // avant, `_pendingDbRemount` est posé comme avant. Toucher à ça demanderait de trancher
+    // ce que voient les modules quand l'ouverture échoue — la QA du 3 septembre a validé le
+    // comportement actuel (écrans vides, sans plantage), donc on ne le change pas ici.
     if (_currentMode === "home") {
       // Home is stateless — remount immediately (no context to lose).
-      if (!_cloudSynced) _showToast(`DB active : ${_pathLabel(path)}`);
+      if (!_cloudSynced && pret) _showToast(`DB active : ${_pathLabel(path)}`);
     } else {
       // Non-home module is mounted: defer remount so the user keeps scroll/context.
       // A banner lets them choose when to refresh.
       _pendingDbRemount = true;
       _updateDbBadge(); // shows ⚠ suffix while remount is pending
-      if (!_cloudSynced) _showToast(`DB changée : ${_pathLabel(path)}`);
-      _showDbChangeBanner(_pathLabel(path));
+      if (!_cloudSynced && pret) _showToast(`DB changée : ${_pathLabel(path)}`);
+      if (pret) _showDbChangeBanner(_pathLabel(path));
     }
   } catch (err) {
     _shellLog("error", "db_switch", `DB init failed: ${_pathLabel(path)}`, String(err));
@@ -2621,8 +2641,12 @@ async function _fichierCertainementAbsent(path: string): Promise<boolean> {
  *
  * `creation` exempte du contrôle d'existence : c'est le seul cas où le fichier ne doit
  * PAS être là.
+ *
+ * Rend `true` si le moteur répond sur cette base. Les appelants qui n'en font rien ne
+ * risquent rien — la bannière est déjà posée ici ; `_switchDb`, lui, s'en sert pour ne pas
+ * annoncer « DB changée » par-dessus un échec.
  */
-async function _initDb(dbPath: string, opts?: { creation?: boolean }): Promise<void> {
+async function _initDb(dbPath: string, opts?: { creation?: boolean }): Promise<boolean> {
   // DEG-01 — ouvrir et créer sont la MÊME opération côté moteur : `ensureRunning` sur un
   // chemin absent produit une base vide et migrée, sans un mot, et la rend active. Mesuré
   // le 2 septembre 2026 : 4096 octets et un WAL de 1,4 Mo apparus au clic sur une récente
@@ -2643,7 +2667,7 @@ async function _initDb(dbPath: string, opts?: { creation?: boolean }): Promise<v
     _dbInitFailedPath = dbPath;
     _showInitError(dbPath, "Ce fichier n’existe plus à cet emplacement.");
     _updateDbBadge();
-    return;
+    return false;
   }
   const btn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
   if (btn) {
@@ -2664,11 +2688,13 @@ async function _initDb(dbPath: string, opts?: { creation?: boolean }): Promise<v
     _hideSidecarOverlay();
     _showToast("DB initialis\u00e9e \u2713", 3000);
     _shellLog("info", "sidecar", `Sidecar healthy for DB: ${_pathLabel(dbPath)}`);
+    return true;
   } catch (err) {
     _hideSidecarOverlay();
     _shellLog("error", "sidecar", `Sidecar health failure for DB: ${_pathLabel(dbPath)}`, String(err));
     _dbInitFailedPath = dbPath;
     _showInitError(dbPath, String(err));
+    return false;
   } finally {
     if (btn) { btn.disabled = false; btn.classList.remove("shell-db-trigger--loading"); }
     _updateDbBadge();
@@ -3656,23 +3682,79 @@ async function _initDemoSection(
 
 // ─── Loading indicator ────────────────────────────────────────────────────────
 
+/** Combien de temps avant d'offrir une sortie. Au-dela, l'attente n'est plus ordinaire. */
+const SIDECAR_OVERLAY_ESCAPE_MS = 6000;
+let _sidecarOverlayTimer: number | null = null;
+/**
+ * L'écran courant, tenu en variable et non retrouvé par `getElementById` : son retrait est
+ * différé de 380 ms pour l'estompe, si bien que deux `_initDb` rapprochés — un double clic
+ * sur « Réessayer » suffit — laissent un instant DEUX éléments portant le même id. La
+ * recherche par id rendait alors le premier, et le second restait à l'écran pour de bon :
+ * exactement le blocage que ce chantier combat. Trouvé à la passe adverse du 3 septembre.
+ */
+let _sidecarOverlayEl: HTMLElement | null = null;
+
+/**
+ * DEG-01 — cet écran n'avait AUCUNE sortie : un rond qui tourne, un libellé, et rien
+ * d'autre. Il ne partait qu'au règlement d'`ensureRunning`, dont les budgets sont de 90 s
+ * pour l'extraction du binaire onefile puis 45 s pour la santé sous Windows — jusqu'à deux
+ * minutes et quart sans recours, rencontrées le 3 septembre 2026. Et son sous-titre
+ * annonçait « quelques secondes » quand l'infobulle du déclencheur, elle, disait « ~30 s au
+ * 1er lancement » : deux promesses contradictoires dans la même fenêtre.
+ *
+ * La sortie ne coupe pas le démarrage — on ne peut pas interrompre `ensureRunning` sans
+ * risquer un sidecar orphelin, et le verrou de spawn est fait pour qu'il aboutisse. Elle rend
+ * la main sur l'interface, ce qui suffit : le menu de la base reste atteignable, donc on peut
+ * en désigner une autre pendant que celle-ci s'ouvre.
+ */
 function _showSidecarOverlay(label = "Démarrage du moteur…"): void {
   _hideSidecarOverlay();
   const el = document.createElement("div");
   el.id = "shell-sidecar-overlay";
   el.className = "shell-sidecar-overlay";
+  _sidecarOverlayEl = el;
   setHtml(el, safeHtml`
     <div class="shell-sidecar-card">
       <div class="shell-sidecar-spinner"></div>
       <div class="shell-sidecar-label">${label}</div>
-      <div class="shell-sidecar-sub">Cela peut prendre quelques secondes</div>
+      <div class="shell-sidecar-sub">Le premier démarrage peut prendre une trentaine de secondes.</div>
     </div>
   `);
   document.body.appendChild(el);
+
+  // Le bouton est CRÉÉ au bout du délai, pas masqué par `hidden` : `[hidden]` de la feuille
+  // UA perd contre une règle de classe à spécificité égale, et le piège s'est déjà refermé
+  // deux fois dans ce fichier. Rien à surcharger si l'élément n'existe pas encore.
+  _sidecarOverlayTimer = window.setTimeout(() => {
+    _sidecarOverlayTimer = null;
+    const carte = el.querySelector(".shell-sidecar-card");
+    if (!carte || !el.isConnected) return;
+    const sortie = document.createElement("button");
+    sortie.type = "button";
+    sortie.className = "shell-sidecar-dismiss";
+    sortie.textContent = "Poursuivre en arrière-plan";
+    sortie.title = "Referme cet écran ; le moteur continue de démarrer";
+    sortie.addEventListener("click", () => {
+      _hideSidecarOverlay();
+      // QAS-01 — rendre le focus, sinon il retombe sur <body> avec l'élément retiré et la
+      // tabulation suivante repart du haut de la page. Le déclencheur de base est l'ancre
+      // naturelle : cet écran ne parle que d'ouvrir une base.
+      document.getElementById("shell-db-btn")?.focus();
+    });
+    carte.appendChild(sortie);
+    sortie.focus();
+  }, SIDECAR_OVERLAY_ESCAPE_MS);
 }
 
 function _hideSidecarOverlay(): void {
-  const el = document.getElementById("shell-sidecar-overlay");
+  // Le minuteur d'abord, et sans condition : sans ça, une sortie programmée par un écran
+  // déjà retiré viendrait se greffer sur le suivant, ou sur rien.
+  if (_sidecarOverlayTimer !== null) {
+    clearTimeout(_sidecarOverlayTimer);
+    _sidecarOverlayTimer = null;
+  }
+  const el = _sidecarOverlayEl;
+  _sidecarOverlayEl = null;
   if (!el) return;
   el.classList.add("shell-sidecar-overlay-hide");
   setTimeout(() => el.remove(), 380);
