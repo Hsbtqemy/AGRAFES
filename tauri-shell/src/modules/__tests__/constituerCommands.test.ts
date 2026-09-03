@@ -32,10 +32,15 @@ vi.mock("../../../tauri-prep/src/lib/db.ts", () => ({
 }));
 
 describe("pont shell → Constituer, module non monté", () => {
+  // Délai explicite : ce premier `import()` tire toute la chaîne d'écrans de prep et son
+  // CSS pour les transformer, ce que les cas suivants réutilisent. Les 5 s par défaut
+  // suffisent sur une machine au repos (~1 s) et pas sur une machine chargée — deux faux
+  // rouges le 2 septembre 2026 pendant qu'un serveur de dev reconstruisait à côté, chacun
+  // vert au relancement. Un runner de CI occupé est le même cas.
   it("isMounted() est faux avant tout montage", async () => {
     const mod = await import("../constituerModule.ts");
     expect(mod.isMounted()).toBe(false);
-  });
+  }, 30000);
 
   it("openCorpusInfo() ne lève pas — le shell appelle sans vérifier", async () => {
     const mod = await import("../constituerModule.ts");

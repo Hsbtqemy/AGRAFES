@@ -1260,15 +1260,15 @@ function _togglePinMru(path: string): void {
 
 /** Async: mark entries as missing if file does not exist (best-effort via fetch/open). */
 async function _checkMruPaths(): Promise<void> {
-  const { exists } = await import("@tauri-apps/plugin-fs").catch(() => ({ exists: null }));
-  if (!exists) return;
+  // DEG-01 — même primitive que le garde d'ouverture. Ce contrôle passait par
+  // l'`exists()` du plugin `fs`, qui lève hors de `$APP`/`$APPDATA` : il retombait donc
+  // dans son `catch { missing = false }` pour CHAQUE entrée, et le badge « introuvable »
+  // n'est jamais apparu, sur aucune base. Constaté le 3 septembre 2026.
   const list = _loadMru();
   let changed = false;
   for (const entry of list) {
-    try {
-      const ok = await exists(entry.path);
-      if (entry.missing !== !ok) { entry.missing = !ok; changed = true; }
-    } catch { entry.missing = false; }
+    const absent = await _fichierCertainementAbsent(entry.path);
+    if (entry.missing !== absent) { entry.missing = absent; changed = true; }
   }
   if (changed) { _saveMru(list); _rebuildMruMenu(); }
 }
@@ -1384,7 +1384,29 @@ async function _switchDb(path: string): Promise<void> {
   if (path === _currentDbPath) { _closeDbMenu(); return; }
   if (_switchingDb) { _showToast("Changement de DB en cours, veuillez patienter…"); return; }
 
+  // DEG-01 — le contrôle est ici AVANT tout, et pas seulement dans `_initDb` : le garde
+  // de `_initDb` a bien refusé le 3 septembre 2026, deux fois, et la base a quand même
+  // été créée onze secondes plus tard. Parce que cette fonction continuait : elle avait
+  // déjà posé `_currentDbPath`, persisté, ajouté aux récentes, puis elle prévenait les
+  // modules abonnés — dont chacun démarre SON PROPRE sidecar sur le chemin qu'on vient
+  // de lui publier. `_initDb` n'est que la porte du shell, pas celle du moteur.
+  //
+  // L'invariant est donc plus fort que « ne pas démarrer sur un chemin absent » :
+  // `_currentDbPath` ne doit jamais PORTER un chemin qui n'existe pas. On refuse avant
+  // de l'adopter, la base courante reste en place, et rien n'est publié à personne.
+  //
+  // Le verrou se prend AVANT ce contrôle, qui est asynchrone. Placé après, il laissait
+  // deux clics rapides franchir tous deux le test de réentrance ci-dessus et lancer deux
+  // changements — donc deux sidecars concurrents, la panne même que le verrou de spawn a
+  // été écrit pour éteindre. Introduit et corrigé le 3 septembre 2026, à la passe adverse.
   _switchingDb = true;
+  if (await _fichierCertainementAbsent(path)) {
+    _switchingDb = false;
+    _shellLog("error", "db_switch", `Base absente, changement refusé : ${_pathLabel(path)}`, path);
+    _closeDbMenu();
+    _showInitError(path, "Ce fichier n’existe plus à cet emplacement.");
+    return;
+  }
 
   // Disable nav during switch
   const dbBtn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
@@ -1685,7 +1707,21 @@ export async function initShell(): Promise<void> {
   // bouton DB s'affiche pendant l'extraction du sidecar (~30 s au 1er lancement),
   // au lieu de laisser le module afficher « Sidecar indisponible ». L'ensureRunning
   // du module se coalescera/réutilisera ce démarrage. (_initDb gère ses erreurs.)
-  if (_currentDbPath) await _initDb(_currentDbPath);
+  //
+  // DEG-01 — mais d'abord : une base déplacée ou supprimée entre deux sessions ne doit
+  // pas être RECRÉÉE vide. C'est le cas le plus grave des quatre, le seul qui ne demande
+  // aucun geste, et il s'est produit le 3 septembre 2026 — l'application a rouvert sur un
+  // corpus vide sans un mot. On lâche le chemin plutôt que de le publier aux modules, qui
+  // le créeraient chacun de leur côté ; la liste des récentes le garde, c'est par là qu'on
+  // le retrouve ou qu'on le re-désigne.
+  if (_currentDbPath && await _fichierCertainementAbsent(_currentDbPath)) {
+    _shellLog("error", "boot", `Base persistée absente : ${_pathLabel(_currentDbPath)}`, _currentDbPath);
+    _showInitError(_currentDbPath, "Ce fichier n’existe plus à cet emplacement.");
+    _currentDbPath = null;
+    _updateDbBadge();
+  } else if (_currentDbPath) {
+    await _initDb(_currentDbPath);
+  }
   await _setMode(startMode);
   // NAV-01 — la pile démarre ici : l'entrée de départ porte le mode réellement ouvert, et
   // Prep, monté par le `_setMode` ci-dessus, a déjà enregistré ses propres niveaux. Le
@@ -2537,7 +2573,9 @@ async function _onCreateDb(): Promise<void> {
   _warnIfCloudSynced(savePath);
 
   // Sidecar init first, then notify subscribers (avoids concurrent spawn race).
-  await _initDb(savePath);
+  // DEG-01 — le seul appel qui s'exempte du contrôle d'existence : ici le fichier ne doit
+  // justement pas être là, et c'est `ensureRunning` qui le crée.
+  await _initDb(savePath, { creation: true });
   _dbListeners.forEach(cb => cb(_currentDbPath));
 
   // Re-mount if module active so module uses the new DB
@@ -2548,7 +2586,65 @@ async function _onCreateDb(): Promise<void> {
 
 // ─── DB immediate init ────────────────────────────────────────────────────────
 
-async function _initDb(dbPath: string): Promise<void> {
+/**
+ * Vrai SEULEMENT si le fichier est certainement absent. Une erreur du contrôle rend
+ * `false` : on ne bloque pas une ouverture sur une incertitude.
+ *
+ * Passe par la commande Rust `path_exists`, et NON par l'`exists()` du plugin `fs`.
+ * Celui-ci lève hors de `$APP`/`$APPDATA` — « forbidden path … allow-exists » — c'est-à-dire
+ * sur toute base rangée dans les documents de l'utilisateur, donc sur toutes. La première
+ * version de ce garde s'en servait : elle est tombée dans son repli à chaque appel, et n'a
+ * jamais rien empêché. Mesuré le 3 septembre 2026, une base recréée sous ses yeux.
+ *
+ * Le repli reste ouvert, mais il redevient ce qu'il prétendait être — l'exception. Élargir
+ * la portée FS aurait été l'autre voie : rejetée, car `$HOME/**` laisse le même trou muet
+ * pour une base sur un autre disque.
+ *
+ * Côté Rust, `try_exists` et non `exists` : ce dernier rend `false` quand il n'a pas PU
+ * regarder — permissions, partage réseau injoignable — et une base présente mais illisible
+ * arriverait ici comme « absente ». Au démarrage, son chemin serait lâché : une base perdue
+ * de vue pour un incident passager. Avec `try_exists`, ce cas arrive en rejet, donc comme
+ * une incertitude, donc on ouvre.
+ */
+async function _fichierCertainementAbsent(path: string): Promise<boolean> {
+  try {
+    return !(await invoke<boolean>("path_exists", { path }));
+  } catch (err) {
+    _shellLog("warn", "db_init", `Existence non vérifiable : ${_pathLabel(path)}`, String(err));
+    return false;
+  }
+}
+
+/**
+ * Démarre le moteur sur `dbPath` et gère ses propres erreurs — cette fonction ne lève
+ * pas, ses appelants n'ont rien à rattraper.
+ *
+ * `creation` exempte du contrôle d'existence : c'est le seul cas où le fichier ne doit
+ * PAS être là.
+ */
+async function _initDb(dbPath: string, opts?: { creation?: boolean }): Promise<void> {
+  // DEG-01 — ouvrir et créer sont la MÊME opération côté moteur : `ensureRunning` sur un
+  // chemin absent produit une base vide et migrée, sans un mot, et la rend active. Mesuré
+  // le 2 septembre 2026 : 4096 octets et un WAL de 1,4 Mo apparus au clic sur une récente
+  // dont le fichier n'existait plus.
+  //
+  // Le garde vit ici parce que les QUATRE portes y convergent : `_switchDb` (clic sur une
+  // récente, dialogue « Ouvrir… », lien `agrafes://`), le chemin persisté rejoué au
+  // démarrage, le bouton « Réessayer » de la bannière — qui appelle `_initDb` en direct et
+  // créait donc lui aussi — et `_onCreateDb`, seul à s'en exempter.
+  //
+  // Il ne refuse que sur un « non » franc : si le contrôle lui-même échoue, on ouvre quand
+  // même, refuser sur une incertitude empêcherait d'ouvrir une base saine. Encore faut-il
+  // que l'incertitude soit rare — la première version s'appuyait sur l'`exists()` du plugin
+  // `fs`, qui lève hors de `$APP`/`$APPDATA`, donc sur toutes les bases : le repli était le
+  // cas normal et le garde n'a jamais rien gardé. D'où `path_exists`, commande Rust.
+  if (!opts?.creation && await _fichierCertainementAbsent(dbPath)) {
+    _shellLog("error", "db_init", `Base absente : ${_pathLabel(dbPath)}`, dbPath);
+    _dbInitFailedPath = dbPath;
+    _showInitError(dbPath, "Ce fichier n’existe plus à cet emplacement.");
+    _updateDbBadge();
+    return;
+  }
   const btn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
   if (btn) {
     btn.classList.add("shell-db-trigger--loading");

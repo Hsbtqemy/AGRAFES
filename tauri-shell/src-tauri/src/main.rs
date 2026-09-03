@@ -99,6 +99,31 @@ fn read_sidecar_portfile(path: String) -> Result<String, String> {
         .map_err(|e| format!("read_sidecar_portfile: cannot read portfile: {}", e))
 }
 
+/// Dit si un fichier existe, pour n'importe quel chemin.
+///
+/// La portee FS de Tauri ne couvre que `$APP` et `$APPDATA` (cf. `capabilities/`), si
+/// bien que l'`exists()` du plugin `fs` LEVE sur toute base rangee ailleurs — soit sur
+/// toutes, en pratique : « forbidden path ... allow-exists ». Le garde qui empeche
+/// d'ouvrir, donc de creer, une base absente a besoin d'une reponse, pas d'une exception.
+/// Mesure du 3 septembre 2026 : avec le plugin, le garde ne s'est jamais declenche.
+///
+/// Ne rend qu'un booleen. Contrairement a `read_sidecar_portfile`, aucun contenu ne sort
+/// d'ici, et l'utilisateur parcourt deja son disque par le dialogue de fichiers : la
+/// restriction par nom de fichier de ses voisines n'aurait rien a proteger.
+///
+/// `try_exists` et NON `exists` : ce dernier rend `false` quand il n'a pas PU regarder —
+/// permissions, partage reseau injoignable — et confond donc « absent » avec « je ne sais
+/// pas ». L'appelant refuserait alors d'ouvrir une base parfaitement presente, et au
+/// demarrage il LACHERAIT son chemin : une base sur un lecteur momentanement indisponible
+/// serait perdue de vue pour un incident passager. `try_exists` rend `Err` dans ce cas, que
+/// le front traite comme une incertitude — et ouvre.
+#[tauri::command]
+fn path_exists(path: String) -> Result<bool, String> {
+    std::path::Path::new(&path)
+        .try_exists()
+        .map_err(|e| format!("path_exists: {}", e))
+}
+
 /// ─── Verrou de spawn (fuite de sidecars) ────────────────────────────────────
 ///
 /// Le binaire onefile met ~35 s (mediane mesuree) a ecrire son portfile : pendant
@@ -515,6 +540,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             sidecar_fetch_loopback,
             read_sidecar_portfile,
+            path_exists,
             read_spawn_lock,
             write_spawn_lock,
             read_telemetry_ndjson,

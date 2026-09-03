@@ -5,9 +5,42 @@ statut: interrompu
 
 # DEG-01 — base illisible : la bonne surface existe, un bouton ment, et prep en garde une copie morte
 
-**Arrêté sur** — le code est livré et poussé le 1er septembre 2026 (`bc359a3`) : le bouton
-qui promettait d'ouvrir et créait, la copie morte de prep et sa cascade, l'état d'erreur
-persistant du déclencheur, les deux rejets rattrapés. Ne reste qu'à jouer `qa/mode-degrade.md`.
+**Arrêté sur** — le premier lot est livré et poussé le 1er septembre 2026 (`bc359a3`) : le
+bouton qui promettait d'ouvrir et créait, la copie morte de prep et sa cascade, l'état d'erreur
+persistant du déclencheur, les deux rejets rattrapés.
+
+**Le 2 septembre, en préparant la passe, un second défaut est apparu, plus grave que le
+premier : une base absente n'était pas signalée, elle était CRÉÉE.** Ouvrir et créer sont la
+même opération côté moteur, et aucun chemin d'ouverture ne vérifiait que le fichier existe —
+pas même celui du démarrage, qui rejoue le chemin persisté : une base déplacée entre deux
+sessions revenait vide, en silence.
+
+**Corrigé le jour même**, par un contrôle d'existence en tête de `_initDb` — le seul point où
+convergent les quatre portes — avec une exemption explicite pour la création, et trois gardes
+prouvées au rouge. Restent trois items, aucun bloquant : la fin de la passe, `_checkMruPaths`
+devenu cosmétique, et un « DB changée » qui s'affiche par-dessus la bannière d'échec.
+
+**Le 3 septembre, l'écran a démenti le correctif deux fois avant qu'il tienne.** Première
+version : garde dans `_initDb`, appuyé sur l'`exists()` du plugin `fs` — qui lève hors de
+`$APP`/`$APPDATA`, donc sur toute base rangée dans les documents. Le garde tombait dans son
+repli ouvert à chaque appel et n'a jamais rien empêché ; le badge « introuvable » des récentes,
+qui s'appuyait sur le même appel, n'avait donc jamais fonctionné pour personne non plus. D'où
+la commande Rust `path_exists`, hors portée FS.
+
+Seconde version : le garde refusait bien — deux fois dans le journal — et la base était créée
+onze secondes plus tard. Parce que `_switchDb` continuait après lui : chemin déjà adopté,
+persisté, publié aux modules abonnés, dont **chacun démarre son propre sidecar** sur ce qu'on
+lui donne. `_initDb` n'est que la porte du shell, pas celle du moteur.
+
+**Ce qui tient, et qu'il faut garder en tête pour la suite** : l'invariant n'est pas « ne pas
+démarrer sur un chemin absent », c'est que **`_currentDbPath` ne porte jamais un chemin qui
+n'existe pas**. Contrôle avant adoption dans `_switchDb`, chemin lâché au démarrage, garde
+conservé dans `_initDb` pour « Réessayer », exemption explicite pour la création.
+
+**Point de reprise, 3 septembre.** Le correctif est écrit, construit, testé (build, 90 tests,
+lint) et **vu à l'écran** ; la passe est close à 24 sur 24. Rien n'est commité : `main.rs`,
+`shell.ts`, les deux fiches, la garde `dbOpenGuard.test.ts` et le délai explicite de
+`constituerCommands.test.ts`.
 
 **La première version de cette fiche a été corrigée le jour même** : elle affirmait que rien
 n'était montré quand une base ne s'ouvre pas. C'est faux, et la suite dit ce qui l'est.
@@ -23,7 +56,18 @@ n'était montré quand une base ne s'ouvre pas. C'est faux, et la suite dit ce q
 - [x] Idem pour `_onChangeDb` (`shell.ts:2670`), dont le `try` n'entoure que le dialogue de fichier, le `await _switchDb(newPath)` de la ligne 2687 étant en dehors
 - [x] Trancher si `constituerModule` doit s'abonner à `ctx.onDbChange` — **non** : le shell le remonte à chaque changement de base plutôt que de le notifier, donc l'abonnement n'apporterait rien de plus, et le message est porté par la bannière
 - [x] Écrire la passe `qa/mode-degrade.md`
-- [ ] La jouer
+- [x] La jouer — 24 sur 24 le 3 septembre 2026. Elle a fait tomber le premier correctif du jour : garde en place, base créée quand même, onze secondes après le refus
+- [x] **Ouvrir une base absente en créait une, en silence.** Ouvrir et créer sont la MÊME opération côté moteur — « Créer… » ne fait rien d'autre (`shell.ts:2530`), seul le dialogue traversé les distingue. Mesuré le 2 septembre 2026 : un clic sur une récente pointant vers un fichier absent a produit une base vide et migrée (4096 o, plus un WAL de 1,4 Mo) et l'a rendue active
+- [x] Contrôle d'existence posé en tête de **`_initDb`** — et non dans `_switchDb` comme cette fiche l'annonçait d'abord. La correction vient d'une **quatrième porte** que le premier relevé avait manquée : « Réessayer », le bouton de la bannière, appelle `_initDb(dbPath)` en direct (`shell.ts:2607`) et créait donc lui aussi. `_initDb` est le seul point où les quatre convergent — changement de base, chemin persisté rejoué au démarrage, « Réessayer », et `_onCreateDb`, qui s'en exempte par un `{ creation: true }` explicite
+- [x] Le contrôle ne refuse que sur un « non » franc : si `exists` lui-même échoue — import du plugin, hoquet d'IPC, les deux observés le 2 septembre — on ouvre quand même. Refuser sur une incertitude empêcherait d'ouvrir une base saine ; c'est la création silencieuse qu'on ferme, pas le doute
+- [x] Surface réemployée telle quelle quand le fichier manque : bannière, état rouge du déclencheur, « Choisir un autre fichier… ». Détail affiché : « Ce fichier n'existe plus à cet emplacement. » Rien de neuf dessiné
+- [x] Garde posée — `modules/__tests__/dbOpenGuard.test.ts`, 3 cas, tous prouvés au rouge : le contrôle retiré, le contrôle qui échouerait fermé, et un second `{ creation: true }` ajouté ailleurs. Ce dernier est le vrai risque de rechute : l'exemption est un mot-clé qu'on peut recopier sans y penser
+- [ ] Reste le **cas du démarrage à vérifier à l'écran** : renommer une base hors de l'application pendant qu'elle est fermée, rouvrir, et constater qu'on est averti au lieu d'être posé devant un corpus vide. Le garde le couvre par construction, `_initDb` étant le chemin du démarrage — mais c'est le cas le plus grave, et il n'a pas encore été joué
+- [x] Passe adverse du correctif, deux défauts trouvés dans mon propre travail. **Un** : la commande Rust s'appuyait sur `Path::exists()`, qui rend `false` quand il n'a pas PU regarder — permissions, partage réseau injoignable — et confondait donc « absent » avec « je ne sais pas ». Au démarrage, une base sur un lecteur momentanément indisponible aurait vu son chemin **lâché** : perdue de vue pour un incident passager, exactement le fail-closed contre lequel le garde était écrit. Passé à `try_exists()`, dont l'`Err` arrive au front comme une incertitude. **Deux** : le contrôle étant asynchrone, je l'avais inséré ENTRE le test de réentrance de `_switchDb` et la prise du verrou — deux clics rapides passaient tous deux, donc deux sidecars concurrents, la panne que le verrou de spawn existe pour éteindre. Verrou pris avant le contrôle, relâché au refus
+- [ ] Résiduels connus, non traités et non bloquants : une base supprimée **pendant** la session est toujours recréée si un module se remonte dessus (le contrôle est à l'ouverture, pas au remontage) ; `_onCreateDb` viole l'invariant le temps de trois lignes, par construction, et un échec de création laisse un chemin mort dans les récentes et dans l'état persisté — que le garde du démarrage rattrape au lancement suivant
+- [ ] **L'écran « Démarrage du moteur de recherche… » n'a aucune sortie** (`shell.ts:3648`) : un rond qui tourne, un libellé, et rien d'autre — ni annulation, ni progression. Il ne se retire qu'au règlement d'`ensureRunning`, dont les budgets sont de 90 s pour l'extraction du binaire onefile puis 45 s pour la santé sous Windows : jusqu'à deux minutes et quart d'attente sans recours, rencontrées le 3 septembre 2026. Et son sous-titre annonce « Cela peut prendre quelques secondes » quand l'infobulle du déclencheur, elle, dit « ~30 s au 1er lancement ». À traiter ensemble : un libellé honnête, et une sortie au bout de quelques secondes — « Annuler » qui rende la main sur la base précédente
+- [ ] Non traité, et devenu cosmétique : sur un échec d'ouverture, `_switchDb` continue et annonce « DB changée » par-dessus la bannière ambre. Comportement préexistant, sur le chemin sidecar comme sur le nouveau ; corriger demande de trancher ce que voient les modules abonnés quand l'ouverture échoue, ce qui dépasse ce lot
+- [ ] Réparer `_checkMruPaths` (`shell.ts:1262`), qui échoue **ouvert** de trois façons dans douze lignes : import du plugin raté → `return` sans rien contrôler ; `exists()` qui lève → `catch { entry.missing = false }`, soit « le fichier est là » ; et un appel en `void` depuis `_buildHeader`, si bien que le menu est utilisable avant la réponse. Le 2 septembre, le badge « introuvable » n'est jamais apparu sur une entrée fabriquée pour être absente — c'est ce qui a laissé le clic passer. **Devenu non urgent** depuis que le garde est dans `_initDb` : le badge n'est plus ce qui protège, seulement ce qui prévient. Un clic sur une récente absente non badgée donne désormais la bannière au lieu de la re-désignation — correct, mais moins direct
 
 ## QA
 
