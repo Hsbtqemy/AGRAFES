@@ -29,6 +29,14 @@ dans le même dossier.
 **Ce qui ne se teste pas ici** : le message d'erreur exact du moteur, qui dépend de la nature
 du fichier. Seule compte sa présence, et qu'il soit lisible.
 
+**Ce qui ne se teste pas à la main du tout** : deux écrans de démarrage qui se chevauchent.
+Le retrait de l'écran est différé de 380 ms pour l'estompe, et deux `_initDb` dans cette
+fenêtre laisseraient deux éléments du même id — le second resterait alors collé. Aucun geste
+n'y mène : `_switchDb` a son verrou, le démarrage n'appelle qu'une fois, et « Réessayer »
+supprime sa propre bannière en se déclenchant, donc un double clic ne part qu'une fois. Le cas
+est tenu par `dbOpenGuard.test.ts`, pas par une case ici — une case qu'on ne peut pas cocher
+fausse le compte à vie.
+
 **Fabriquer une base ABSENTE**, pour la dernière zone — c'est un autre cas que la base
 illisible ci-dessus, et le plus dangereux des deux. Dans la console, on ajoute aux récentes
 une entrée qui pointe vers un chemin inexistant, sans toucher au moindre fichier :
@@ -52,10 +60,9 @@ d'abord repasser sur une base saine — le sidecar le tient ouvert — avant de 
 - [x] Les trois boutons « Réessayer », « Choisir un autre fichier… » et « ✕ » sont lisibles sur le fond ambre
 - [x] La bannière reste visible en passant sur Explorer, puis sur Constituer, puis sur l'accueil — elle ne dépend d'aucun écran
 - [x] « Réessayer » relance une tentative sur le **même** fichier, avec l'indicateur de démarrage du moteur
-- [ ] Pendant l'écran « Démarrage du moteur de recherche… », un bouton « Poursuivre en arrière-plan » **apparaît au bout de six secondes** et referme l'écran ; le moteur continue de démarrer, et le menu 🗄 redevient atteignable — on peut donc désigner une autre base sans attendre. Le sous-titre annonce « une trentaine de secondes », plus « quelques secondes ». Sur un démarrage tiède, l'écran part avant que le bouton n'apparaisse : c'est voulu
-- [ ] Après avoir cliqué « Poursuivre en arrière-plan », la touche Tab poursuit depuis le bandeau et ne repart pas du haut de la page — le focus est rendu au déclencheur 🗄
-- [ ] Double-cliquer « Réessayer » ne laisse pas un écran de démarrage collé : les deux écrans se succèdent proprement, et le dernier part quand le moteur répond
-- [ ] Ouvrir `pas-une-base.db` : la bannière ambre s'affiche **seule** — ni toast « DB changée », ni bandeau bleu « DB changée : … » par-dessus. Deux messages contradictoires pour un seul geste, c'était le défaut ; le bandeau bleu reste normal quand la base s'ouvre vraiment
+- [x] Pendant l'écran « Démarrage du moteur de recherche… », un bouton « Poursuivre en arrière-plan » **apparaît au bout de six secondes** et referme l'écran ; le moteur continue de démarrer, et le menu 🗄 redevient atteignable — on peut donc désigner une autre base sans attendre. Le sous-titre annonce « une trentaine de secondes », plus « quelques secondes ». Sur un démarrage tiède, l'écran part avant que le bouton n'apparaisse : c'est voulu
+- [x] Après avoir cliqué « Poursuivre en arrière-plan », la touche Tab poursuit depuis le bandeau et ne repart pas du haut de la page — le focus est rendu au déclencheur 🗄
+- [x] Ouvrir `pas-une-base.db` : la bannière ambre s'affiche **seule** — ni toast « DB changée », ni bandeau bleu « DB changée : … » par-dessus. Deux messages contradictoires pour un seul geste, c'était le défaut ; le bandeau bleu reste normal quand la base s'ouvre vraiment
 - [x] Pendant l'écran « Démarrage du moteur de recherche… », on peut renoncer — le 3 septembre 2026, non : cet écran n'a ni annulation ni progression, et ne part qu'au règlement d'`ensureRunning`, soit jusqu'à 90 s d'extraction plus 45 s de santé sous Windows. Vérifier aussi que son sous-titre ne promet plus « quelques secondes » là où l'infobulle du déclencheur annonce ~30 s
 
 ### Le bouton qui promettait autre chose

@@ -1,6 +1,6 @@
 ---
 chantier: DEG-01
-statut: interrompu
+statut: clos
 ---
 
 # DEG-01 — quand une base ne s'ouvre pas : un bouton qui mentait, et une base absente qu'on créait
@@ -41,17 +41,15 @@ démarrer sur un chemin absent », c'est que **`_currentDbPath` ne porte jamais 
 n'existe pas**. Contrôle avant adoption dans `_switchDb`, chemin lâché au démarrage, garde
 conservé dans `_initDb` pour « Réessayer », exemption explicite pour la création.
 
-**Arrêté sur, 3 septembre au soir.** Le cœur est livré et poussé (`25be190`) : le garde
-d'existence, la commande Rust, les six gardes de `dbOpenGuard.test.ts`. La passe est close à
-24 sur 24 et le comportement a été vu à l'écran, pas seulement testé.
+**Clos le 3 septembre 2026 au soir.** Trois lots : le premier (`bc359a3`) sur la base
+illisible, le deuxième (`25be190`) sur la base absente et sa primitive sans permission, le
+troisième (`4533f89`) sur l'écran de démarrage sans sortie et l'échec qui s'annonçait « DB
+changée ». La passe `qa/mode-degrade.md` est jouée entièrement, et chaque comportement a été
+**vu à l'écran**, pas seulement testé — c'est elle qui a démenti deux versions du correctif que
+le build, les tests et le lint validaient.
 
-Un second lot suit, **écrit et testé mais non commité** : l'écran de démarrage gagne une sortie
-et un sous-titre vrai, `_switchDb` n'annonce plus « DB changée » par-dessus une bannière
-d'échec, `_checkMruPaths` passe sur la même primitive que le garde. Build du shell, 95 tests,
-lint verts ; deux points restent à jouer dans la passe, ajoutés pour eux.
-
-Ne reste ensuite qu'un item, celui des résiduels assumés — et la question du `statut`, qui
-pourra passer à `clos` une fois ces deux points joués.
+Ce qu'on n'a délibérément pas traité est descendu dans le Contexte, en bas de fiche : ce sont
+des choix, pas des tâches en attente.
 
 **La première version de cette fiche a été corrigée le jour même** : elle affirmait que rien
 n'était montré quand une base ne s'ouvre pas. C'est faux, et la suite dit ce qui l'est.
@@ -75,8 +73,7 @@ n'était montré quand une base ne s'ouvre pas. C'est faux, et la suite dit ce q
 - [x] Garde posée — `modules/__tests__/dbOpenGuard.test.ts`, 3 cas, tous prouvés au rouge : le contrôle retiré, le contrôle qui échouerait fermé, et un second `{ creation: true }` ajouté ailleurs. Ce dernier est le vrai risque de rechute : l'exemption est un mot-clé qu'on peut recopier sans y penser
 - [x] Cas du démarrage vérifié à l'écran le 3 septembre 2026 à 17h46 : `corpus_agrafes.WORKCOPY.db` renommée application fermée, réouverture — journal `[AGRAFES:boot] Base persistée absente`, bannière, déclencheur à « (aucune) », **et rien de recréé sur le disque**. Le matin même, le même scénario rendait un corpus vide sans un mot. Piège rencontré au premier essai : l'application avait persisté `pas-une-base.db`, la base *illisible* de la passe, si bien qu'elle a rouvert dessus et montré une bannière qui ressemblait à la bonne pour une tout autre cause — il a fallu forcer `agrafes.lastDbPath` sur la base renommée pour exercer la branche visée
 - [x] Passe adverse du correctif, deux défauts trouvés dans mon propre travail. **Un** : la commande Rust s'appuyait sur `Path::exists()`, qui rend `false` quand il n'a pas PU regarder — permissions, partage réseau injoignable — et confondait donc « absent » avec « je ne sais pas ». Au démarrage, une base sur un lecteur momentanément indisponible aurait vu son chemin **lâché** : perdue de vue pour un incident passager, exactement le fail-closed contre lequel le garde était écrit. Passé à `try_exists()`, dont l'`Err` arrive au front comme une incertitude. **Deux** : le contrôle étant asynchrone, je l'avais inséré ENTRE le test de réentrance de `_switchDb` et la prise du verrou — deux clics rapides passaient tous deux, donc deux sidecars concurrents, la panne que le verrou de spawn existe pour éteindre. Verrou pris avant le contrôle, relâché au refus
-- [x] Passe adverse du second lot, trois défauts. **Un** : `_hideSidecarOverlay` retrouvait l'écran par `getElementById`, alors que son retrait est différé de 380 ms pour l'estompe — deux `_initDb` rapprochés, un double clic sur « Réessayer » suffit, laissent un instant deux éléments du même id, et le masquage visait le premier. Le second écran serait resté pour de bon : le blocage même que ce lot supprime. L'écran est désormais tenu en variable. **Deux** : le bouton de sortie prenait le focus et ne le rendait pas — après son clic, focus sur `<body>` et tabulation qui repart du haut, la famille QAS-01 corrigée cette semaine pour le tiroir du Journal. Il le rend au déclencheur de base. **Trois** : un changement de base échoué se journalisait en `info` avec le mot « not ready » ; il passe en `warn`
-- [ ] Résiduels connus, non traités et non bloquants : une base supprimée **pendant** la session est toujours recréée si un module se remonte dessus (le contrôle est à l'ouverture, pas au remontage) ; `_onCreateDb` viole l'invariant le temps de trois lignes, par construction, et un échec de création laisse un chemin mort dans les récentes et dans l'état persisté — que le garde du démarrage rattrape au lancement suivant
+- [x] Passe adverse du second lot, trois défauts. **Un** : `_hideSidecarOverlay` retrouvait l'écran par `getElementById`, alors que son retrait est différé de 380 ms pour l'estompe — deux `_initDb` rapprochés, un double clic sur « Réessayer » suffit, laissent un instant deux éléments du même id, et le masquage visait le premier. Le second écran serait resté pour de bon : le blocage même que ce lot supprime. L'écran est désormais tenu en variable. **Défaut latent, pas observé** — et vérifié comme tel après coup : aucun geste n'atteint la fenêtre de 380 ms, `_switchDb` ayant son verrou, le démarrage n'appelant qu'une fois, et « Réessayer » supprimant sa propre bannière en se déclenchant, si bien qu'un double clic ne part qu'une fois. Le correctif reste juste et gratuit ; c'est la case de QA que j'en avais tirée qui était fausse, et elle est retirée **Deux** : le bouton de sortie prenait le focus et ne le rendait pas — après son clic, focus sur `<body>` et tabulation qui repart du haut, la famille QAS-01 corrigée cette semaine pour le tiroir du Journal. Il le rend au déclencheur de base. **Trois** : un changement de base échoué se journalisait en `info` avec le mot « not ready » ; il passe en `warn`
 - [x] L'écran de démarrage a une sortie, et un sous-titre vrai. Un bouton « Poursuivre en arrière-plan » est **créé** au bout de six secondes — pas masqué par `hidden`, dont la faiblesse contre une règle de classe s'est déjà refermée deux fois dans ce fichier — et rend la main sur l'interface, le menu de la base compris, donc on peut en désigner une autre pendant que celle-ci s'ouvre. Il ne coupe pas `ensureRunning` : l'interrompre risquerait un sidecar orphelin, et le verrou de spawn est fait pour qu'il aboutisse. Le sous-titre annonce désormais la trentaine de secondes du premier lancement, au lieu de « quelques secondes »
 - [x] Le « DB changée » par-dessus la bannière d'échec : `_initDb` rend un booléen, et `_switchDb` saute le toast et le bandeau bleu quand l'ouverture a échoué. **Et rien d'autre** — les abonnés sont prévenus comme avant, `_pendingDbRemount` est posé comme avant : changer ça demanderait de trancher ce que voient les modules pendant un échec, et la passe a validé le comportement actuel (écrans vides, sans plantage)
 - [x] `_checkMruPaths` : refait sur la même primitive que le garde. Deux de ses trois défaillances ouvertes ont disparu par construction — plus d'import à rater, plus de `catch` par entrée. Reste l'appel en `void`, donc un menu ouvrable avant la réponse : latence, non trou, puisque `_rebuildMruMenu` corrige à l'arrivée et que le garde de `_switchDb` rattrape le clic qui court plus vite
@@ -186,3 +183,6 @@ raccourci Documents et la purge CSS ; les zones ne se recouvrent pas.
 Pas de champ `audit:` : ce chantier vient de la préparation de `qa/chrome-constituer.md`,
 le 1er septembre 2026 — chercher comment provoquer le bandeau de prep a suffi à montrer
 qu'on ne pouvait pas, puis à faire trouver celui du shell.
+
+**Ce qu'on n'a pas traité, et qui reste vrai.** Résiduels connus, non traités et non bloquants : une base supprimée **pendant** la session est toujours recréée si un module se remonte dessus (le contrôle est à l'ouverture, pas au remontage) ; `_onCreateDb` viole l'invariant le temps de trois lignes, par construction, et un échec de création laisse un chemin mort dans les récentes et dans l'état persisté — que le garde du démarrage rattrape au lancement suivant. Ce sont des choix, pas des tâches en attente : les laisser dans le `Reste` d'une
+fiche close ferait compter comme ouvert ce qu'on a décidé de ne pas faire.
