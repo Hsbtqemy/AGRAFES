@@ -156,18 +156,60 @@ const SHELL_CSS = `
     opacity: 0.55;
     font-style: italic;
   }
+  /* Le déclencheur porte DEUX informations de nature différente. Le titre du corpus
+     est une étiquette : lisible, éditable — et recopiée telle quelle quand on duplique
+     un fichier de base. Le nom de fichier est l'identité : c'est la seule chose qui
+     distingue une copie de son original. D'où la pile plutôt qu'un choix entre les
+     deux : le titre au-dessus, le fichier en dessous, plus discret mais toujours lu.
+     Sans titre, le fichier reprend exactement la taille et la place qu'il avait. */
+  .shell-db-trigger-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.15;
+    flex: 1;
+    min-width: 0;
+  }
+  /* CHR-01 — « [hidden] » de la feuille UA perd contre une règle de classe de la feuille
+     auteur à spécificité égale. Cette règle-ci ne pose pas « display », donc rien n'est
+     cassé aujourd'hui ; la surcharge est posée d'avance parce qu'ajouter un
+     « display: block » pour cadrer le titre est exactement le geste qui le rendrait
+     visible sur une base sans titre, sans un mot. Même précaution que rechercheModule. */
+  .shell-db-trigger-title[hidden] { display: none; }
+  .shell-db-trigger-title {
+    font-size: 0.74rem;
+    font-weight: 600;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Dans la pile, le fichier ne prend que sa hauteur (le « flex: 1 » qu'il porte pour
+     l'usage à une ligne l'étirerait) et se borne pour que l'ellipse ait de quoi mordre. */
+  .shell-db-trigger-stack .shell-db-trigger-name {
+    flex: 0 0 auto;
+    max-width: 100%;
+  }
+  /* Second rôle SEULEMENT quand un titre le surmonte, et jamais sous le seuil de
+     lisibilité : quand deux sauvegardes portent le même titre, ce texte-ci est tout
+     ce qui reste pour les distinguer. */
+  .shell-db-trigger-stack--titre .shell-db-trigger-name {
+    font-size: 0.68rem;
+    opacity: 0.72;
+  }
   .shell-db-trigger-chevron {
     flex-shrink: 0;
     opacity: 0.6;
     font-size: 0.65rem;
   }
-  .shell-db-trigger--pending .shell-db-trigger-name {
+  .shell-db-trigger--pending .shell-db-trigger-name,
+  .shell-db-trigger--pending .shell-db-trigger-title {
     color: #fcd34d;
   }
   /* DEG-01 — la base n a pas pu s ouvrir. Trace persistante : la banniere s efface
      (croix, Echap), le declencheur non. Rouge plutot qu ambre, l ambre disant deja
      " modifiee, a reappliquer " — deux etats differents ne doivent pas se ressembler. */
-  .shell-db-trigger--error .shell-db-trigger-name { color: #fca5a5; }
+  .shell-db-trigger--error .shell-db-trigger-name,
+  .shell-db-trigger--error .shell-db-trigger-title { color: #fca5a5; }
   .shell-db-trigger--error .shell-db-trigger-icon { opacity: 1; }
   .shell-db-trigger--error {
     background: rgba(220,38,38,0.18);
@@ -1070,6 +1112,19 @@ let _pendingDbRemount = false;
  *  s’efface (✕, Échap, navigation vers une autre base) ; il fallait qu’il reste une
  *  trace, sinon le déclencheur a l’air normal pendant que les écrans sont vides. */
 let _dbInitFailedPath: string | null = null;
+/** Titre de corpus lu dans la base courante — et le chemin pour lequel il a été lu.
+ *  Le couple, jamais le titre seul : `_currentDbPath` est affecté depuis neuf endroits,
+ *  et un titre qu'il faudrait penser à effacer à chacun finirait par survivre à l'un
+ *  d'eux. Clefé sur son chemin, un titre périmé n'est pas nettoyé — il est INAFFICHABLE,
+ *  le peintre ne le retenant que si le chemin correspond encore. Vaut aussi pour
+ *  DEG-01 : une base qui échoue à s'ouvrir ne peut pas hériter du titre de la
+ *  précédente. */
+let _titreCorpus: { chemin: string; titre: string } | null = null;
+
+/** Le titre du corpus courant, ou `null` — jamais celui d'une autre base. */
+function _titreCourant(): string | null {
+  return _titreCorpus && _titreCorpus.chemin === _currentDbPath ? _titreCorpus.titre : null;
+}
 const _dbListeners: Set<(path: string | null) => void> = new Set();
 let _deepLinkUnlisten: (() => void) | null = null;
 
@@ -1254,6 +1309,13 @@ function _pathLabel(p: string): string {
   return p.replace(/\\/g, "/").split("/").pop() ?? p;
 }
 
+/** Le seul dossier qui contient le fichier — « IGE » pour « …/Documents/IGE/base.db ».
+ *  Assez pour départager deux copies homonymes sans étaler un chemin entier. */
+function _dossierParent(p: string): string {
+  const parts = p.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.length >= 2 ? parts[parts.length - 2] : "";
+}
+
 function _addToMru(path: string): void {
   const label = _pathLabel(path);
   const now = new Date().toISOString();
@@ -1326,6 +1388,14 @@ function _buildMruSection(): HTMLElement {
     return b.last_opened_at.localeCompare(a.last_opened_at);
   });
 
+  // Une base de travail se copie : deux entrées peuvent porter le MÊME nom de fichier
+  // dans deux dossiers différents, et la liste les rendait alors indiscernables — le
+  // chemin complet n'étant que dans l'infobulle, donc invisible tant qu'on ne survole
+  // pas. On préfixe du dossier parent, mais SEULEMENT les entrées qui se ressemblent :
+  // le faire partout allongerait chaque ligne pour un cas qui n'arrive pas toujours.
+  const homonymes = new Map<string, number>();
+  for (const e of sorted) homonymes.set(e.label, (homonymes.get(e.label) ?? 0) + 1);
+
   for (const entry of sorted) {
     const row = document.createElement("div");
     row.className = `shell-mru-row${entry.missing ? " missing" : ""}`;
@@ -1333,7 +1403,9 @@ function _buildMruSection(): HTMLElement {
     const nameBtn = document.createElement("button");
     nameBtn.className = "shell-mru-name";
     nameBtn.title = entry.path;
-    setHtml(nameBtn, rawHtml(`${entry.pinned ? "📌 " : ""}${_esc(entry.label)}${entry.missing ? ' <span class="shell-mru-missing-badge">introuvable</span>' : ""}`));
+    const dossier = (homonymes.get(entry.label) ?? 0) > 1 ? _dossierParent(entry.path) : "";
+    const etiquette = dossier ? `${dossier}/${entry.label}` : entry.label;
+    setHtml(nameBtn, rawHtml(`${entry.pinned ? "📌 " : ""}${_esc(etiquette)}${entry.missing ? ' <span class="shell-mru-missing-badge">introuvable</span>' : ""}`));
     nameBtn.addEventListener("click", () => {
       _closeDbMenu();
       if (entry.missing) {
@@ -1427,8 +1499,7 @@ async function _switchDb(path: string): Promise<void> {
   const tabs = document.querySelectorAll<HTMLButtonElement>(".shell-tab");
   if (dbBtn) {
     dbBtn.disabled = true;
-    const nameEl = dbBtn.querySelector<HTMLElement>(".shell-db-trigger-name");
-    if (nameEl) nameEl.textContent = "Chargement…";
+    _setTriggerTransient("Chargement…");
   }
   tabs.forEach(t => t.disabled = true);
 
@@ -1720,6 +1791,18 @@ export async function initShell(): Promise<void> {
     // couvre du même coup le chemin par la ✕, que le point ouvert de QAS-01 visait sans
     // pouvoir l'atteindre : prep ne connaît pas ce bouton, et n'a pas à le connaître.
     if (!ouvert) btn.focus();
+  });
+
+  // La fiche corpus s'édite dans prep ; le déclencheur du shell l'affiche. Sans cette
+  // annonce, un titre qu'on vient de changer n'apparaîtrait qu'au prochain changement de
+  // base — l'utilisateur croirait l'enregistrement raté. Même patron que le tiroir du
+  // Journal ci-dessus : prep publie son état, le shell est seul à peindre.
+  window.addEventListener("agrafes:prep-corpus-title", (e: Event) => {
+    const detail = (e as CustomEvent<{ title: string | null }>).detail;
+    const titre = detail?.title?.trim();
+    if (!_currentDbPath) return;
+    _titreCorpus = titre ? { chemin: _currentDbPath, titre } : null;
+    _updateDbBadge();
   });
 
   document.body.dataset.mode = startMode;
@@ -2386,6 +2469,15 @@ function _buildHeader(): void {
   triggerSpinner.className = "shell-db-trigger-spinner";
   triggerSpinner.setAttribute("aria-hidden", "true");
 
+  // La pile accueille le titre quand il y en a un ; `_updateDbBadge` la remplit et
+  // décide seul de la présence de la ligne de titre. Ici on ne pose que la structure.
+  const triggerStack = document.createElement("span");
+  triggerStack.className = "shell-db-trigger-stack";
+
+  const triggerTitle = document.createElement("span");
+  triggerTitle.className = "shell-db-trigger-title";
+  triggerTitle.hidden = true;
+
   const triggerName = document.createElement("span");
   triggerName.className = "shell-db-trigger-name";
   if (_currentDbPath) {
@@ -2394,6 +2486,8 @@ function _buildHeader(): void {
     triggerName.textContent = "(aucune)";
     triggerName.classList.add("shell-db-trigger-name--none");
   }
+  triggerStack.appendChild(triggerTitle);
+  triggerStack.appendChild(triggerName);
 
   const triggerChevron = document.createElement("span");
   triggerChevron.className = "shell-db-trigger-chevron";
@@ -2402,7 +2496,7 @@ function _buildHeader(): void {
 
   menuTrigger.appendChild(triggerIcon);
   menuTrigger.appendChild(triggerSpinner);
-  menuTrigger.appendChild(triggerName);
+  menuTrigger.appendChild(triggerStack);
   menuTrigger.appendChild(triggerChevron);
   if (_currentDbPath) menuTrigger.title = _currentDbPath;
   else menuTrigger.title = "Aucune base ouverte — cliquez pour en ouvrir ou créer une";
@@ -2523,20 +2617,51 @@ function _dbBadgeText(): string {
   return _pendingDbRemount ? `DB: ${name} ⚠` : `DB: ${name}`;
 }
 
+/** Message passager dans le déclencheur — « Chargement… », « Démarrage du moteur… ».
+ *
+ *  Il masque la ligne de titre, et ce n'est pas cosmétique : pendant un changement de
+ *  base, le titre encore affiché est celui de la base qu'on QUITTE. Posé au-dessus du
+ *  nom de celle qu'on ouvre, il fabriquerait exactement la confusion que cette pile est
+ *  là pour empêcher — d'autant qu'un changement de base peut durer plusieurs secondes. */
+function _setTriggerTransient(texte: string): void {
+  const trigger = document.getElementById("shell-db-btn");
+  if (!trigger) return;
+  const nameEl = trigger.querySelector<HTMLElement>(".shell-db-trigger-name");
+  if (nameEl) nameEl.textContent = texte;
+  const titleEl = trigger.querySelector<HTMLElement>(".shell-db-trigger-title");
+  if (titleEl) titleEl.hidden = true;
+  trigger.querySelector(".shell-db-trigger-stack")
+    ?.classList.remove("shell-db-trigger-stack--titre");
+}
+
 function _updateDbBadge(): void {
   const trigger = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
   if (!trigger) return;
   const nameEl = trigger.querySelector<HTMLElement>(".shell-db-trigger-name");
   if (!nameEl) return;
+  // Le titre ne se peint que s'il appartient à la base courante — `_titreCourant` le
+  // garantit, aucun site d'affectation n'a à s'en soucier.
+  const titre = _titreCourant();
+  const titleEl = trigger.querySelector<HTMLElement>(".shell-db-trigger-title");
+  const stackEl = trigger.querySelector<HTMLElement>(".shell-db-trigger-stack");
+  if (titleEl) {
+    titleEl.textContent = titre ?? "";
+    titleEl.hidden = titre === null;
+  }
+  stackEl?.classList.toggle("shell-db-trigger-stack--titre", titre !== null);
   if (_currentDbPath) {
     nameEl.textContent = _pathLabel(_currentDbPath);
     nameEl.classList.remove("shell-db-trigger-name--none");
-    trigger.title = _currentDbPath;
+    // Le chemin complet reste le fond de l'infobulle : c'est lui qui départage deux
+    // copies de même nom dans deux dossiers.
+    trigger.title = titre ? `${titre}\n${_currentDbPath}` : _currentDbPath;
   } else {
     nameEl.textContent = "(aucune)";
     nameEl.classList.add("shell-db-trigger-name--none");
     trigger.title = "Aucune base ouverte — cliquez pour en ouvrir ou créer une";
   }
+  // La barre des tâches suit la base, pas seulement le mode.
+  _updateDocTitle(_currentMode);
   if (_pendingDbRemount) {
     trigger.classList.add("shell-db-trigger--pending");
     trigger.title = `${_currentDbPath ?? ""} — DB modifiée, cliquer l'onglet actif pour appliquer`;
@@ -2672,8 +2797,7 @@ async function _initDb(dbPath: string, opts?: { creation?: boolean }): Promise<b
   const btn = document.getElementById("shell-db-btn") as HTMLButtonElement | null;
   if (btn) {
     btn.classList.add("shell-db-trigger--loading");
-    const nameEl = btn.querySelector<HTMLElement>(".shell-db-trigger-name");
-    if (nameEl) nameEl.textContent = "D\u00e9marrage du moteur\u2026";
+    _setTriggerTransient("D\u00e9marrage du moteur\u2026");
     btn.title = "D\u00e9marrage du moteur de recherche \u2014 le 1er lancement peut prendre ~30 s";
     btn.disabled = true;
   }
@@ -2685,6 +2809,7 @@ async function _initDb(dbPath: string, opts?: { creation?: boolean }): Promise<b
     const { ensureRunning } = await import("../../tauri-app/src/lib/sidecarClient.ts");
     await ensureRunning(dbPath);
     _dbInitFailedPath = null;
+    void _chargerTitreCorpus(dbPath);
     _hideSidecarOverlay();
     _showToast("DB initialis\u00e9e \u2713", 3000);
     _shellLog("info", "sidecar", `Sidecar healthy for DB: ${_pathLabel(dbPath)}`);
@@ -2698,6 +2823,34 @@ async function _initDb(dbPath: string, opts?: { creation?: boolean }): Promise<b
   } finally {
     if (btn) { btn.disabled = false; btn.classList.remove("shell-db-trigger--loading"); }
     _updateDbBadge();
+  }
+}
+
+/** Lit le titre de corpus de la base ouverte, puis repeint le déclencheur.
+ *
+ *  Emprunte la connexion que `ensureRunning` vient d'établir plutôt que de redécouvrir
+ *  le portfile : c'est la même, déjà authentifiée, et elle passe par la commande Rust —
+ *  un `fetch()` direct depuis le webview est bloqué par CORS, le sidecar n'émettant
+ *  aucun en-tête `Access-Control` (QA-13, le piège où `diagnostics.ts` était tombé).
+ *
+ *  Sans attente, et sans conséquence en cas d'échec : le titre est un confort de
+ *  lecture, il ne doit retarder ni l'ouverture ni le remontage des modules, et une
+ *  fiche illisible ne rend pas la base inutilisable. On reste alors au nom de fichier.
+ *
+ *  Le contrôle de chemin au retour n'est pas décoratif : l'aller-retour peut se terminer
+ *  après un changement de base, et `_titreCorpus` porterait le titre d'une autre. */
+async function _chargerTitreCorpus(dbPath: string): Promise<void> {
+  try {
+    const { getActiveConn } = await import("../../tauri-app/src/lib/sidecarClient.ts");
+    const conn = getActiveConn();
+    if (!conn) return;
+    const res = (await conn.get("/corpus/info")) as { corpus?: { title?: string | null } };
+    if (_currentDbPath !== dbPath) return;
+    const titre = res?.corpus?.title?.trim();
+    _titreCorpus = titre ? { chemin: dbPath, titre } : null;
+    _updateDbBadge();
+  } catch (err) {
+    console.warn("[shell] titre de corpus indisponible:", err);
   }
 }
 
@@ -2877,7 +3030,32 @@ const _MODE_TITLES: Record<Mode, string> = {
 };
 
 function _updateDocTitle(mode: Mode): void {
-  document.title = _MODE_TITLES[mode] ?? "AGRAFES";
+  const base = _MODE_TITLES[mode] ?? "AGRAFES";
+  // Le nom de fichier jusque dans la barre des tâches — c'est là qu'on reconnaît la
+  // fenêtre ouverte sur la bonne copie. Le TITRE de corpus n'y va pas : une copie le
+  // porte à l'identique, il n'y départagerait rien.
+  const titre = _currentDbPath ? `${base} — ${_pathLabel(_currentDbPath)}` : base;
+  document.title = titre;
+  void _poserTitreFenetre(titre);
+}
+
+/** Pose le titre de la fenêtre NATIVE.
+ *
+ *  `document.title` n'y remonte pas : mesuré le 4 septembre 2026, la fenêtre affichait
+ *  « AGRAFES Shell » — la valeur figée de `tauri.conf.json` — pendant que `document.title`
+ *  valait « AGRAFES — Constituer ». Le `_updateDocTitle` d'origine était donc sans effet
+ *  visible depuis toujours, et y ajouter le nom de fichier n'aurait rien montré non plus.
+ *
+ *  Demande `core:window:allow-set-title` dans `capabilities/default.json` :
+ *  `core:window:default` accorde `allow-title` (lire) et pas l'écriture.
+ *
+ *  Échec silencieux hors Tauri — en navigateur de développement, `document.title` fait
+ *  déjà le travail et il n'y a pas de fenêtre native à nommer. */
+async function _poserTitreFenetre(titre: string): Promise<void> {
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().setTitle(titre);
+  } catch { /* hors Tauri, ou permission absente : document.title suffit */ }
 }
 
 async function _setMode(mode: Mode, opts?: { force?: boolean }): Promise<void> {

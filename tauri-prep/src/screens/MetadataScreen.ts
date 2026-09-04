@@ -117,6 +117,7 @@ export class MetadataScreen {
   // Alignement (matrice pour un trou de couverture ; Révision fine pour « à réviser »/collisions).
   // Injecté par app.ts (App orchestre la nav inter-écrans ; MetadataScreen ne connaît pas Actions).
   private _onOpenAlignment: ((familyId: number, mode: "matrix" | "review") => void) | null = null;
+  private _onOpenCorpusInfo: (() => void) | null = null;
 
   // Preview + token editor + inline unit edit (extracted U-02). Owns its own
   // 12 state fields + conventions cache; constructed once so state survives
@@ -158,6 +159,12 @@ export class MetadataScreen {
   /** D-P9-2b — injecte le deep-link « panneau famille → espace Alignement » (voir champ). */
   setOnOpenAlignment(cb: ((familyId: number, mode: "matrix" | "review") => void) | null): void {
     this._onOpenAlignment = cb;
+  }
+
+  /** CHR-01 — raccourci « Fiche corpus » de l'en-tête. L'écran ne connaît pas la modale,
+   *  qui vit dans `App` : il annonce le geste, l'App l'oriente. */
+  setOnOpenCorpusInfo(cb: (() => void) | null): void {
+    this._onOpenCorpusInfo = cb;
   }
 
   hasPendingChanges(): boolean {
@@ -220,6 +227,7 @@ export class MetadataScreen {
     root.querySelector("#meta-batch-role-btn")!.addEventListener("click", () => void this._runBatchRoleUpdate());
     root.querySelector("#meta-batch-delete-btn")!.addEventListener("click", () => void this._runBatchDelete());
     root.querySelector("#validate-btn")!.addEventListener("click", () => this._runValidate());
+    root.querySelector("#meta-corpus-info-btn")?.addEventListener("click", () => this._onOpenCorpusInfo?.());
     root.querySelector("#db-backup-btn")!.addEventListener("click", () => void this._runDbBackup());
     root.querySelector("#db-export-btn")!.addEventListener("click", () => void this._runDbExport());
     root.querySelector("#audit-btn")!.addEventListener("click", () => void this._runAudit());

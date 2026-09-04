@@ -127,6 +127,49 @@ describe("--prep-topbar-h", () => {
  * D'où l'annonce : prep émet son état, le shell l'écoute. Le retirer ne casse ni le build
  * ni le rendu ; ça ne se voit qu'en fermant par la ✕, puis en regardant l'icône.
  */
+/**
+ * Le raccourci « Fiche corpus » de l'en-tête de Documents (CHR-01, dernier item).
+ *
+ * Trois maillons, et aucun ne casse bruyamment : le bouton du gabarit, son câblage dans
+ * `MetadataScreen`, et l'orientation par `App` vers la commande qui ouvre la modale. Qu'un
+ * seul saute — un id renommé, un setter jamais appelé — et le bouton reste à l'écran sans
+ * rien faire. Ni le build, ni le rendu, ni aucun test de DOM ne le verrait : prep tourne
+ * sous `node`, sans DOM du tout.
+ */
+describe("raccourci « Fiche corpus » dans Documents", () => {
+  const GABARIT = lire("../../lib/metadataScreenTemplate.ts");
+  const ECRAN = lire("../../screens/MetadataScreen.ts");
+
+  it("le bouton est dans le gabarit, avec l'id que l'écran écoute", () => {
+    expect(GABARIT).toMatch(/id="meta-corpus-info-btn"/);
+    expect(GABARIT, "le raccourci reste plus léger que ses voisins — il n'est pas une action")
+      .toMatch(/id="meta-corpus-info-btn"[\s\S]{0,120}btn-ghost/);
+    expect(ECRAN, "`MetadataScreen` doit écouter exactement cet id")
+      .toMatch(/"#meta-corpus-info-btn"\)\?\.addEventListener/);
+  });
+
+  it("l'écran passe par un callback, il ne connaît pas la modale", () => {
+    // Les écrans ne se référencent pas entre eux et n'atteignent pas `App` : ils annoncent
+    // un geste, `App` l'oriente. Même forme que `setOnOpenAlignment` et `setOnOpenExporter`.
+    expect(ECRAN).toMatch(/setOnOpenCorpusInfo\(cb: \(\(\) => void\) \| null\)/);
+    expect(ECRAN).toMatch(/this\._onOpenCorpusInfo\?\.\(\)/);
+  });
+
+  it("la fiche ne s'ouvre pas deux fois", () => {
+    // Deux entrées y mènent — le menu de la base du shell et ce raccourci — et le raccourci
+    // est un bouton ordinaire, donc double-cliquable. Sans garde, deux modales s'empilent et
+    // en fermer une laisse l'autre. Défaut préexistant que le raccourci rendait atteignable.
+    const corps = APP_TS_CODE.slice(APP_TS_CODE.indexOf("private async _showCorpusInfoModal("));
+    expect(corps.slice(0, 400)).toMatch(/querySelector\("\.prep-dialog-overlay"\)\)\s*return;/);
+  });
+
+  it("`App` oriente vers sa propre commande, celle que le shell appelle aussi", () => {
+    // Une seule modale, deux entrées : le menu de la base du shell et ce raccourci. Les
+    // faire diverger recréerait deux chemins à maintenir pour un même écran.
+    expect(APP_TS_CODE).toMatch(/setOnOpenCorpusInfo\(\(\) => this\.openCorpusInfo\(\)\)/);
+  });
+});
+
 describe("le tiroir du Journal annonce son état", () => {
   it("`_toggleJournal` émet `agrafes:prep-journal` à chaque bascule", () => {
     const corps = corpsDeMethode(APP_TS_CODE, "_toggleJournal");
@@ -147,5 +190,47 @@ describe("le tiroir du Journal annonce son état", () => {
     );
     expect(ligne, "câblage du bouton ✕ introuvable dans app.ts").toBeDefined();
     expect(ligne!).toMatch(/_toggleJournal\(/);
+  });
+});
+
+/**
+ * L'identité de la base dans la fiche corpus (CHR-01, dernier item).
+ *
+ * Le titre de corpus est une ÉTIQUETTE : dupliquer un fichier de base le recopie tel
+ * quel, donc deux copies portent le même. La fiche est pourtant l'endroit où on le
+ * saisit — et elle ne disait pas dans quel fichier elle écrit. Sur des bases de travail
+ * qui se copient, c'est le moment le plus exposé de l'application : on peut nommer un
+ * corpus dans la copie en croyant nommer l'original, et rien à l'écran ne le dément.
+ */
+describe("la fiche corpus dit dans quelle base elle écrit", () => {
+  it("son en-tête porte le nom de fichier, chemin complet en infobulle", () => {
+    const corps = APP_TS_CODE.slice(APP_TS_CODE.indexOf("private async _showCorpusInfoModal("));
+    expect(corps.indexOf("private async"), "modale introuvable").toBe(0);
+    expect(corps.slice(0, 3000)).toMatch(/getCurrentDbPath\(\)/);
+    expect(corps.slice(0, 3000)).toMatch(/prep-dialog-subject/);
+    expect(corps.slice(0, 3000), "le chemin complet reste accessible sans encombrer l'en-tête")
+      .toMatch(/fichierEl\.title = `Chemin complet/);
+  });
+
+  it("la classe existe dans la feuille — sinon le repère s'affiche sans style", () => {
+    expect(APP_CSS).toMatch(/\.prep-dialog-subject \{/);
+  });
+
+  it("le champ Titre ne renvoie plus à une barre qui n'existe plus", () => {
+    // Le texte d'aide disait « affiché dans la barre » ; CHR-01 lot 3 a retiré cette barre.
+    expect(APP_TS).not.toMatch(/affich\\u00e9 dans la barre/);
+  });
+
+  it("l'enregistrement annonce le nouveau titre au shell, et seulement s'il a réussi", () => {
+    // Le shell peint ce titre au-dessus du nom de fichier. Sans annonce, il ne le relit
+    // qu'à l'ouverture d'une base : un titre qu'on vient de changer resterait invisible,
+    // et l'enregistrement aurait l'air raté. Même patron que `agrafes:prep-journal`.
+    const at = APP_TS_CODE.indexOf("await updateCorpusInfo(");
+    expect(at, "appel à updateCorpusInfo introuvable").toBeGreaterThan(0);
+    const jusquAuCatch = APP_TS_CODE.slice(at, APP_TS_CODE.indexOf("} catch", at));
+    expect(jusquAuCatch, "l'annonce doit suivre l'écriture, dans le chemin de succès")
+      .toMatch(/dispatchEvent\(\s*new CustomEvent\(\s*"agrafes:prep-corpus-title"/);
+    expect(jusquAuCatch, "l'événement doit porter le titre, pas seulement signaler")
+      .toMatch(/detail: \{ title \}/);
   });
 });

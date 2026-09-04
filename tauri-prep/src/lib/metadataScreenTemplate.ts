@@ -34,6 +34,12 @@ export function metadataScreenTemplate(): string {
             <span id="meta-kpi-langs" class="prep-meta-kpi">0 langues</span>
           </div>
           <div class="prep-meta-head-actions">
+            <!-- CHR-01 — la Fiche corpus vit dans le menu de la base du shell, un cran
+                 au-dessus. Ce raccourci la redonne là où l'on qualifie les documents un par
+                 un : qualifier le corpus est le même geste, une marche plus haut. Volontairement
+                 en « btn-ghost », plus léger que ses voisins — c'est un raccourci, pas une action. -->
+            <button type="button" id="meta-corpus-info-btn" class="btn btn-ghost btn-sm"
+                    title="Ouvrir la fiche du corpus — son titre, sa description, ses mots-clés">📄 Fiche corpus…</button>
             <button id="db-backup-btn" class="btn btn-secondary btn-sm">Sauvegarder la DB</button>
             <button id="db-export-btn" class="btn btn-secondary btn-sm">↗ Exporter pour partage…</button>
             <span id="db-backup-status" class="hint" style="margin:0">Aucune sauvegarde récente</span>

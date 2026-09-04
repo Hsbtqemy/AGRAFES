@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-set-title",
     "deep-link:default",
     "shell:allow-kill",
     "shell:allow-open",

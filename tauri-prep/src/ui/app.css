@@ -309,6 +309,22 @@ body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Se
   display: flex; align-items: center; gap: 0.5rem;
 }
 .prep-dialog-head h3 { margin: 0; font-size: 1rem; flex: 1; }
+/* De quelle base cette fiche est-elle la fiche ? Les bases de travail se copient, et
+   le titre du corpus est recopié avec le fichier : le nom de fichier est la seule
+   réponse. Discret (c'est un repère, pas un champ), monospace pour que deux noms
+   voisins se comparent lettre à lettre, chemin complet en infobulle. */
+.prep-dialog-subject {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem; color: var(--color-muted, #6c757d);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* Le repere prend la place disponible et ne retrecit que si elle manque — d'ou
+     `flex: 0 1 auto` et `min-width: 0`. Le plafond reste, mais a 60 % : sans lui, un
+     nom de fichier tres long repliait le titre du dialogue sur deux lignes (en-tete
+     mesure a 90px au lieu de 49). A 60 %, un nom de sauvegarde reel de 48 caracteres
+     passe entier (336px), un nom extreme se borne a 363px, et l'en-tete tient sur une
+     ligne dans tous les cas. Valeurs mesurees, pas estimees. */
+  min-width: 0; flex: 0 1 auto; max-width: 60%;
+}
 .prep-dialog-body { overflow-y: auto; flex: 1; padding: 0.75rem 1.1rem; }
 .prep-dialog-foot {
   padding: 0.6rem 1.1rem; border-top: 1px solid #dee2e6;
@@ -2199,6 +2215,20 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 .prep-matrix { display: flex; flex-direction: column; gap: 10px; }
 .prep-matrix-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
 .prep-matrix-fam-label { display: flex; flex-direction: column; gap: 3px; font-size: 0.82rem; }
+/* Ces deux surfaces perdaient contre `.prep-actions-screen label` (0,1,1 contre 0,1,0),
+   qui vit à `app.css:1575` et vise TOUT label de l'écran Actions — dont la matrice fait
+   partie. Troisième occurrence du motif, après les textareas plafonnées à 420/480px et
+   avant lui le sélecteur de famille : une règle générique d'écran qui écrase la classe
+   d'un composant. Les surcharges ci-dessous ne réclament rien de neuf, elles rendent au
+   composant ce qu'il déclarait déjà.
+
+   Le sélecteur de famille : `margin-bottom: 0.5rem` reçu sans l'avoir demandé, et la
+   barre est en `align-items: flex-end`, qui aligne les bords de MARGE — le contrôle
+   flottait donc 8px au-dessus de « Charger la matrice » (mesuré le 4 septembre 2026 :
+   bas du select 181,3, bas du bouton 189,3). */
+.prep-actions-screen .prep-matrix-fam-label {
+  gap: 3px; font-size: 0.82rem; margin-bottom: 0;
+}
 .prep-matrix-family { min-width: 260px; }
 .prep-matrix-summary { font-size: 0.85rem; font-weight: 600; color: var(--color-muted, #6c757d); margin-left: auto; }
 .prep-matrix-hint { font-size: 0.85rem; color: var(--color-muted, #6c757d); padding: 12px; }
@@ -2462,6 +2492,16 @@ button.prep-matrix-cut-word:hover {
   background: color-mix(in srgb, #64748b 4%, var(--color-surface, #fff));
 }
 .prep-matrix-align-field { display: flex; align-items: center; gap: 6px; }
+/* Le panneau « Avancé… » : ces deux labels déclarent `display: flex` SANS direction,
+   donc en ligne — et recevaient `column` de la règle générique. « Mode » se dessinait
+   centré au-dessus de son menu, « Seuil » au-dessus de son champ, et la case à cocher
+   au-dessus de son propre libellé, détachée de lui. Depuis le 13 juillet 2026, date de
+   création du panneau : il ne s'est jamais affiché comme il est écrit. Mesuré le
+   4 septembre 2026 — panneau à 173px de haut, 114px une fois rendu à son intention. */
+.prep-actions-screen .prep-matrix-align-field,
+.prep-actions-screen .prep-matrix-align-check {
+  flex-direction: row; align-items: center; gap: 6px; margin-bottom: 0;
+}
 .prep-matrix-align-select, .prep-matrix-align-num {
   padding: 3px 6px; font-size: 0.85rem;
   border: 1px solid var(--color-border, #dee2e6); border-radius: 4px;
@@ -2810,7 +2850,7 @@ button.prep-matrix-remove-choice:hover {
 .prep-curate-workspace { display: grid; grid-template-columns: 310px minmax(580px,1fr) 300px; align-items: start; }
 .prep-curate-col { min-width: 0; border-right: 1px solid var(--prep-line,#dde1e8); height: 100%; }
 .prep-curate-col:last-child { border-right: 0; }
-/* curate-inner-card: used in left/center/right cols of curate-workspace */
+/* .prep-curate-inner-card : les cartes internes des trois colonnes de .prep-curate-workspace. Les noms sans prefixe (curate-*) etaient ceux de CurationView, purges avec elle. */
 .prep-curate-inner-card { border-bottom: 1px solid var(--prep-line,#dde1e8); }
 .prep-curate-inner-card:last-child { border-bottom: 0; }
 /* card-head / card-body — prototype-compatible names for inner card sections */
@@ -3770,11 +3810,7 @@ button.prep-matrix-remove-choice:hover {
 
 [hidden] { display: none !important; }
 
-.prep-seg-stat { border: 1px solid var(--prep-line,#dde1e8); border-radius: 8px; padding: 8px 10px; background: #fff; font-size: 12px; }
-.prep-seg-stat strong { display: block; font-size: 20px; color: var(--prep-accent-dark,#0c4a46); margin-bottom: 2px; }
 /* 1300px : curate-workspaces génériques (hors #act-curate-card géré par ses propres breakpoints) */
-@media (max-width:1300px) { .prep-curate-workspace { grid-template-columns: 250px 1fr; } }
-@media (max-width:1050px) { .prep-curate-workspace { grid-template-columns: 1fr; } .prep-curate-col { border-right: 0; border-bottom: 1px solid var(--prep-line,#dde1e8); } .prep-curate-col:last-child { border-bottom: 0; } }
 
 /* ─── Actions hub: header + subnav + panels ──────────────────────────────── */
 .prep-acts-header {
@@ -3988,8 +4024,6 @@ button.prep-matrix-remove-choice:hover {
 
 /* Responsive : on passe de 4 à 2 puis 1 — jamais 3, qui rendrait l'orpheline
    qu'on vient de supprimer. */
-@media (max-width: 1300px) { .prep-acts-hub-workspace { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 760px)  { .prep-acts-hub-workspace { grid-template-columns: minmax(0, 1fr); } }
 
 /* ─── ACT-01 : la page Actions, « action d'abord » ────────────────────────────
    Les cartes ne sont plus des étapes numérotées mais quatre filtres ; la liste
@@ -4339,17 +4373,6 @@ mark { background: #fff0b3; border-radius: 2px; }
 /* ─── Long text hint banner ──────────────────────────────────────────────── */
 
 /* Stats grid in long text left col */
-.prep-seg-stat {
-  border: 1px solid var(--prep-line, #dde1e8);
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: #f8f9fa;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.prep-seg-stat .prep-quality-label { font-size: 11px; color: var(--prep-muted, #4f5d6d); }
-.prep-seg-stat strong { font-size: 15px; }
 
 /* ═══════════════════════════════════════════════════════════════════
    P17 INC 3 — Responsive pass Actions (global)
@@ -4368,19 +4391,6 @@ mark { background: #fff0b3; border-radius: 2px; }
     position: static;
   }
   /* Minimap-track: remove sticky side-col constraint at this bp */
-}
-
-/* ─── 900px: run-row, form-grid, align extras ──────────────────────── */
-@media (max-width: 900px) {
-  /* form-grid-seg: 1 col */
-
-  /* run-row: stack pivot / rail / cible */
-
-  /* doc-final-bar: compact */
-
-  /* align-kpis: 2 cols */
-
-  /* curate-preview-card: static */
 }
 
 /* ─── 768px: minimal pass ─────────────────────────────────────────── */
@@ -4730,38 +4740,7 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 
 /* Split layout — viewport-anchored height so scroll works regardless of parent chain */
-.prep-seg-split-layout {
-  display: flex;
-  gap: 0;
-  border: 1px solid var(--prep-line, #dde3ea);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--prep-card-bg, #fff);
-  /* 44px de header shell + ~24px de marge/en-tête au-dessus */
-  height: calc(100vh - var(--prep-topbar-h, 44px) - 24px);
-  min-height: 900px;
-}
 
-.prep-seg-split-list-title {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--prep-text-muted, #6c757d);
-  flex: 0 0 auto;
-}
-.prep-seg-param-hint {
-  font-weight: 400;
-  font-size: 0.72rem;
-  font-style: italic;
-  line-height: 1.3;
-  max-width: 22rem;
-  color: var(--prep-text-muted, #6c757d);
-}
-.prep-seg-diff-eq  { color: var(--color-muted, #888); }
-.prep-seg-diff-ins { background: #dcfce7; border-bottom-color: #bbf7d0; color: #14532d; }
-.prep-seg-diff-del { background: #fee2e2; border-bottom-color: #fecaca; color: #7f1d1d; text-decoration: line-through; }
-.prep-seg-saved-table-wrap {
-  overflow: hidden;
-}
 @keyframes prep-seg-row-flash-kf {
   0%   { background: #d1fae5; }
   60%  { background: #d1fae5; }
@@ -4769,28 +4748,6 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 }
 
 /* Responsive */
-@media (max-width: 900px) {
-  .prep-seg-split-layout {
-    flex-direction: column;
-    height: auto;           /* let it grow naturally when stacked vertically */
-    min-height: 600px;
-  }
-  .prep-seg-split-list {
-    width: 100%;
-    max-width: none;
-    border-right: none;
-    border-bottom: 1px solid var(--prep-line, #dde3ea);
-    max-height: 280px;      /* cap the doc list height in mobile stacked mode */
-    overflow: hidden;
-  }
-  .prep-seg-split-right {
-    min-height: 320px;
-    overflow-y: auto;
-  }
-  .prep-seg-preview-split { grid-template-columns: 1fr; }
-  .prep-seg-preview-split > div { border-right: none; border-bottom: 1px solid var(--prep-line, #dde3ea); }
-  .prep-seg-preview-col-list { min-height: 120px; }
-}
 
 /* ── Structure diff ────────────────────────────────────────────────────────── */
 .prep-strucdiff-header {
@@ -4806,7 +4763,8 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 
 .prep-strucdiff-table-wrap {
   overflow-x: auto;
-  /* No max-height/overflow-y — single scroll axis is .prep-seg-right-scroll */
+  /* Pas de max-height/overflow-y : l'axe de defilement vertical appartient a la colonne
+     englobante. Il s'appelait .prep-seg-right-scroll, purge avec SegmentationView. */
 }
 .prep-strucdiff-table {
   width: 100%;
@@ -5495,7 +5453,8 @@ button.chip:focus-visible { outline: 2px solid var(--prep-accent, #0f766e); outl
 .prep-seg-canvas-unit-text { padding: 0.3rem 0.45rem; white-space: pre-wrap; word-break: break-word; }
 /* Tranche 3 — role badge inline before the Brut unit text (spacing + baseline). */
 .prep-seg-canvas-unit-text .prep-conv-unit-badge { margin: 0 0.4em 0 0; vertical-align: baseline; }
-/* Tranche 3 — « voir l'original d'import » fold, canvas mirror of .prep-seg-source*. */
+/* Tranche 3 — « voir l'original d'import » : le repli du canvas. Il reprenait .prep-seg-source*
+   de SegmentationView, purge avec elle. */
 .prep-seg-canvas-source { margin-top: 3px; }
 .prep-seg-canvas-source-sum {
   display: inline-block; cursor: pointer; font-size: 0.74rem;

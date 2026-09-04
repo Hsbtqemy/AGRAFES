@@ -16,8 +16,28 @@ corpus » qui rendait une URL de boucle locale sur une base illisible. Quatre de
 ont par ailleurs été corrigés par la mesure, tous écrits d'après l'architecture plutôt que
 d'après l'écran.
 
-Restent trois items, tous petits, et aucun n'est bloquant : le raccourci dans Documents, la
-purge de trois blocs CSS morts, et le titre du corpus qui ne s'affiche plus nulle part.
+**Les deux items de code sont faits le 3 septembre.** Le raccourci « Fiche corpus » est dans
+l'en-tête de Documents, et la purge CSS s'est révélée sept fois plus large que l'item ne le
+disait : 25 classes mortes au lieu de trois blocs, 188 lignes retirées, le bundle CSS de prep
+allégé de 2,3 %.
+
+**Le dernier item est fait le 4 septembre, et il a changé de nature en route.** Il était posé
+comme « une décision, pas du code » : restituer le titre du corpus, ou constater que le nom de
+fichier suffit. La mesure penchait pour le second — `title` NULL sur les quatre bases, dans un
+emplacement pourtant occupé cinq mois durant. Mais un champ vide parce que les bases sont des
+bases de travail n'est pas un champ inutile : c'est un champ jamais mis en situation. Et une
+fois la question reprise du bon côté, elle en a ouvert une plus importante — **une copie de
+fichier emporte le titre avec elle**, donc le titre étiquette et ne peut pas identifier. Le
+lot livré ne restitue donc pas un affichage : il sépare l'étiquette de l'identité, et rend le
+nom de fichier visible aux quatre endroits où l'on risque de confondre deux copies.
+
+**Point de reprise, 4 septembre.** Le lot « identité de la base » est écrit, construit et
+testé — prep 1420 tests, shell 106 (dont 10 neufs, 5 prouvés au rouge), les deux lints au
+vert — et **rien n'est commité** : aux huit fichiers du 3 septembre s'ajoutent `shell.ts`,
+la fiche corpus dans `app.ts`, `app.css` et la garde neuve. Rien n'a encore été vu à l'écran,
+ni pour ce lot ni pour les deux précédents : le raccourci Documents, la purge CSS, et
+maintenant le déclencheur à deux lignes. Le prochain geste est donc de lancer le shell et de
+regarder — Documents d'abord, puis le déclencheur avec et sans titre.
 
 ## Reste
 
@@ -43,21 +63,47 @@ purge de trois blocs CSS morts, et le titre du corpus qui ne s'affiche plus null
 - [x] Rendre lisibles les trois boutons du bandeau d'erreur — ils empruntaient `.prep-topbar-db-btn`, soit du blanc à 90 % sur fond jaune clair ; défaut préexistant, sur la seule surface qui annonce une base illisible
 - [x] Rendre au header shell le repère ARIA `banner`, que la barre portait et que rien ne portait plus
 - [x] Rendre le focus au déclencheur à la fermeture du Journal (QAS-01, chemin header)
-- [ ] Restituer le titre du corpus quelque part : la barre affichait « Titre — fichier.db », le déclencheur du shell n'affiche que le nom de fichier
+- [x] Passe adverse des deux derniers items, deux défauts. **Un** : vider un `@media` devenu vide emporte aussi ses commentaires, et l'un d'eux ne parlait pas des règles mortes qui l'entouraient — c'était une décision sur `.prep-nav` (« ne PAS empiler le rail sous 1050px, le flip en colonne produisait un bloc navy de 48px collé en haut »), logée dans un `@media` de curation par accident d'histoire. Remise à côté de `.prep-nav`, où elle s'applique. Vérification faite sélecteur par sélecteur sur le diff : aucun vivant emporté, et aucun autre commentaire de fond perdu. **Deux** : `_showCorpusInfoModal` ne se gardait d'aucune seconde ouverture — deux modales empilées au double clic, en fermer une laissait l'autre. Préexistant, mais le raccourci le rendait atteignable, l'entrée de menu du shell se refermant après le clic. Garde posée, prouvée au rouge
+- [x] Restituer le titre du corpus — **tranché autrement que prévu, deux fois**. La mesure disait « `title` est NULL sur les quatre bases de la machine, WORKCOPY comprise, alors que la barre l'affichait du 24 mars au 1er septembre : champ vu et non rempli, donc à ne pas restituer ». La raison réelle était ailleurs : ce sont des bases de **travail**, jamais nommées parce qu'on n'a jamais eu à les nommer. Elle explique la mesure ; la mesure ne l'impliquait pas. Un titre a été posé sur WORKCOPY le 4 septembre 2026, et le champ est devenu vivant
+- [x] La forme « Titre — fichier.db » de l'ancienne barre est morte à la mesure : le déclencheur fait 240px avec ellipse, la forme composée en demande 309 et coupe à ~26 caractères — soit exactement le segment qui distingue une base de sa copie (`…WORKCOPY.db` contre `…WORKCOPY.PRE-REBUILD-2026-08-25.db`). La barre pouvait se le permettre, elle était pleine largeur
+- [x] **Le point qui commande tout le lot** : une copie de fichier emporte le titre avec elle. Deux copies portent donc le même. Le titre ÉTIQUETTE, le nom de fichier IDENTIFIE — d'où deux lignes plutôt qu'un choix entre les deux, et le nom de fichier qui descend d'un cran sans jamais disparaître
+- [x] Déclencheur 🗄 à deux lignes. Mesuré : 206×36px avec titre, 229×26px sans (soit, sans titre, exactement la taille et la place d'avant), contre 44px de header et 240px de plafond. Quand ça déborde, c'est le **titre** qui cède ; et deux sauvegardes dont les noms ne diffèrent qu'à la fin (`…_161454` / `…_161529`) restent distinguables, les chiffres tombant avant la coupe — vérifié, pas d'ellipse médiane nécessaire
+- [x] Le titre est stocké en couple `{ chemin, titre }` et filtré par `_titreCourant()`. `_currentDbPath` est affecté depuis **neuf** endroits : un titre qu'il faudrait penser à effacer à chacun finirait par survivre à l'un d'eux. Clefé sur son chemin, un titre périmé n'est pas nettoyé — il est **inaffichable**. Vaut aussi pour DEG-01 : une base qui échoue à s'ouvrir ne peut pas hériter du titre de la précédente
+- [x] Lecture par la connexion que `ensureRunning` vient d'établir (`getActiveConn`), pas par une redécouverte du portfile — même connexion, déjà authentifiée, et elle passe par la commande Rust ; un `fetch()` direct est bloqué par CORS (QA-13, le piège où `diagnostics.ts` était tombé). Sans attente et sans conséquence en cas d'échec : une fiche illisible ne rend pas la base inutilisable, on reste au nom de fichier
+- [x] Les messages passagers (« Chargement… », « Démarrage du moteur… ») masquent la ligne de titre, via `_setTriggerTransient`. Ce n'est pas cosmétique : pendant un changement de base, le titre encore affiché est celui de la base qu'on **quitte**, posé au-dessus du nom de celle qu'on ouvre — et un changement peut durer plusieurs secondes
+- [x] La fiche corpus dit dans quelle base elle écrit : nom de fichier dans son en-tête, chemin complet en infobulle. C'est l'endroit où l'on **saisit** le titre, et le seul où l'on pouvait nommer une copie en croyant nommer l'original. Au passage, son texte d'aide renvoyait encore à « la barre », retirée au lot 3
+- [x] La liste des récentes préfixe du dossier parent les seules entrées **homonymes** : deux copies de même nom dans deux dossiers y étaient rigoureusement indiscernables, le chemin complet ne vivant que dans l'infobulle. Préfixer partout allongerait chaque ligne pour un cas qui n'arrive pas toujours
+- [x] Le titre de fenêtre porte le nom de fichier — c'est ce qui distingue deux fenêtres dans la barre des tâches. Pas le titre de corpus, qu'une copie porte à l'identique et qui n'y départagerait rien
+- [x] **Passe adverse du lot, quatre trouvailles.** *Un* — j'avais mesuré une maquette CSS puis écrit un CSS légèrement différent dans `SHELL_CSS` : mesure refaite sur le littéral **extrait du fichier**, les six états y sont justes, y compris les deux lignes teintées ensemble en rouge (DEG-01) et en ambre (« modifiée »), que la maquette ne couvrait pas. *Deux* — mon propre plafond de `46%` sur le repère de la fiche coupait le nom de fichier **avant** que la place ne manque : un nom de sauvegarde réel de 48 caractères demande 336px et n'en recevait que 278. Le retirer tout à fait replie le titre du dialogue sur deux lignes (en-tête à 90px au lieu de 49) ; `60%` prend les deux cas, mesuré. *Trois* — `_setTriggerTransient("Chargement…")` dans `_switchDb` ne peint **jamais** : `_updateDbBadge()` le remplace quatre instructions plus loin, sans `await` entre les deux. Antérieur au lot — l'écriture directe qu'il remplace subissait le même sort — donc comportement laissé tel quel, mais la garde dit désormais qu'elle protège le *routage* et non une visibilité. *Quatre* — les trois étapes du tour d'accueil posent `_currentDbPath` **sans** passer par `_initDb`, donc sans lire de titre ; sans danger (la base démo vit dans `$APPDATA`, où `exists()` fonctionne, et sa taille est contrôlée avant qu'on la propose) et sans effet visible, une base démo n'ayant pas de titre
+- [x] **Un troisième cas du même motif, corrigé en chemin** (hors périmètre du chantier, mais trouvé par lui). Les règles génériques `.prep-actions-screen <élément>` sont en spécificité **0,1,1** ; les classes des composants de cet écran — la matrice d'alignement comprise — en **0,1,0**. La générique gagne donc toujours, y compris pour ajouter ce que le composant n'a pas demandé. Après les textareas plafonnées à 420/480px et le sélecteur de famille qui flottait 8px au-dessus de ses voisins (`margin-bottom: 0.5rem` reçu, dans une barre en `align-items: flex-end` qui aligne les bords de marge), le panneau « Avancé… » : ses labels déclarent `display: flex` **sans direction**, comptant sur `row`, et recevaient `column` — « Mode » au-dessus de son menu, « Seuil » au-dessus de son champ, et la case à cocher détachée au-dessus de « Conserver les liens validés ». Depuis la création du panneau le 13 juillet 2026 : il ne s'est **jamais** affiché comme il est écrit. Mesuré 173px de haut, 114 une fois rendu à son intention ; décalage du sélecteur ramené de 8,0 à 0,0px. Garde `ui/__tests__/actionsScreenOverrides.test.ts`, 6 cas, les quatre points de rupture prouvés au rouge — dont un qui surveille la règle générique elle-même : si elle cesse d'imposer la colonne, c'est là qu'on rouvrira la question plutôt qu'au hasard d'une capture
+- [x] Vérifications de fond de la même passe : `ensureRunning` termine bien par `_conn = makeConn(…)`, donc `getActiveConn()` rend la connexion qu'on vient d'établir — l'hypothèse qui porte tout le lot ; `_buildHeader` n'est appelé qu'une fois ; et seuls **deux** sites écrivent dans la ligne du nom (le peintre et le message passager), ce que la garde verrouille par un compte
+- [x] Gardes : `modules/__tests__/dbIdentity.test.ts` (10 cas), dont **cinq prouvés au rouge** — titre déclefé de son chemin, message passager qui ne masque plus, peintre qui lit `_titreCorpus` en direct, contrôle de chemin remonté avant l'attente, titre de fenêtre qui reprend le titre de corpus ; plus 4 cas côté prep dans `prepChrome.test.ts`. Rien de tout cela ne se rend : un titre périmé ressemble trait pour trait à un titre juste
 - [x] QAS-01 — le retour de focus par la ✕ du tiroir : réglé le 2 septembre par l'annonce d'état (`agrafes:prep-journal`), qui rend au shell les deux fermetures d'un coup. Prep ne connaît toujours pas son déclencheur — il n'a plus besoin de le connaître
 - [x] « Fiche corpus » sur une base illisible rendait une URL de boucle locale — `Lecture fiche corpus : sidecar_fetch_loopback: request to 'http://127.0.0.1:57263/corpus/info' failed…` — dans un toast de 400px affiché trois secondes en bas à droite, que l'utilisateur n'a pas reconnu comme une réponse à son clic. Toast réécrit en une phrase, détail laissé à la console où le client sidecar l'écrit déjà. Au passage : le garde sur `_conn` nul ne se déclenche PAS dans ce cas, prep obtenant bien une connexion — c'est la requête qui échoue
 - [x] Seconde porte du même défaut, trouvée à la passe adverse : `_updateHeaderTabs` ne dépeignait l'icône que si le mode changeait, or le remontage après un changement de base passe par `_setMode(_currentMode, { force: true })` — tiroir détruit, icône allumée. Dépeint rendu inconditionnel : `_setMode` est le seul appelant et démonte le module juste après. Le dépeint reste là plutôt que dans `dispose()`, dont l'annonce ferait sauter le focus sur 📋 au milieu d'un changement de base
 - [x] L'icône 📋 restait peinte quand le tiroir se fermait par sa PROPRE ✕ — le shell peignait depuis le retour de `toggleJournal()`, aveugle à ce chemin, et le clic suivant rouvrait ce qu'elle semblait proposer de fermer. Trouvé en jouant la passe le 2 septembre, corrigé avec le point ci-dessus : prep émet son état, un écouteur du shell est désormais le seul à peindre l'icône. Deux gardes posées de chaque côté, les quatre prouvées au rouge
 - [x] Poser la garde des trois réancrages — `ui/__tests__/prepChrome.test.ts`, 5 cas, chacun prouvé au rouge (ancêtre positionné retiré, repli du token dérivé, ancrage optionnel rétabli)
-- [ ] Purger trois blocs CSS morts que la passe du lot 3 a mis au jour : `.prep-seg-split-layout` (`app.css:4771` + la surcharge de `constituerModule.ts:51`) et `.curate-preview-card` (`prep-vnext.css`) ne sont appliqués par AUCUN code — survivants des retraits de SegmentationView et CurationView, que la purge `aa7ded3` a manqués
+- [x] Purge CSS faite, et **bien plus large que ces trois blocs** : l'item avait été écrit sur un sondage. L'audit classe par classe — vocabulaire des sélecteurs confronté au TS/HTML, protection de racine pour les classes construites dynamiquement — donne **25 classes qu'aucun code n'applique**, restes de SegmentationView (`prep-seg-split-*`, `prep-seg-diff-*`…) et de CurationView (`curate-*`). 38 règles, toutes PURES : aucun sélecteur ne mélange mort et vivant, donc 0 usage vivant = 0 régression. Retiré : 188 lignes et 9 blocs `@media` devenus vides, plus cinq commentaires qui nommaient encore une classe purgée. Bundle CSS 168,21 → **164,33 kB** (−2,3 %)
 - [x] Seconde barre de défilement supprimée — le wrapper de prep héritait de `min-height: 100vh` de la règle `#app` de `tauri-shell/index.html`, dont seul le `padding-top` était annulé : 794px dans un parent de 706. Défaut d'origine (`c417e9d`, 1er mars 2026), trouvé par la sonde de la passe
-- [ ] Ajouter le raccourci « Fiche corpus » dans l'en-tête de l'écran Documents, par callback sur le modèle de `setOnOpenExporter`
+- [x] Raccourci « 📄 Fiche corpus… » ajouté en tête de `prep-meta-head-actions`, le bloc que le gabarit appelle déjà « corpus actions ». En `btn-ghost`, plus léger que ses voisins — c'est un raccourci, pas une action, comme le cadrage le demandait. Chaîne à trois maillons sur le modèle de `setOnOpenAlignment` : bouton du gabarit → `setOnOpenCorpusInfo` de `MetadataScreen` → `App` qui oriente vers `openCorpusInfo()`, la commande que le menu de la base du shell appelle aussi. Une seule modale, deux entrées. Trois gardes dans `prepChrome.test.ts`, la dernière prouvée au rouge en retirant le câblage d'`App` : aucun maillon ne casse bruyamment, prep tournant sous `node`, sans DOM
 - [x] Écrire la passe de QA `qa/chrome-constituer.md`
 - [x] La jouer — 35 sur 35 le 2 septembre 2026, trois défauts trouvés et corrigés le jour même, et quatre de ses attendus corrigés par la mesure
 
 ## QA
 
 - qa/chrome-constituer.md
+- qa/identite-base.md
+
+Écrite et jouée le 4 septembre 2026 — **24 sur 24**, et aucun défaut dans le lot lui-même :
+le déclencheur à deux lignes, la fiche qui nomme son fichier, les homonymes des récentes et
+le titre de fenêtre ont tous rendu ce qui était annoncé.
+
+Ce qu'elle a fait remonter est venu d'ailleurs, et par une question plutôt que par une case :
+« la boîte *Avancé…* a changé ? ». Elle n'avait pas changé — elle ne s'était **jamais**
+affichée comme elle est écrite, depuis le 13 juillet 2026. Troisième occurrence du motif
+`.prep-actions-screen <élément>` contre la classe du composant. Corrigé le jour même avec le
+sélecteur de famille, qui relevait de la même cause. D'où la zone ajoutée en fin de passe,
+seule non jouée à ce jour.
 
 Écrite le 1er septembre 2026, jouée le 2 — 35 sur 35. Elle porte moins sur ce qui disparaît que
 sur les trois réancrages : un bandeau d'erreur qui ne s'insère plus, un garde de sortie

@@ -3,7 +3,8 @@
  *
  * Adds:
  *  - Sidebar shell layout (.prep-shell / .prep-nav / .prep-main)
- *  - Curation 3-column workspace (.curate-workspace / .curate-col / .curate-pane / …)
+ *  - (l'espace de curation en trois colonnes vivait ici : .curate-workspace,
+ *    .curate-col, .curate-pane… purge avec CurationView, plus rien n'y renvoyait)
  *
  * No changes to existing class names from app.ts CSS constant.
  */
@@ -53,6 +54,13 @@
 }
 
 /* ── Sidebar nav ─────────────────────────────────────────────────────────── */
+/* Ne PAS empiler le rail sur le contenu sous 1050px (application de bureau, le rail
+   replié ne fait que 48px) : le passage à flex-direction:column produisait le « bloc navy
+   de 48px de large collé en haut ». Le rail reste un side-rail à toute largeur.
+
+   Cette note vivait dans un @media de l'espace de curation, par accident d'histoire ;
+   la purge CHR-01 du 3 septembre 2026 l'a emportée avec les règles mortes qui
+   l'entouraient, et la passe adverse l'a remise ici, où elle s'applique. */
 .prep-nav {
   position: relative;
   z-index: 100;
@@ -238,108 +246,32 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 /* Outer card — remove default padding so columns touch edges */
-.curate-workspace-card {
-  padding: 0 !important;
-  overflow: hidden;
-}
 
 /* Card header */
 
-.curate-pill {
-  display: inline-block;
-  border: 1px solid var(--prep-line-accent, #9fd3cc);
-  background: var(--prep-accent-soft, #e8f5f3);
-  color: var(--prep-accent-dark, #0c4a46);
-  border-radius: var(--prep-radius-pill, 999px);
-  font-size: 11px;
-  padding: 3px 10px;
-}
 
 /* 2-column workspace grid (right col moved to bottom panel) */
-.curate-workspace {
-  display: grid;
-  grid-template-columns: 300px minmax(480px, 1fr);
-  align-items: start;
-}
 
-.curate-col {
-  min-width: 0;
-  border-right: 1px solid var(--prep-line, #dde1e8);
-  height: 100%;
-}
 
-.curate-col:last-child {
-  border-right: 0;
-}
 
 /* Inner card within a column */
-.curate-inner-card {
-  border-bottom: 1px solid var(--prep-line, #dde1e8);
-}
 
-.curate-inner-card:last-child {
-  border-bottom: 0;
-}
 
-@media (max-width: 1200px) {
-  .curate-bottom-col-extra {
-    grid-column: 1 / -1;
-    border-right: 0;
-    border-top: 1px solid var(--prep-line, #dde1e8);
-  }
-}
 
 /* Chip-row for rule toggles */
 
 /* Action buttons */
 
 /* ── Center: sticky preview card ─────────────────────────────────────────── */
-.curate-preview-card {
-  display: flex;
-  flex-direction: column;
-  position: sticky;
-  top: 0;
-  max-height: calc(100vh - var(--prep-topbar-h, 44px) - 8px);
-  overflow: hidden;
-}
 
 /* Minimap sidebar */
-.curate-minimap {
-  border: 1px solid var(--prep-line, #dde1e8);
-  border-radius: 8px;
-  background: #fafbfc;
-  display: grid;
-  align-content: start;
-  gap: 3px;
-  padding: 6px 4px;
-  min-height: 200px;
-}
 
 /* Preview footer: stats + apply button */
 
 /* ── Right col: diagnostics ──────────────────────────────────────────────── */
-.curate-diag-list {
-  display: grid;
-  gap: 8px;
-}
 
-.curate-diag {
-  border: 1px solid var(--prep-line, #dde1e8);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 12px;
-  background: #fff;
-}
 
-.curate-diag.warn {
-  border-color: var(--prep-warn-line, #edd89e);
-  background: var(--prep-warn-soft, #fff7e6);
-}
 
-.curate-diag strong {
-  display: block;
-  margin-bottom: 2px;
-}
 
 /* ════════════════════════════════════════════════════════════════════════════
    SEGMENTATION 2-COLUMN WORKSPACE
@@ -402,32 +334,4 @@
    RESPONSIVE
    ════════════════════════════════════════════════════════════════════════════ */
 
-@media (max-width: 1400px) {
-  .curate-minimap {
-    display: none;
-  }
-}
 
-@media (max-width: 1050px) {
-  /* Ne PAS empiler le rail sur le contenu à cette largeur (app desktop, le rail
-     collapsed ne fait que 48px) : le flip flex-direction:column produisait le
-     « bloc navy de 48px de large collé en haut ». Le rail reste un side-rail. */
-
-  .curate-workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .curate-col {
-    border-right: 0;
-    border-bottom: 1px solid var(--prep-line, #dde1e8);
-  }
-
-  .curate-col:last-child {
-    border-bottom: 0;
-  }
-
-  .curate-preview-card {
-    position: static;
-    max-height: none;
-  }
-}

@@ -7,7 +7,7 @@
 
 import type { Conn } from "./lib/sidecarClient.ts";
 import { ensureRunning, SidecarError, getCorpusInfo, updateCorpusInfo } from "./lib/sidecarClient.ts";
-import { setCurrentDbPath, getOrCreateDefaultDbPath } from "./lib/db.ts";
+import { setCurrentDbPath, getOrCreateDefaultDbPath, getCurrentDbPath } from "./lib/db.ts";
 import { ImportScreen } from "./screens/ImportScreen.ts";
 import { ShareDocsImportScreen } from "./screens/ShareDocsImportScreen.ts";
 import { ActionsScreen } from "./screens/ActionsScreen.ts";
@@ -87,6 +87,10 @@ export class App {
       this._switchTab("actions");
       this._actions.openAlignmentOnFamily(familyId, mode);
     });
+    // CHR-01 — le raccourci « Fiche corpus » de l'en-tête de Documents. Même commande que
+    // celle qu'appelle le menu de la base du shell : une seule modale, deux entrées.
+    this._metadata.setOnOpenCorpusInfo(() => this.openCorpusInfo());
+
     this._exports.setJobCenter(this._jobCenter, showToast);
 
     // Start sidecar in background — screens will refresh when connection is ready.
@@ -483,6 +487,12 @@ export class App {
   // ─── Fiche corpus (métadonnées DB) ─────────────────────────────────────────
 
   private async _showCorpusInfoModal(): Promise<void> {
+    // CHR-01 — une seule fiche à la fois. Deux entrées y mènent désormais : le menu de la
+    // base du shell et le raccourci de l'en-tête de Documents, ce dernier étant un bouton
+    // ordinaire, donc double-cliquable. Sans ce garde, deux modales s'empilent et en fermer
+    // une laisse l'autre. Le défaut préexistait ; le raccourci le rendait atteignable.
+    // Trouvé à la passe adverse du 3 septembre 2026.
+    if (document.querySelector(".prep-dialog-overlay")) return;
     if (!this._conn) {
       showToast("Ouvrez ou cr\u00e9ez une base pour \u00e9diter la fiche corpus.", true);
       return;
@@ -513,7 +523,24 @@ export class App {
 
     const head = document.createElement("div");
     head.className = "prep-dialog-head";
-    head.innerHTML = `<h3>\uD83D\uDCC4 Fiche corpus</h3>`;
+    const headTitle = document.createElement("h3");
+    headTitle.textContent = "\uD83D\uDCC4 Fiche corpus";
+    head.appendChild(headTitle);
+
+    // CHR-01 — la fiche ne disait pas de QUELLE base elle est la fiche. C'est pourtant
+    // le moment le plus exposé de l'application : on y nomme un corpus, et les bases de
+    // travail se copient. Rien d'autre à l'écran ne dit qu'on est en train d'écrire
+    // dans la copie plutôt que dans l'original — et le titre saisi ici sera justement
+    // recopié à l'identique dans la prochaine copie du fichier.
+    const cheminBase = getCurrentDbPath();
+    if (cheminBase) {
+      const normalise = cheminBase.replace(/\\/g, "/");
+      const fichierEl = document.createElement("span");
+      fichierEl.className = "prep-dialog-subject";
+      fichierEl.textContent = normalise.split("/").pop() ?? normalise;
+      fichierEl.title = `Chemin complet : ${normalise}`;
+      head.appendChild(fichierEl);
+    }
     const closeX = document.createElement("button");
     closeX.className = "btn btn-secondary btn-sm";
     closeX.textContent = "\u2715 Fermer";
@@ -532,7 +559,7 @@ export class App {
     body.innerHTML = `
       <label class="prep-corpus-label">Titre du corpus
         <input type="text" id="ci-title" class="prep-corpus-input" autocomplete="off"
-          placeholder="Nom lisible (affich\u00e9 dans la barre)" />
+          placeholder="Nom lisible (affich\u00e9 dans l'en-t\u00eate, au-dessus du nom de fichier)" />
       </label>
       <label class="prep-corpus-label">Descriptif
         <textarea id="ci-desc" class="prep-corpus-textarea" rows="5"
@@ -579,6 +606,13 @@ export class App {
         });
         overlay.remove();
         showToast("Fiche corpus enregistr\u00e9e.");
+        // Le shell affiche ce titre au-dessus du nom de fichier, dans son déclencheur de
+        // base. Sans cette annonce il ne le relit qu'à l'ouverture d'une base : un titre
+        // qu'on vient de changer resterait invisible, et l'enregistrement aurait l'air
+        // raté. Même patron que `agrafes:prep-journal` — prep publie, le shell peint.
+        window.dispatchEvent(new CustomEvent("agrafes:prep-corpus-title", {
+          detail: { title },
+        }));
       } catch (err) {
         showToast(`Enregistrement : ${String(err)}`, true);
       }

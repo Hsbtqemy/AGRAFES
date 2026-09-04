@@ -44,13 +44,6 @@ const CONSTITUER_CSS = `
   display: flex;
   flex-direction: column;
 }
-/* Dans le contexte shell, 44px sont consommés hors de .con-subcontent par le
-   header shell fixe (la barre de sous-onglets de 38px ayant été supprimée).
-   Le calc() de .prep-seg-split-layout est conçu pour le mode autonome
-   (100vh = toute la fenêtre) ; ici la fenêtre utile est 100vh - 44px. */
-.con-subcontent .prep-seg-split-layout {
-  height: calc(100vh - var(--prep-topbar-h, 44px) - 254px);
-}
 `;
 
 // ─── Public API ────────────────────────────────────────────────────────────────
