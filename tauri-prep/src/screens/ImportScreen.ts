@@ -55,6 +55,7 @@ import { buildFamilyDetectionBannerHtml } from "../lib/importFamilyDetectionTemp
 import { importStatusLabel } from "../lib/importStatusLabel.ts";
 import { normalizeImportPath, parseConlluPreview } from "../lib/importConllu.ts";
 import { stripHiTags } from "../lib/richTextModel.ts";
+import { enhanceSelect } from "../lib/selectMenu.ts";
 
 
 // Détection format/langue d'import (extension → mode, nom → langue) extraite dans
@@ -1538,6 +1539,10 @@ export class ImportScreen {
     document.body.appendChild(overlay);
 
     const sel = overlay.querySelector<HTMLSelectElement>("#fam-dlg-parent-sel")!;
+    // SEL-01 — la liste des parents candidats grandit avec le corpus, et cette boîte est
+    // centrée : la fenêtre système du <select> natif s'y retourne comme ailleurs.
+    const selMenu = enhanceSelect(sel, { label: "Document original (parent)",
+      className: "prep-selmenu--doc" });
     const relSel = overlay.querySelector<HTMLSelectElement>("#fam-dlg-relation-type")!;
     const confirmBtn = overlay.querySelector<HTMLButtonElement>("#fam-dlg-confirm-btn")!;
     const cancelBtn = overlay.querySelector<HTMLButtonElement>("#fam-dlg-cancel-btn")!;
@@ -1591,6 +1596,7 @@ export class ImportScreen {
     await new Promise<void>((resolve) => {
       const close = () => {
         if (skipChk.checked) this._skipFamilyDialog = true;
+        selMenu.destroy();
         overlay.remove();
         resolve();
       };

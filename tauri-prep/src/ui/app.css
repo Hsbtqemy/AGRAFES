@@ -2300,11 +2300,17 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
    couper le libellé le plus long — ce que le contrôle natif ne faisait jamais, puisqu'il se
    dimensionne sur son option la plus large.
 
-   Documents : le natif rend 266px ; il faut 280 au déclencheur pour ne pas couler le plus
-   long titre des 58 (« [1] hi rend=… .txt (fr) »).
-   Familles : le natif rend 407px — c'est-à-dire son plafond de 420 presque atteint ; 400
-   suffisent au plus long des 20 libellés. */
-.prep-selmenu--doc { display: block; width: 280px; }
+   Deux fois de suite le chiffre est sorti trop petit, et pour la même raison : on ne
+   mesurait pas le libellé le plus large que le code SAIT composer. Il y en a quatre formes
+   — `titre (langue)` dans l'Alignement et les relations, `#id titre` pour les exports CSV
+   et v2, `#id titre (langue)` pour l'export bilingue, `#id titre (n docs)` pour ses listes
+   de familles — et c'est la troisième qui commande. Mesurer une seule forme, c'est mesurer
+   le mauvais mot.
+
+   Documents : 320px, dicté par « #428 [1] hi rend=… .txt (fr) » (le natif rendait 300).
+   Familles : 400px, dicté par « … (1 enfant · 120/150 paires) » (le natif : 407, soit son
+   plafond de 420 presque atteint). */
+.prep-selmenu--doc { display: block; width: 320px; }
 .prep-selmenu--famille { display: block; width: 400px; }
 /* Le seul de la famille à qui on demande de remplir sa ligne : il porte `flex:1` en style
    inline, et c'était `.prep-actions-screen select` (0,1,1) qui le bornait à 420px. */

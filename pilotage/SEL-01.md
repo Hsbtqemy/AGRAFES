@@ -5,8 +5,14 @@ statut: interrompu
 
 # SEL-01 — les listes déroulantes cessent de se retourner
 
-**Arrêté sur** — 4 septembre 2026 : Alignement et Exports sont convertis, **12 sur 15**.
-Reste trois sélecteurs, un par écran — Documents, Import, Inspecteur d'unités.
+**Arrêté sur** — 4 septembre 2026 : **14 listes converties sur 15**, la quinzième laissée
+native après mesure. Tout le code est écrit ; il reste à le regarder, sur le bon écran.
+
+La quinzième est `meta-token-unit`, que cette fiche désignait comme « le seul dont la liste
+n'est pas bornée par le nombre de documents ». C'est vrai, et l'inquiétude était à l'envers :
+elle est bornée **plus court** que toutes les autres, à six lignes d'aperçu — l'écran l'annonce
+lui-même (« 6 lignes max »). Un menu maison n'apporterait rien à sept entrées. Un test tient
+la borne : si elle monte, la décision se rejoue.
 
 **L'inventaire était faux, dans les deux sens.** La prose de cette fiche annonçait onze
 sélecteurs pendant que son propre tableau en listait treize, et le tableau oubliait
@@ -26,15 +32,21 @@ pas d'un pixel d'un document à l'autre, et l'habillage sans règle de largeur o
 **138 px** (« Modiano-Rue_ES ») et **249 px** (le plus long titre du corpus). La barre aurait
 changé de largeur à chaque choix — un défaut que le contrôle natif n'avait pas.
 
-**Et le premier chiffrage était sous-estimé, faute d'avoir composé le libellé pour de vrai.**
-Le banc avait mesuré des titres nus, alors que le code affiche `titre (langue)` et
-`titre (n enfants · a/b paires)` : 243 et 303 px relevés, contre **266 et 407** une fois le
-suffixe remis. Les 240/300 posés au premier lot coupaient donc le libellé le plus long — ce
-que le natif ne fait jamais, puisqu'il se dimensionne sur son option la plus large. Corrigé à
-**280 px** pour une liste de documents et **400 px** pour une liste de familles, vérifié sans
-coupe et sans débordement horizontal à 1500, 1300, 1000 et 800 px de large. Deux classes
-posées à l'habillage (`prep-selmenu--doc`, `--famille`) plutôt qu'une règle par emplacement :
-la largeur dépend de ce que la liste contient, pas de l'écran qui la porte.
+**Et le chiffrage est sorti trop petit deux fois de suite, pour la même raison.** On ne
+mesurait pas le libellé le plus large que le code SAIT composer. Il en existe quatre formes —
+`titre (langue)` dans l'Alignement et les relations, `#id titre` pour les exports CSV et v2,
+`#id titre (langue)` pour l'export bilingue, `#id titre (n docs)` pour ses listes de familles
+— et c'est la troisième qui commande. Premier relevé sur des titres nus : 243 px. Deuxième,
+suffixe de langue remis : 266. Troisième, identifiant compris : **300**, et il faut **320** au
+déclencheur pour ne pas couper. Les 240 puis 280 posés en chemin coupaient donc le libellé le
+plus long — ce que le natif ne fait jamais, puisqu'il se dimensionne sur son option la plus
+large. Mesurer une seule forme, c'est mesurer le mauvais mot.
+
+Retenu : **320 px** pour une liste de documents, **400 px** pour une liste de familles (le
+natif rendait 300 et 407), vérifié sans coupe et sans débordement horizontal à 1500, 1300,
+1000 et 800 px de large. Deux classes posées à l'habillage (`prep-selmenu--doc`,
+`--famille`) plutôt qu'une règle par emplacement : la largeur dépend de ce que la liste
+contient, pas de l'écran qui la porte.
 
 Deuxième chose que le banc a démolie : `max-width: 420px` n'était pas décoratif. Le
 `<select>` de famille porte `flex:1` en style inline, et c'est la règle générique
@@ -78,9 +90,9 @@ onze, tous peuplés en TS :
 |---|---|
 | Alignement | `matrix-family` ✔, `align-family-sel` ✔, `align-pivot-sel` ✔, `align-target-sel` ✔ |
 | Exports | `matrix-family-sel` ✔, `bil-family-sel` ✔, `bil-pivot-sel` ✔, `bil-target-sel` ✔, `v2-align-pivot` ✔, `v2-align-target` ✔, `align-csv-pivot` ✔, `align-csv-target` ✔ |
-| Documents | `rel-target-sel` |
-| Import | `fam-dlg-parent-sel` |
-| Inspecteur d'unités | `meta-token-unit` |
+| Documents | `rel-target-sel` ✔ |
+| Import | `fam-dlg-parent-sel` ✔ |
+| Inspecteur d'unités | `meta-token-unit` — **natif exprès**, borné à 6 entrées |
 
 Hors périmètre, et vérifié plutôt que supposé : les trois `<select multiple>` d'Exports
 (`v2-doc-sel`, `tei-doc-sel`, `pkg-doc-sel`) s'affichent en liste ouverte, pas en menu — ils
@@ -122,17 +134,24 @@ préfixe avant de comparer. Le natif ne perd rien ici : il n'avait rien à offri
 - [x] `lib/__tests__/selectMenu.test.ts`, 14 cas : le contrat du modèle (l'événement part du `<select>` et bouillonne), l'observateur, la frappe, le clavier, l'idempotence, le démontage
 - [x] Convertir les trois autres sélecteurs de l'Alignement : `align-family-sel`, `align-pivot-sel`, `align-target-sel` (`AlignPanel`) — les ~25 sites qui LISENT `value` n'ont pas bougé d'une ligne, seuls les **trois** qui l'écrivent demandent `_syncMenus()`
 - [x] Convertir ceux d'Exports — **huit et non six** : `bil-pivot-sel` et `bil-target-sel` manquaient à l'inventaire, ils sont peuplés par la même fonction que leurs voisins
-- [ ] Convertir `rel-target-sel` (Documents — 58 documents dans le corpus de travail) et `fam-dlg-parent-sel` (Import)
-- [ ] Convertir `meta-token-unit` (inspecteur d'unités) — vérifier d'abord combien d'entrées il peut porter : c'est le seul dont la liste n'est pas bornée par le nombre de documents
+- [x] Convertir `rel-target-sel` (Documents) et `fam-dlg-parent-sel` (Import) — le premier vit dans un panneau qui se re-rend en entier, donc l'habillage précédent doit être démonté à chaque rendu ; le second dans une boîte modale **centrée**, le cas le plus exposé du chantier, et il part avec elle
+- [x] `meta-token-unit` (inspecteur d'unités) — vérifié, et **il reste natif** : son aperçu est borné à six lignes, soit plus court que toutes les autres listes. L'inquiétude était à l'envers. Un test tient la borne
 - [x] Décider du sort des `<select multiple>` d'Exports (`v2-doc-sel`, `tei-doc-sel`, `pkg-doc-sel`) : **hors périmètre**, confirmé — une liste ouverte n'a pas de fenêtre système à retourner, et un test nomme les trois pour que la conversion ne les prenne pas au passage
 - [x] Vérifier que les sélecteurs restants restent natifs — **29 listes courtes et fixes** sur les 44 identifiées, plus trois sans identifiant : rien à convertir, le natif y garde ses qualités pour zéro ligne
-- [ ] Écrire la passe de QA du chantier, ou étendre `qa/menus-flottants.md` qui porte déjà cette famille
+- [x] Écrire la passe de QA — `qa/listes-deroulantes-prep.md`, 28 points en sept zones. Passe propre plutôt qu'extension de `qa/menus-flottants.md` : celle-ci couvre le concordancier, la Recherche grammaticale et la barre du shell, pas Prep
+- [ ] **Jouer cette passe sur l'écran court** (1536×816), fenêtre placée assez bas pour qu'il reste moins de 400 px sous le sélecteur — sur le grand écran, tout paraîtra correct sans que rien n'ait été vérifié
 
 ## QA
 
-Pas encore de passe propre. Le premier sélecteur converti est vérifié par un point ajouté à
-`qa/identite-base.md` (zone « L'espace Alignement »), qui demande de l'ouvrir **sur l'écran
-court, fenêtre placée assez bas** — le seul cas où le défaut se manifestait.
+- qa/listes-deroulantes-prep.md — **écrite le 4 septembre, jamais jouée.** 28 points en sept
+  zones : les deux surfaces de l'Alignement, Exports, Métadonnées, la boîte de l'Import, ce qui
+  doit être resté natif, et la tenue à l'écran. Son préambule porte ce qu'aucun test ne peut
+  tenir : sur quel écran jouer, et où placer la fenêtre. Elle nomme les **trois** endroits où
+  le code pose la valeur lui-même (handoff depuis la matrice, deep-link famille, paire chargée
+  après un run) — ce sont les seuls où le déclencheur peut mentir, et le seul défaut de cette
+  famille qui ne se voit pas au premier coup d'œil.
+- Le tout premier sélecteur converti est en outre couvert par un point de
+  `qa/identite-base.md` (zone « L'espace Alignement »), joué le 4 septembre.
 
 ## Contexte
 

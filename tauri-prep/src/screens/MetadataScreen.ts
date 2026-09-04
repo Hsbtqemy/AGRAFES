@@ -71,6 +71,7 @@ import { metadataScreenTemplate } from "../lib/metadataScreenTemplate.ts";
 import { buildMetadataTree } from "../lib/metadataTree.ts";
 import { documentProvenance } from "../lib/documentProvenance.ts";
 import { WORKFLOW_STATUS, type WorkflowStatus, normalizeWorkflowStatus, workflowLabel } from "../lib/workflowStatus.ts";
+import { enhanceSelect, type SelectMenu } from "../lib/selectMenu.ts";
 
 const RELATION_TYPES = ["translation_of", "excerpt_of"];
 type SortCol = "id" | "title" | "lang" | "role" | "status";
@@ -97,6 +98,8 @@ export class MetadataScreen {
   private _root!: HTMLElement;
   private _docListEl!: HTMLElement;
   private _editPanelEl!: HTMLElement;
+  /** SEL-01 — habillage du choix de document cible, refait à chaque rendu du panneau. */
+  private _relTargetMenu: SelectMenu | null = null;
   private _logEl: HTMLElement = document.createElement("div");
   private _docCountEl!: HTMLElement;
   private _stateEl!: HTMLElement;
@@ -996,6 +999,29 @@ export class MetadataScreen {
           this._onOpenAlignment?.(familyId, mode);
         });
       });
+
+    this._enhanceRelTarget();
+  }
+
+  /**
+   * SEL-01 — la liste des documents cibles d'une relation grandit avec le corpus (57 entrées
+   * sur la base de travail) : elle passe au menu qui s'ouvre vers le bas.
+   *
+   * Ce panneau se re-rend en entier à chaque sélection de document, donc le `<select>` est un
+   * élément NEUF à chaque fois : on démonte l'habillage précédent — qui pointe désormais sur
+   * du DOM détaché, avec son observateur — avant d'en poser un sur le nouveau. Sans ce
+   * démontage, chaque aller-retour dans la liste des documents laisserait un observateur de
+   * plus derrière lui.
+   */
+  private _enhanceRelTarget(): void {
+    this._relTargetMenu?.destroy();
+    this._relTargetMenu = null;
+    const sel = this._editPanelEl.querySelector<HTMLSelectElement>("#rel-target-sel");
+    if (sel) {
+      this._relTargetMenu = enhanceSelect(sel, {
+        label: "Document cible de la relation", className: "prep-selmenu--doc",
+      });
+    }
   }
 
   private _inheritAuthorFromParent(): void {
@@ -2322,6 +2348,9 @@ export class MetadataScreen {
     this._editPanelEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  dispose(): void { /* nothing to clean up */ }
+  dispose(): void {
+    this._relTargetMenu?.destroy();
+    this._relTargetMenu = null;
+  }
 }
 

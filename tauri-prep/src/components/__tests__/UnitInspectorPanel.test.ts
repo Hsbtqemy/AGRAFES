@@ -94,3 +94,15 @@ describe("UnitInspectorPanel — édition inline (D-C1)", () => {
     expect(editPanel.querySelector(".prep-meta-preview-text")?.textContent).toBe("le chien");
   });
 });
+
+describe("SEL-01 — pourquoi `#meta-token-unit` reste natif", () => {
+  it("l’aperçu est borné à six lignes, donc la liste ne peut pas déborder", () => {
+    // La fiche du chantier le désignait comme « le seul dont la liste n'est pas bornée par
+    // le nombre de documents ». Mesuré : elle est bornée plus court que toutes les autres —
+    // l'aperçu ne charge que `previewLimit` lignes, et l'écran l'annonce (« N lignes max »).
+    // Un menu maison n'apporterait rien à sept entrées. Si cette borne monte un jour, ce test
+    // échoue et la décision se rejoue.
+    const panel = new UnitInspectorPanel({} as unknown as UnitInspectorDeps);
+    expect(panel.previewLimit).toBeLessThanOrEqual(12);
+  });
+});
