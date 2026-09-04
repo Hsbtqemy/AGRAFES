@@ -1,12 +1,12 @@
 ---
 chantier: ACT-01
-statut: interrompu
+statut: clos
 ---
 
 # ACT-01 — la page Actions : une liste de documents qui ne sert à rien
 
-**Arrêté sur** — 4 septembre 2026 : le dernier item est fait, il ne reste qu'à le
-regarder. La quatrième pile « faits » existe, et « Tous » est devenu « À traiter ».
+**Arrêté sur** — clos le 4 septembre 2026 : dernier item fait, dernière passe rejouée le
+même jour. La quatrième pile « faits » existe, et « Tous » est devenu « À traiter ».
 
 Ce que le lot corrige, en une mesure : sur un corpus de 58 documents dont 11 validés,
 l'ancien bandeau annonçait `45 jamais commencés · 2 en cours · Tous (47)` — la somme des
@@ -22,12 +22,24 @@ décocher ce qu'on a coché trop vite. Sous ce filtre, la case de la ligne est d
 et son clic RETIRE la validation : c'est le geste voulu, et il fonctionnait déjà
 (`_toggleStep` traite `done` depuis l'origine), il n'était simplement pas atteignable.
 
-**Le statut reste `interrompu` et non `clos`**, pour une raison qui n'est pas une
-formalité : ce lot a rendu faux huit points de `qa/actions-double-filtre.md`, une passe
-jouée 26/26 le 1er septembre. Ils décrivaient trois piles et le libellé « Tous », et l'un
-d'eux — « un document validé n'apparaît dans aucune des trois piles » — est devenu le
-contraire de ce qu'on veut. Ils sont réécrits et **décochés** : les laisser cochés
-revendiquerait une vérification qui n'a pas eu lieu. Clore demande de les rejouer.
+**Rejoués le jour même : la passe est de nouveau entière, et le chantier est clos.** Les
+huit points que ce lot avait rendus faux — ils décrivaient trois piles et le libellé
+« Tous », et l'un d'eux, « un document validé n'apparaît dans aucune des trois piles »,
+était devenu le contraire de ce qu'on veut — ont été réécrits, décochés, puis lus contre
+l'application. 26 sur 26, aucun défaut de code trouvé.
+
+Ce que la relecture a trouvé tient à la passe et non au code, et vaut d'être noté parce
+que c'est deux fois le même geste manqué. **Quatre renvois à « Tous » avaient survécu à
+la réécriture** — le titre, la phrase d'ouverture, l'en-tête du tableau de comptes et
+trois items — parce que la dérive avait été cherchée dans les cases à cocher, où elle
+était visible, et pas dans la prose qui les entoure. Et la note qui expliquait les
+décochages était placée **sous un `###`**, donc jetée par le journal : elle n'a jamais
+été lisible là où on la lit. Les deux sont réparés, la note est remontée au préambule.
+
+Un item reste plus faible que son libellé ne le laissait croire, et la passe le dit
+désormais : « À traiter » n'est jamais désactivé, mais le zéro qui le mettrait à l'épreuve
+voudrait dire « les 58 documents sont faits » — état qu'aucune des deux lectures n'a
+produit. Il tient par le code (`ActionsScreen.ts:471`), pas par la QA.
 
 ## Reste
 
@@ -251,6 +263,14 @@ revendiquerait une vérification qui n'a pas eu lieu. Clore demande de les rejou
 
 ## QA
 
+- qa/actions-double-filtre.md — écrite le 1er septembre, **jouée 26/26 ce jour-là, puis
+  rejouée entièrement le 4 septembre** quand la quatrième pile a rendu huit de ses points
+  faux. Elle **remplace la zone « Le filtre et la liste »** de `qa/actions-action-dabord.md`,
+  que le tri-état avait invalidée. Ses comptes d'ouverture sont mesurés et non estimés —
+  56·2·0 en curation, 0·58·0 en segmentation, 37·21·0 en alignement, 50·8·0 en annotation —
+  et ce qu'elle vérifie d'abord est l'invariant : les trois piles fines totalisent 58 sur
+  chacune des quatre capacités, quel que soit le nombre de coches. Elle pose une coche, et
+  son dernier bloc la retire.
 - qa/actions-tri-etat.md — écrite le 31 août, **jouée le 1er septembre, 59 sur 59**.
   Le modèle à trois états est couvert par 60 tests (29 moteur, 31 front) et par mesure en
   base, mais n'a été vu tourner par personne — l'état exact où « action d'abord » était
