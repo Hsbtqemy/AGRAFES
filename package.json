@@ -3,7 +3,7 @@
   "private": true,
   "description": "Ce dépôt n'est pas un projet Node : ce fichier ne sert qu'à prendre le journal de bord en dépendance, pour ne plus recopier l'outil à la main. Les quatre paquets front vivent dans tauri-*/ et gardent chacun le leur.",
   "devDependencies": {
-    "pilote": "github:Hsbtqemy/pilote#99d082750206d92b41e7b96cc5b08d476da22981"
+    "pilote": "github:Hsbtqemy/pilote#008200031879fd2a53279fcc474e333296467dc4"
   },
   "scripts": {
     "journal": "pilote",
