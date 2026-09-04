@@ -205,12 +205,24 @@ describe("la liste ne se retourne pas, et le clavier la mène", () => {
       "après la dernière, on revient à la première").toBe("#366 Houellebecq-Carte_FR.docx (2 docs)");
   });
 
-  it("deux lettres différentes restent une recherche, pas un parcours", () => {
+  it("deux lettres qui forment un début de mot restent une recherche", () => {
     declencheur().click();
     liste().dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
     liste().dispatchEvent(new KeyboardEvent("keydown", { key: "o", bubbles: true }));
-    // « mo » ne correspond à rien au début d'un libellé : le repli « contient » s'applique,
-    // et il ne doit pas se mettre à parcourir sous prétexte qu'on a frappé deux fois.
+    // « mo » prolonge « m » : on cherche le mot, on ne se met pas à parcourir les « o ».
+    expect((document.activeElement as HTMLElement).textContent)
+      .toBe("#373 Modiano-Rue_FR.docx (4 docs)");
+  });
+
+  it("une lettre qui ne prolonge rien change de destination au lieu de ne rien faire", () => {
+    // Le défaut signalé en jouant la passe : « h » puis « m » cherchait « hm », ne trouvait
+    // rien, et laissait le focus sur Houellebecq. Une lettre qui ne prolonge pas le mot en
+    // cours n'est pas une faute de frappe, c'est un changement de destination.
+    declencheur().click();
+    liste().dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+    expect((document.activeElement as HTMLElement).textContent)
+      .toBe("#366 Houellebecq-Carte_FR.docx (2 docs)");
+    liste().dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
     expect((document.activeElement as HTMLElement).textContent)
       .toBe("#373 Modiano-Rue_FR.docx (4 docs)");
   });

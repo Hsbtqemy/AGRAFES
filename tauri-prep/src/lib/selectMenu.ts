@@ -49,11 +49,20 @@
  * que par la moitié des listes et ne désambiguïsait rien), mais la comparaison continue de
  * l'ignorer : c'est un filet, pour un libellé qui en porterait un ailleurs.
  *
- * Mais le natif avait bel et bien quelque chose à offrir, et la première version l'avait
- * perdu : **retaper la même lettre parcourt** les entrées qui commencent par elle. Sans cela,
- * un corpus qui porte deux familles « Houellebecq » n'en laisse atteindre qu'une — chercher
- * « hh » ne mène nulle part, et la seconde devient inatteignable au clavier. Une lettre seule,
- * répétée ou non, parcourt et boucle ; deux lettres différentes restent une recherche.
+ * La règle tient en une phrase : **on prolonge tant que ça correspond, sinon on recommence à
+ * la dernière lettre.**
+ *
+ * Elle règle deux défauts que la première version avait, et que jouer la QA a fait sortir.
+ * Retaper la même lettre ne parcourait pas : « hh » ne correspond à rien, donc la seconde des
+ * deux familles « Houellebecq » du corpus était inatteignable au clavier. Et taper une lettre
+ * d'un autre mot ne faisait **rien du tout** : « h » puis « m » cherchait « hm », ne trouvait
+ * rien, et laissait le focus sur Houellebecq — l'appui semblait perdu.
+ *
+ * Les deux passent maintenant par le même repli. « hh » ne correspond pas → on repart de
+ * « h » → et comme le mot est d'une seule lettre, on parcourt et on boucle. « hm » ne
+ * correspond pas → on repart de « m » → on change de destination. Tandis que « mo », qui
+ * prolonge bien « m », reste une recherche : sans cela, atteindre le dernier des neuf
+ * documents en « r » demanderait neuf appuis (mesuré sur le corpus de travail).
  */
 import { clampAnchoredMenu } from "../../../shared/anchorMenu.ts";
 
@@ -231,26 +240,36 @@ export function enhanceSelect(sel: HTMLSelectElement, opts: SelectMenuOptions = 
   function versFrappe(e: KeyboardEvent): boolean {
     if (e.key.length !== 1 || e.ctrlKey || e.altKey || e.metaKey) return false;
     const maintenant = Date.now();
-    frappe = maintenant - frappeAt > FRAPPE_MS ? e.key : frappe + e.key;
+    const expire = maintenant - frappeAt > FRAPPE_MS;
     frappeAt = maintenant;
 
-    // Une seule lettre, frappée une ou plusieurs fois : on PARCOURT les entrées qui
-    // commencent par elle, comme le fait un `<select>` natif. Sans cela, un corpus qui
-    // porte deux familles « Houellebecq » n'en laisse atteindre qu'une : la première.
-    // Chercher « hh » ne mène nulle part, et la seconde devient inatteignable au clavier.
-    const uneLettre = /^(.)\1*$/.test(frappe);
-    const cible = pourFrappe(uneLettre ? frappe[0] : frappe);
     const bs = boutons();
-    const commence = (b: HTMLButtonElement) => pourFrappe(b.textContent ?? "").startsWith(cible);
-    // Repli : ce qu'on cherche peut être au milieu du nom d'un fichier.
-    const contient = (b: HTMLButtonElement) => pourFrappe(b.textContent ?? "").includes(cible);
-    const candidats = bs.some(commence) ? bs.filter(commence) : bs.filter(contient);
+    const cherche = (motif: string): HTMLButtonElement[] => {
+      const cible = pourFrappe(motif);
+      const debut = bs.filter((b) => pourFrappe(b.textContent ?? "").startsWith(cible));
+      // Repli : ce qu'on cherche peut être au milieu du nom d'un fichier.
+      return debut.length > 0 ? debut : bs.filter((b) => pourFrappe(b.textContent ?? "").includes(cible));
+    };
+
+    let mot = expire ? e.key : frappe + e.key;
+    let candidats = cherche(mot);
+    // Une lettre qui ne prolonge rien n'est pas une faute de frappe, c'est un changement de
+    // destination : « h » puis « m » cherchait « hm », ne trouvait rien, et ne faisait RIEN —
+    // le focus restait sur Houellebecq. On recommence à cette lettre-là.
+    if (candidats.length === 0) {
+      mot = e.key;
+      candidats = cherche(mot);
+    }
+    frappe = mot;
     if (candidats.length === 0) return true;
 
+    // Une lettre seule, répétée ou non, PARCOURT les entrées et boucle — comme le fait une
+    // liste native. La répétition passe d'ailleurs par la règle ci-dessus : « hh » ne
+    // correspond à rien, donc on retombe sur « h », et le tour suivant est le bon.
     let trouve = candidats[0];
-    if (uneLettre) {
-      // `indexOf` rend -1 quand le focus n'est pas encore sur une entrée qui correspond :
-      // le tour suivant est alors la première, ce qui est exactement le premier appui.
+    if (/^(.)\1*$/.test(mot)) {
+      // `indexOf` rend -1 quand le focus n'est pas sur une entrée qui correspond : le tour
+      // suivant est alors la première, ce qui est exactement le premier appui.
       const rang = candidats.indexOf(doc.activeElement as HTMLButtonElement);
       trouve = candidats[(rang + 1) % candidats.length];
     }

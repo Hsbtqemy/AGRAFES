@@ -65,7 +65,8 @@ vérifié n'a pas changé.
 - [x] La liste des 20 familles s'ouvre vers le bas et défile, fenêtre placée bas sur l'écran court
 - [x] Taper `h` mène à « Houellebecq » — vu le 4 septembre, quand le libellé s'ouvrait encore sur un identifiant que la frappe devait sauter. Il n'y en a plus
 - [ ] **Retaper `h` passe à la famille suivante**, et boucle. Le corpus en porte deux, « Houellebecq-Carte_FR.docx » et « Houellebecq-Plateforme_FR.docx » : la seconde n'était atteignable par aucune frappe
-- [ ] Taper `m` puis `o` reste une **recherche** et ne parcourt pas — « mo » mène à Modiano
+- [ ] Taper `m` puis `o` reste une **recherche** — « mo » prolonge « m », donc on cherche le mot au lieu de sauter aux « o »
+- [ ] Taper `h` puis `m` **change de destination** et mène à Modiano. C'est ce qui ne faisait rien du tout jusqu'au 4 septembre : « hm » ne correspondait à aucune entrée, et l'appui semblait perdu
 - [x] Flèches haut/bas, Début/Fin, Échap qui referme et rend le focus au déclencheur
 - [x] Le déclencheur ne change pas de largeur d'une famille à l'autre
 
