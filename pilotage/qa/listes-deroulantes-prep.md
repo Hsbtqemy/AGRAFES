@@ -68,17 +68,18 @@ vérifié n'a pas changé.
 
 - [x] La liste des 20 familles s'ouvre vers le bas et défile, fenêtre placée bas sur l'écran court
 - [x] Taper `h` mène à « Houellebecq » — vu le 4 septembre, quand le libellé s'ouvrait encore sur un identifiant que la frappe devait sauter. Il n'y en a plus
-- [ ] **Retaper `h` passe à la famille suivante**, et boucle. Le corpus en porte deux, « Houellebecq-Carte_FR.docx » et « Houellebecq-Plateforme_FR.docx » : la seconde n'était atteignable par aucune frappe
-- [ ] Taper `h` puis `l` puis `l` **avance dans les L** — et ne revient pas sur Houellebecq, qui contient « ll » au milieu de son nom
-- [ ] Chaque appui ne regarde qu'une lettre : taper `m` puis `o` ne cherche pas « mo », le second appui ne trouve rien et ne bouge pas
+- [x] **Retaper `h` passe à la famille suivante**, et boucle. Le corpus en porte deux, « Houellebecq-Carte_FR.docx » et « Houellebecq-Plateforme_FR.docx » : la seconde n'était atteignable par aucune frappe
+- [x] Taper `h` puis `l` puis `l` **avance dans les L** — et ne revient pas sur Houellebecq, qui contient « ll » au milieu de son nom
+- [x] Chaque appui ne regarde qu'une lettre : taper `m` puis `o` ne cherche pas « mo », le second appui ne trouve rien et ne bouge pas
 - [x] Flèches haut/bas, Début/Fin, Échap qui referme et rend le focus au déclencheur
 - [x] Le déclencheur ne change pas de largeur d'une famille à l'autre
 
 ### L'espace Alignement — le panneau de révision
 
-- [ ] `Pivot` et `Cible` : 58 entrées chacun, ouverture vers le bas, aucune ne dépasse
-- [ ] `Par famille`, sous « Options d'alignement » : la liste s'ouvre sous le champ, qui remplit sa ligne
-- [ ] Depuis la matrice, le bouton 🔎 d'une cellule bascule sur la révision fine **et les deux déclencheurs affichent la paire** — c'est le premier des trois endroits où le code pose la valeur lui-même
+- [x] `Pivot` et `Cible` : 58 entrées chacun, ouverture vers le bas, aucune ne dépasse
+- [x] `Par famille`, sous « Options d'alignement » : la liste s'ouvre sous le champ, qui remplit sa ligne
+- [ ] Créer une famille ailleurs (Documents ou Import), revenir sur l'Alignement : elle est **dans la liste sans qu'on touche à ↻**. Jusqu'au 4 septembre il fallait cliquer le bouton, que ce panneau était le seul à exiger — la matrice, sur le même écran, se rechargeait déjà toute seule
+- [x] Depuis la matrice, le bouton 🔎 d'une cellule bascule sur la révision fine **et les deux déclencheurs affichent la paire** — c'est le premier des trois endroits où le code pose la valeur lui-même
 - [ ] Depuis l'écran Documents, « à réviser » sur une famille ouvre la revue famille **et le déclencheur de famille l'affiche**
 - [ ] Après un « Aligner famille », la paire chargée d'office s'affiche dans les deux déclencheurs
 

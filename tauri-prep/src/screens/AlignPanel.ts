@@ -228,6 +228,13 @@ export class AlignPanel {
    */
   onActivated(): void {
     void this._refreshSourceChangedBanner();
+    // Les familles aussi : elles se créent ailleurs (Documents, Import), et ce panneau ne
+    // les chargeait qu'à son `render()` — qui ne se rejoue pas, le DOM des sous-vues étant
+    // persistant. Une famille créée après l'ouverture de l'écran restait donc invisible
+    // jusqu'à un clic sur ↻, et le bouton finissait par ressembler à une étape obligatoire.
+    // `AlignMatrixView.onActivated`, sur le même écran et pour la même liste, rechargeait
+    // déjà : c'était une divergence entre deux voisines, pas un parti pris.
+    if (this._el) void this._loadFamilies(this._el);
   }
 
   /**

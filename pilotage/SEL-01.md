@@ -184,6 +184,18 @@ Ce que le retrait coûte, et qu'un test existant a fait remonter : deux familles
 compte aucune ; le cas est nommé dans `AlignMatrixView.selectFamily.test.ts`, qui construit
 deux « Corpus » et les départage par leur nombre de documents.
 
+**Un défaut trouvé en jouant la passe, et corrigé : le ↻ des familles.** Le panneau
+d'alignement ne chargeait ses familles qu'à son `render()` — qui ne se rejoue jamais, le DOM
+des sous-vues étant persistant (bascule par `display`). Une famille créée ailleurs après
+l'ouverture de l'écran restait donc invisible jusqu'à un clic sur ↻, et le bouton finissait
+par ressembler à une étape obligatoire ; la question posée en jouant la passe était exactement
+celle-là.
+
+Ce n'était pas un parti pris mais une divergence entre deux voisines : `AlignMatrixView`, sur
+le même écran et pour la même liste, rechargeait déjà dans son `onActivated`. Le panneau fait
+pareil désormais. `refreshDocs()` ne suffisait pas et donnait le change : il appelle
+`_populateFamilySelect`, qui repeint depuis le cache **sans redemander au moteur**.
+
 **Deux choses relevées en passe adverse, hors périmètre, non traitées.**
 
 `.prep-selmenu-native` — la règle qui masque le `<select>` — perdait contre

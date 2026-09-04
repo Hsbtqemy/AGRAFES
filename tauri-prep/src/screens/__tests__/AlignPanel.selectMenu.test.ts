@@ -205,6 +205,24 @@ describe("AlignPanel — les listes peuplées par la base (SEL-01)", () => {
     expect(affiche(el, "#align-target-sel")).toBe("The Book (en)");
   });
 
+  it("onActivated recharge les familles — sans quoi ↻ devient une étape obligatoire", async () => {
+    // Le DOM des sous-vues est persistant : `render()` ne se rejoue pas. Une famille créée
+    // ailleurs (Documents, Import) après l'ouverture de l'écran restait donc invisible ici
+    // jusqu'à un clic sur ↻. `AlignMatrixView`, sur le même écran, rechargeait déjà.
+    const familles: FamilyRecord[] = [];
+    const { panel, el } = mount(familles);
+    for (let i = 0; i < 3; i += 1) await laisserObserver();
+    expect(el.querySelector('#align-family-sel option[value="2"]'),
+      "aucune famille au départ").toBeNull();
+
+    familles.push(family()); // créée ailleurs, pendant que l'écran est ouvert
+    panel.onActivated();
+    for (let i = 0; i < 4; i += 1) await laisserObserver();
+
+    expect(el.querySelector('#align-family-sel option[value="2"]'),
+      "la famille doit apparaître sans qu'on touche à ↻").toBeTruthy();
+  });
+
   it("dispose() rend les trois <select> à leur état d'origine", () => {
     const { panel, el } = mount();
     panel.dispose();
