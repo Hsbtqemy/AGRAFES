@@ -44,7 +44,7 @@ bouger la barre autour de lui. Le libellé le plus long du corpus doit tenir san
 ### L'espace Alignement — la matrice
 
 - [ ] La liste des 20 familles s'ouvre vers le bas et défile, fenêtre placée bas sur l'écran court
-- [ ] Taper `h` mène à « Houellebecq » — l'identifiant `#367` en tête de libellé est ignoré par la frappe
+- [ ] Taper `h` mène à « Houellebecq » — l'identifiant en tête de libellé (`#366 …`) est ignoré par la frappe. Le corpus en porte deux, `#366 Houellebecq-Carte_FR.docx` et `#368 Houellebecq-Plateforme_FR.docx` : la frappe atteint le premier, retaper `h` ne passe pas au second (elle cherche un mot, pas un suivant)
 - [ ] Flèches haut/bas, Début/Fin, Échap qui referme et rend le focus au déclencheur
 - [ ] Le déclencheur ne change pas de largeur d'une famille à l'autre
 
@@ -58,18 +58,18 @@ bouger la barre autour de lui. Le libellé le plus long du corpus doit tenir san
 
 ### Exports
 
-- [ ] Export alignements (CSV/TSV) : `Pivot` et `Cible` s'ouvrent vers le bas
-- [ ] Export v2 : `Pivot (optionnel)` et `Cible (optionnel)`, sous « Options d'alignement »
-- [ ] Export bilingue : `Famille (optionnel)`, `Pivot (original)` et `Cible`
+- [ ] Carte « Export alignements » : `Pivot (optionnel)` et `Cible (optionnel)` s'ouvrent vers le bas
+- [ ] Carte du haut : `Pivot (optionnel)` et `Cible (optionnel)`. Ils ne s'affichent que pour le produit « Tableau segments alignés » — c'est le défaut de l'étape « Alignement », mais si la carte a changé de produit, il faut y revenir
+- [ ] Carte « Export bilingue / TMX » : `Famille (optionnel)`, `Pivot (original)` et `Cible (traduction)`
 - [ ] Choisir une famille dans l'export bilingue **remplit pivot et cible**, et les deux déclencheurs le montrent
-- [ ] Export matrice : `Famille`
+- [ ] Carte « Matrice multilingue » : `Famille (original moyeu)`
 - [ ] Les listes de documents à cocher (TEI, paquet, export v2) sont **inchangées** — ce sont des listes ouvertes, pas des menus : elles n'ont jamais eu de fenêtre système à retourner
 
 ### Métadonnées — la relation documentaire
 
 - [ ] `Document cible` : 57 entrées, le document courant en est absent
 - [ ] Changer de document dans l'arbre, puis rouvrir la liste : elle montre les documents à jour, et il n'y a toujours qu'**un** menu dans le panneau
-- [ ] `Type de relation`, à côté, est resté natif — trois entrées fixes
+- [ ] `Type de relation`, à côté, est resté natif — deux entrées fixes (`translation_of`, `excerpt_of`)
 
 ### Import — la boîte « Rattacher à une famille ? »
 

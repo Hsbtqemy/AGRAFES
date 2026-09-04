@@ -2223,8 +2223,15 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 /* Le <select> reste le modèle : il porte `value`, il émet `change`, il garde ses
    <option>. On le rend invisible sans le retirer — `display: none` le sortirait du
    calcul de mise en page de certains conteneurs, et un `<select>` masqué ainsi cesse
-   d'être trouvable par les tests qui l'interrogent. */
-.prep-selmenu-native {
+   d'être trouvable par les tests qui l'interrogent.
+
+   Le sélecteur descendant n'est pas décoratif : posée à plat, cette règle (0,1,0) PERD
+   contre `.prep-actions-screen select` (0,1,1), et le `<select>` « masqué » gardait alors
+   sa largeur, son padding et sa bordure — mesuré 320×12px au lieu de 1×1. Sans conséquence
+   visible (il est en `absolute`, opacité nulle, hors du pointeur), mais la règle ne faisait
+   pas ce qu'elle annonçait, et seulement dans les écrans qui ont une règle générique
+   `select` : cinquième occurrence du motif de spécificité. */
+.prep-selmenu .prep-selmenu-native {
   position: absolute; width: 1px; height: 1px;
   opacity: 0; pointer-events: none; margin: 0; padding: 0; border: 0;
 }

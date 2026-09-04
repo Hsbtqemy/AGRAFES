@@ -10,6 +10,35 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { ExportsScreen } from "../ExportsScreen.ts";
+import type { DocumentRecord, FamilyRecord } from "../../lib/sidecarClient.ts";
+
+const DOCS = [
+  { doc_id: 1, title: "Le Livre", language: "fr" },
+  { doc_id: 2, title: "The Book", language: "en" },
+] as unknown as DocumentRecord[];
+
+const FAMILLES = [{
+  family_id: 1,
+  parent: { doc_id: 1, title: "Le Livre", language: "fr" },
+  children: [{ doc_id: 2, doc: { doc_id: 2, title: "The Book", language: "en" } }],
+  stats: { total_docs: 2 },
+}] as unknown as FamilyRecord[];
+
+/** Remplit les listes depuis la base, comme le fait `_refreshDocs` une fois connecté. */
+function peupler(screen: ExportsScreen): void {
+  const s = screen as unknown as {
+    _docs: DocumentRecord[]; _families: FamilyRecord[]; _renderDocOptions: () => void;
+  };
+  s._docs = DOCS;
+  s._families = FAMILLES;
+  s._renderDocOptions();
+}
+
+/** Le texte que le déclencheur d'un `<select>` habillé affiche à l'écran. */
+function affiche(el: HTMLElement, id: string): string {
+  return el.querySelector(id)?.closest(".prep-selmenu")
+    ?.querySelector(".prep-selmenu-text")?.textContent ?? "";
+}
 
 /** Les huit listes peuplées par la base, et la largeur attendue de leur habillage. */
 const HABILLES: Array<[string, string]> = [
@@ -57,6 +86,30 @@ describe("ExportsScreen — les listes peuplées par la base (SEL-01)", () => {
       expect(sel, id).toBeTruthy();
       expect(sel!.closest(".prep-selmenu"), `${id} devrait rester natif`).toBeNull();
     }
+  });
+
+  it("le préremplissage venu du workflow repeint les deux déclencheurs", () => {
+    const { screen, el } = monter();
+    peupler(screen);
+    expect(affiche(el, "#v2-align-pivot")).toBe("— tous —");
+    screen.applyWorkflowPrefill({ pivotDocId: 1, targetDocId: 2 });
+    // `value` est une propriété : rien ne l'observe. Sans repeinture, les deux déclencheurs
+    // afficheraient encore « — tous — » pendant que l'export part sur la paire 1↔2.
+    expect(el.querySelector<HTMLSelectElement>("#v2-align-pivot")!.value).toBe("1");
+    expect(affiche(el, "#v2-align-pivot")).toBe("#1 Le Livre");
+    expect(affiche(el, "#v2-align-target")).toBe("#2 The Book");
+  });
+
+  it("choisir une famille en export bilingue repeint pivot et cible", () => {
+    const { screen, el } = monter();
+    peupler(screen);
+    const fam = el.querySelector<HTMLSelectElement>("#bil-family-sel")!;
+    fam.value = "1";
+    fam.dispatchEvent(new Event("change", { bubbles: true }));
+    // L'écran choisit lui-même le pivot (le parent) et la cible (le premier enfant).
+    expect(el.querySelector<HTMLSelectElement>("#bil-pivot-sel")!.value).toBe("1");
+    expect(affiche(el, "#bil-pivot-sel")).toBe("#1 Le Livre (fr)");
+    expect(affiche(el, "#bil-target-sel")).toBe("#2 The Book (en)");
   });
 
   it("le <select> reste le modèle, et dispose() rend l'écran à son état d'origine", () => {

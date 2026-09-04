@@ -169,6 +169,23 @@ CHR-01, avec sa garde `ui/__tests__/actionsScreenOverrides.test.ts`. Ce n'est pa
 problème, mais les deux se sont manifestés sur le même écran et à la même heure : ne pas les
 confondre en relisant l'historique.
 
+**Deux choses relevées en passe adverse, hors périmètre, non traitées.**
+
+`.prep-selmenu-native` — la règle qui masque le `<select>` — perdait contre
+`.prep-actions-screen select` (0,1,0 contre 0,1,1) : le contrôle « masqué » gardait sa
+largeur, son padding et sa bordure, mesuré **320×12px au lieu de 1×1**. Sans conséquence
+visible, puisqu'il est en `absolute`, d'opacité nulle et hors du pointeur — mais la règle ne
+faisait pas ce qu'elle annonçait, et seulement dans les écrans qui ont une règle générique
+`select`. **Cinquième occurrence du motif de spécificité**, corrigée d'un sélecteur
+descendant. Cinq fois le même geste : une règle générique d'écran qui écrase la classe d'un
+composant. Ce n'est plus une coïncidence, c'est une propriété de `app.css`.
+
+`ExportsScreen.dispose()` et `MetadataScreen.dispose()` **ne sont appelés par personne** :
+`app.dispose()` ne démonte que `_actions`. C'est antérieur à ce chantier et sans rapport avec
+lui — mais ce qui fuit alors n'est pas l'habillage (le DOM détaché part au ramasse-miettes),
+c'est le `setTimeout` de sondage d'Exports, qui survit au démontage en tenant l'écran entier.
+À traiter ailleurs, avec sa propre vérification.
+
 Pas de champ `audit:` — et l'avertissement du vérificateur est ici attendu : aucun audit ne
 porte ce chantier. Sa source est l'usage, rapporté le 4 septembre 2026 (« sur l'écran
 d'ordinateur ça monte et dépasse »), puis l'inventaire des ~50 `<select>` de prep et la mesure
