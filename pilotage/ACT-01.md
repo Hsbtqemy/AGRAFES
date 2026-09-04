@@ -5,14 +5,33 @@ statut: interrompu
 
 # ACT-01 — la page Actions : une liste de documents qui ne sert à rien
 
-**Arrêté sur** — 1er septembre 2026, tout livré et poussé, **trois passes de QA jouées
-en entier** : « action d'abord » 71/71, le tri-état 59/59, le double filtre 26/26. Le
-modèle tri-état va de bout en bout (contrat 1.6.88, migration 038) et le filtre trie de
-nouveau. Un seul item ouvert, né de la dernière passe : la pile « faits ».
+**Arrêté sur** — 4 septembre 2026 : le dernier item est fait, il ne reste qu'à le
+regarder. La quatrième pile « faits » existe, et « Tous » est devenu « À traiter ».
+
+Ce que le lot corrige, en une mesure : sur un corpus de 58 documents dont 11 validés,
+l'ancien bandeau annonçait `45 jamais commencés · 2 en cours · Tous (47)` — la somme des
+piles faisait **47**, pas 58. Le mot « Tous » ne comptait pas le corpus mais son
+complément, et l'écart grandissait à chaque coche. Il annonce désormais
+`À traiter (47) · 45 jamais commencés · 2 en cours · 11 faits`, où les trois derniers
+totalisent toujours 58 — invariant figé par un test.
+
+La pile « faits » ouvre au passage ce qu'aucune autre n'atteignait : un document validé
+sortait du filtre sans être isolable. On le retrouvait sous « Tout afficher », noyé parmi
+les 58, mais rien ne montrait « ce que j'ai validé » — or c'est ce qu'on relit pour
+décocher ce qu'on a coché trop vite. Sous ce filtre, la case de la ligne est déjà cochée
+et son clic RETIRE la validation : c'est le geste voulu, et il fonctionnait déjà
+(`_toggleStep` traite `done` depuis l'origine), il n'était simplement pas atteignable.
+
+**Le statut reste `interrompu` et non `clos`**, pour une raison qui n'est pas une
+formalité : ce lot a rendu faux huit points de `qa/actions-double-filtre.md`, une passe
+jouée 26/26 le 1er septembre. Ils décrivaient trois piles et le libellé « Tous », et l'un
+d'eux — « un document validé n'apparaît dans aucune des trois piles » — est devenu le
+contraire de ce qu'on veut. Ils sont réécrits et **décochés** : les laisser cochés
+revendiquerait une vérification qui n'a pas eu lieu. Clore demande de les rejouer.
 
 ## Reste
 
-- [ ] **Une quatrième pile, « faits », et le libellé « Tous » qui ment** — les deux vont
+- [x] **Une quatrième pile, « faits », et le libellé « Tous » qui ment** — les deux vont
       ensemble, relevés le 1er septembre. Aujourd'hui le segment « Tous (58) » ne compte
       pas le corpus : il vaut `jamais commencé + en cours`, donc tout ce qui n'est PAS
       validé. Sans coche les deux coïncident et le mot passe ; à la première coche il
@@ -232,7 +251,7 @@ nouveau. Un seul item ouvert, né de la dernière passe : la pile « faits ».
 
 ## QA
 
-- qa/actions-tri-etat.md — **écrite le 31 août, jamais jouée**, 53 items en huit zones.
+- qa/actions-tri-etat.md — écrite le 31 août, **jouée le 1er septembre, 59 sur 59**.
   Le modèle à trois états est couvert par 60 tests (29 moteur, 31 front) et par mesure en
   base, mais n'a été vu tourner par personne — l'état exact où « action d'abord » était
   avant sa passe, qui a trouvé deux vrais défauts. Points de départ mesurés : les cartes

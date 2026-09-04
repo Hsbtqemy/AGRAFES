@@ -906,7 +906,7 @@ describe("hub Actions — revenir au hub recharge l'état (ACT-01, tri-état)", 
  * feraient huit contrôles pour un raffinement, alors que les cartes servent à choisir
  * UNE capacité. Le bandeau n'apparaît qu'une fois la capacité choisie.
  */
-describe("hub Actions — les trois piles du bandeau (ACT-01)", () => {
+describe("hub Actions — les quatre piles du bandeau (ACT-01)", () => {
   const FRAIS = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
   // P1 rien, P2 commencé sans validation, P3 validé — un par état de la curation.
   const P1 = { doc_id: 1, title: "Rien", language: "fr", doc_role: null, unit_count: 1 };
@@ -956,13 +956,30 @@ describe("hub Actions — les trois piles du bandeau (ACT-01)", () => {
     await vi.waitFor(() => expect(boite.hidden).toBe(false));
   });
 
-  it("chaque pile annonce son compte, et « Tous » leur somme", async () => {
+  it("chaque pile annonce son compte, et « À traiter » ne compte plus le corpus", async () => {
+    // « Tous (2) » était faux : le segment valait `jamais commencé + en cours`, donc tout
+    // ce qui n'est PAS validé. Sur cette fixture, P3 est validé — le corpus fait 3, le
+    // segment en annonçait 2. Tant que rien n'était coché les deux coïncidaient et le mot
+    // passait ; c'est exactement ce que ce cas fige.
     const { root } = await monter();
     root.querySelector<HTMLButtonElement>("#act-hub-filter-curation")!.click();
     await vi.waitFor(() => expect(pile(root, "none").textContent).toBeTruthy());
     expect(pile(root, "none").textContent).toBe("1 jamais commencé");
     expect(pile(root, "started").textContent).toBe("1 en cours");
-    expect(pile(root, "any").textContent).toBe("Tous (2)");
+    expect(pile(root, "done").textContent).toBe("1 fait");
+    expect(pile(root, "any").textContent).toBe("À traiter (2)");
+  });
+
+  it("« faits » montre ce qu'aucune autre pile n'atteignait", async () => {
+    // Un document validé sortait du filtre sans être isolable : on le retrouvait en ôtant
+    // le filtre, parmi tous les autres, mais rien ne montrait « ce que j'ai validé » — or
+    // c'est ce qu'on relit pour décocher ce qu'on a coché trop vite.
+    const { root } = await monter();
+    root.querySelector<HTMLButtonElement>("#act-hub-filter-curation")!.click();
+    await vi.waitFor(() => expect(lignes(root)).toBe(2));
+    pile(root, "done").click();
+    await vi.waitFor(() => expect(lignes(root)).toBe(1));
+    expect(root.querySelector("#act-doc-list tbody tr")!.getAttribute("data-doc-id")).toBe("3");
   });
 
   it("« en cours » resserre la liste sur ce qui est commencé sans être validé", async () => {

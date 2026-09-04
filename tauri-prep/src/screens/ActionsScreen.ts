@@ -447,16 +447,21 @@ export class ActionsScreen {
     const piles = find<HTMLElement>("#act-hub-filter-piles");
     if (piles) piles.hidden = this._hubFilter === null;
     if (this._hubFilter !== null) {
-      const { none, started } = counts[this._hubFilter];
-      const taille: Record<HubPile, number> = { none, started, any: none + started };
+      const { none, started, done } = counts[this._hubFilter];
+      const taille: Record<HubPile, number> = { none, started, done, any: none + started };
       // Une pile qu'on vient de vider ne peut pas rester sélectionnée : la liste
       // serait vide sous un segment désactivé, sans rien qui explique pourquoi.
       // C'est le cas normal de sortie — on coche le dernier « en cours » de la pile.
       if (this._hubPile !== "any" && taille[this._hubPile] === 0) this._hubPile = "any";
+      // « Tous » était faux : le segment ne comptait pas le corpus mais ce qui n'est pas
+      // validé. Tant que rien n'était coché les deux coïncidaient et le mot passait ; à la
+      // première coche il aurait annoncé « Tous (45) » sur 58 documents. Il dit maintenant
+      // ce qu'il fait, et « faits » rend atteignable ce qu'il exclut.
       const dit: Record<HubPile, string> = {
         none: `${none} jamais commencé${none > 1 ? "s" : ""}`,
         started: `${started} en cours`,
-        any: `Tous (${none + started})`,
+        done: `${done} fait${done > 1 ? "s" : ""}`,
+        any: `À traiter (${none + started})`,
       };
       piles?.querySelectorAll<HTMLButtonElement>(".prep-acts-hub-pile").forEach((btn) => {
         const pile = btn.dataset.pile as HubPile;

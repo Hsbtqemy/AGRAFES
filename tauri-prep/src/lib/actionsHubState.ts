@@ -104,7 +104,19 @@ export function stepMark(doc: DocumentRecord, step: HubStep): StepMark | null {
  * n'est pas de découper mais de VÉRIFIER le découpage, et cette progression-là ne passe
  * que par les coches.
  */
-export type HubPile = "any" | "none" | "started";
+/**
+ * `any` est « à traiter » : ce qui n'est pas validé. Il ne s'est jamais appelé « tous »
+ * qu'en surface, et le mot ne passait que tant que rien n'était coché.
+ *
+ * `done` est son complément. Il existe pour une raison précise : un document validé
+ * sortait du filtre sans être isolable. On pouvait le retrouver en ôtant le filtre, parmi
+ * les 58, mais rien ne montrait « ce que j'ai validé » — or c'est ce qu'on relit, ne
+ * serait-ce que pour décocher ce qu'on a coché trop vite.
+ *
+ * `none`, `started` et `done` partitionnent le corpus : leur somme est le nombre de
+ * documents, toujours. `any` vaut `none + started`.
+ */
+export type HubPile = "any" | "none" | "started" | "done";
 
 export function docsForStep(
   docs: DocumentRecord[], step: HubStep | null, pile: HubPile = "any",
@@ -112,6 +124,8 @@ export function docsForStep(
   if (step === null) return docs.slice();
   return docs.filter((d) => {
     const state = stepState(d, step);
+    // La pile « faits » est la seule à montrer les validés — et elle ne montre qu'eux.
+    if (pile === "done") return state === "done";
     if (state === "done") return false;
     return pile === "any" || state === pile;
   });
@@ -123,6 +137,8 @@ export interface StepCount {
   none: number;
   /** Une trace, aucune validation. */
   started: number;
+  /** Validé par l'utilisateur, et rien ne l'a démenti depuis. */
+  done: number;
 }
 
 /**
@@ -138,16 +154,16 @@ export interface StepCount {
  */
 export function stepCounts(docs: DocumentRecord[]): Record<HubStep, StepCount> {
   const out: Record<HubStep, StepCount> = {
-    curation:     { none: 0, started: 0 },
-    segmentation: { none: 0, started: 0 },
-    alignement:   { none: 0, started: 0 },
-    annotation:   { none: 0, started: 0 },
+    curation:     { none: 0, started: 0, done: 0 },
+    segmentation: { none: 0, started: 0, done: 0 },
+    alignement:   { none: 0, started: 0, done: 0 },
+    annotation:   { none: 0, started: 0, done: 0 },
   };
   for (const doc of docs) {
     for (const step of HUB_STEPS) {
-      const state = stepState(doc, step);
-      if (state === "none") out[step].none += 1;
-      else if (state === "started") out[step].started += 1;
+      // Les trois compteurs partitionnent : `stepState` rend exactement une valeur par
+      // document et par capacité, donc none + started + done = docs.length, toujours.
+      out[step][stepState(doc, step)] += 1;
     }
   }
   return out;

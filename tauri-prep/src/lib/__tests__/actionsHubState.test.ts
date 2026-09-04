@@ -142,17 +142,20 @@ describe("stepCounts", () => {
       doc({ doc_id: 3, unit_count: 900, curated_at: "2026-01-01T00:00:00Z" }),
     ]);
     expect(counts).toEqual({
-      curation:     { none: 2, started: 1 },
-      segmentation: { none: 1, started: 2 },
-      alignement:   { none: 2, started: 1 },
-      annotation:   { none: 2, started: 1 },
+      curation:     { none: 2, started: 1, done: 0 },
+      segmentation: { none: 1, started: 2, done: 0 },
+      alignement:   { none: 2, started: 1, done: 0 },
+      annotation:   { none: 2, started: 1, done: 0 },
     });
   });
 
-  it("une coche ne compte NI dans l'un NI dans l'autre", () => {
+  it("une coche compte dans « faits », et dans aucun des deux autres", () => {
+    // Elle ne comptait nulle part avant que la pile « faits » existe : un document validé
+    // sortait des compteurs comme il sortait du filtre, donc « À traiter » et le corpus se
+    // mettaient à diverger sans que rien ne le dise.
     const marque = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
     const counts = stepCounts([doc({ unit_count: 900, step_status: { segmentation: marque } })]);
-    expect(counts.segmentation).toEqual({ none: 0, started: 0 });
+    expect(counts.segmentation).toEqual({ none: 0, started: 0, done: 1 });
   });
 
   it("un corpus neuf : rien de commencé partout, SAUF la segmentation", () => {
@@ -162,15 +165,55 @@ describe("stepCounts", () => {
     // mensonge exact que le modèle à trois états existe pour tuer.
     const neuf = [1, 2, 3].map((n) => doc({ doc_id: n, unit_count: 20 }));
     const counts = stepCounts(neuf);
-    expect(counts.segmentation).toEqual({ none: 0, started: 3 });
-    expect(counts.curation).toEqual({ none: 3, started: 0 });
-    expect(counts.alignement).toEqual({ none: 3, started: 0 });
-    expect(counts.annotation).toEqual({ none: 3, started: 0 });
+    expect(counts.segmentation).toEqual({ none: 0, started: 3, done: 0 });
+    expect(counts.curation).toEqual({ none: 3, started: 0, done: 0 });
+    expect(counts.alignement).toEqual({ none: 3, started: 0, done: 0 });
+    expect(counts.annotation).toEqual({ none: 3, started: 0, done: 0 });
   });
 
   it("rend zéro partout sur un corpus vide, sans clé manquante", () => {
     const counts = stepCounts([]);
-    for (const step of HUB_STEPS) expect(counts[step]).toEqual({ none: 0, started: 0 });
+    for (const step of HUB_STEPS) expect(counts[step]).toEqual({ none: 0, started: 0, done: 0 });
+  });
+
+  it("les trois compteurs partitionnent le corpus, quoi qu'il contienne", () => {
+    // C'est l'invariant qui rend le bandeau lisible : « À traiter » est le complément de
+    // « faits », et les trois derniers segments totalisent toujours le nombre de documents.
+    // Sans lui, le libellé se remet à mentir dès qu'une case est cochée.
+    const marque = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
+    const melange = [
+      doc({ doc_id: 1, unit_count: 1 }),
+      doc({ doc_id: 2, unit_count: 900, curated_at: "2026-01-01T00:00:00Z" }),
+      doc({ doc_id: 3, unit_count: 900, step_status: { curation: marque } }),
+    ];
+    const counts = stepCounts(melange);
+    for (const step of HUB_STEPS) {
+      const { none, started, done } = counts[step];
+      expect(none + started + done, `partition rompue sur ${step}`).toBe(melange.length);
+    }
+    expect(counts.curation).toEqual({ none: 1, started: 1, done: 1 });
+  });
+});
+
+describe("docsForStep — la pile « faits »", () => {
+  const marque = { validated_at: "2026-08-31T10:00:00Z", stale: false, basis: "history" as const };
+  const melange = [
+    doc({ doc_id: 1, unit_count: 1 }),
+    doc({ doc_id: 2, unit_count: 900, curated_at: "2026-01-01T00:00:00Z" }),
+    doc({ doc_id: 3, unit_count: 900, step_status: { curation: marque } }),
+  ];
+
+  it("ne montre QUE les validés — c'est ce qu'aucune pile ne savait faire", () => {
+    expect(docsForStep(melange, "curation", "done").map((d) => d.doc_id)).toEqual([3]);
+  });
+
+  it("« à traiter » les exclut toujours, et vaut none + started", () => {
+    expect(docsForStep(melange, "curation", "any").map((d) => d.doc_id)).toEqual([1, 2]);
+  });
+
+  it("les deux piles fines ignorent les validés", () => {
+    expect(docsForStep(melange, "curation", "none").map((d) => d.doc_id)).toEqual([1]);
+    expect(docsForStep(melange, "curation", "started").map((d) => d.doc_id)).toEqual([2]);
   });
 });
 

@@ -63,20 +63,26 @@ La pile tombe à zéro et le bandeau doit se replier sur « Tous ».
 ### Le bandeau
 
 - [x] Sans filtre, aucune pile n'est visible — le bandeau ne montre que le nombre de documents
-- [x] Choisir une capacité fait apparaître les trois piles
-- [x] « Tous » est sélectionné d'emblée : choisir une capacité ne présume d'aucune pile
-- [x] Les trois libellés se lisent d'un coup d'œil et disent leur compte
-- [x] Le bandeau reste sur une seule ligne, y compris avec le libellé de capacité le plus long (« Segmentation »)
+- [ ] Choisir une capacité fait apparaître les **quatre** piles
+- [ ] « À traiter » est sélectionné d'emblée : choisir une capacité ne présume d'aucune pile
+- [ ] Les quatre libellés se lisent d'un coup d'œil et disent leur compte
+- [ ] Le bandeau reste sur une seule ligne — exigence plus dure depuis qu'il porte quatre piles, et à vérifier avec le libellé de capacité le plus long (« Segmentation »)
 - [x] Les piles s'atteignent au clavier et annoncent laquelle est active
+
+**Huit points ont été décochés le 4 septembre 2026**, à la clôture d'ACT-01 : le bandeau
+a gagné une quatrième pile (« faits ») et « Tous » est devenu « À traiter », parce qu'il ne
+comptait pas le corpus mais ce qui n'est pas validé — un mensonge invisible tant qu'aucune
+case n'est cochée. Ces points avaient été joués contre l'ancien comportement ; leur attendu
+a changé, donc ils redemandent une lecture. Le reste de la passe est inchangé.
 
 ### Ce que chaque pile contient
 
-- [x] Curation affiche `56 jamais commencés · 2 en cours · Tous (58)`
-- [x] Alignement affiche `37 · 21 · 58`, Annotation `50 · 8 · 58`
+- [ ] Curation affiche `À traiter (58) · 56 jamais commencés · 2 en cours · 0 fait`, dans cet ordre — « À traiter » en tête parce que c'est le défaut
+- [ ] Sur les quatre capacités, **les trois piles fines totalisent 58** — c'est l'invariant qui rend le bandeau lisible, et ce que « Tous » rompait dès la première coche
 - [x] « en cours » sur Curation donne exactement 2 lignes — `#364` et `#416`, les deux seuls documents sur lesquels une curation a été **appliquée au moins une fois** ; « en cours » ne dit pas qu'ils sont propres, il dit que l'opération a tourné et que personne n'a conclu
 - [x] « jamais commencés » sur Alignement donne 37 lignes, toutes sans lien
-- [x] Le compte annoncé par la pile et le nombre de lignes affichées coïncident, sur les quatre capacités
-- [x] Un document validé n'apparaît dans aucune des trois piles
+- [ ] Le compte annoncé par la pile et le nombre de lignes affichées coïncident, sur les quatre capacités **et sur les quatre piles**
+- [ ] Un document validé n'apparaît que dans « faits », et « À traiter » l'exclut — avant ce lot il ne se retrouvait que sous « Tout afficher », noyé parmi les 58
 - [x] Une coche **périmée** remet son document dans « en cours », jamais dans « jamais commencé »
 
 ### Les cas de sortie
