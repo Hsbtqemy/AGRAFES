@@ -183,6 +183,33 @@ describe("la liste ne se retourne pas, et le clavier la mène", () => {
     expect((document.activeElement as HTMLElement).textContent)
       .toBe("#373 Modiano-Rue_FR.docx (4 docs)");
   });
+
+  it("retaper la même lettre parcourt les entrées, et boucle", () => {
+    // Ce que fait un `<select>` natif, et que le composant ne faisait pas : chercher « hh »
+    // ne mène nulle part, donc la SECONDE famille Houellebecq était inatteignable au clavier.
+    declencheur().click();
+    const frapper = () =>
+      liste().dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+    frapper();
+    expect((document.activeElement as HTMLElement).textContent)
+      .toBe("#366 Houellebecq-Carte_FR.docx (2 docs)");
+    frapper();
+    expect((document.activeElement as HTMLElement).textContent)
+      .toBe("#368 Houellebecq-Plateforme_FR.docx (2 docs)");
+    frapper();
+    expect((document.activeElement as HTMLElement).textContent,
+      "après la dernière, on revient à la première").toBe("#366 Houellebecq-Carte_FR.docx (2 docs)");
+  });
+
+  it("deux lettres différentes restent une recherche, pas un parcours", () => {
+    declencheur().click();
+    liste().dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
+    liste().dispatchEvent(new KeyboardEvent("keydown", { key: "o", bubbles: true }));
+    // « mo » ne correspond à rien au début d'un libellé : le repli « contient » s'applique,
+    // et il ne doit pas se mettre à parcourir sous prétexte qu'on a frappé deux fois.
+    expect((document.activeElement as HTMLElement).textContent)
+      .toBe("#373 Modiano-Rue_FR.docx (4 docs)");
+  });
 });
 
 describe("poser et retirer l'habillage", () => {

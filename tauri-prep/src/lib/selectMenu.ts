@@ -45,8 +45,13 @@
  * Un `<select>` natif saute à l'entrée dont le texte **commence** par ce qu'on tape. Or nos
  * libellés commencent par un identifiant : « #368 Houellebecq-Plateforme_FR.docx ». Taper
  * « h » n'y mène donc à rien, et il faudrait taper « #368 » — c'est-à-dire connaître déjà la
- * réponse. On retire ce préfixe avant de comparer : « h » mène à Houellebecq. Le natif ne
- * perd rien ici, il n'avait rien à offrir.
+ * réponse. On retire ce préfixe avant de comparer : « h » mène à Houellebecq.
+ *
+ * Mais le natif avait bel et bien quelque chose à offrir, et la première version l'avait
+ * perdu : **retaper la même lettre parcourt** les entrées qui commencent par elle. Sans cela,
+ * un corpus qui porte deux familles « Houellebecq » n'en laisse atteindre qu'une — chercher
+ * « hh » ne mène nulle part, et la seconde devient inatteignable au clavier. Une lettre seule,
+ * répétée ou non, parcourt et boucle ; deux lettres différentes restent une recherche.
  */
 import { clampAnchoredMenu } from "../../../shared/anchorMenu.ts";
 
@@ -226,12 +231,28 @@ export function enhanceSelect(sel: HTMLSelectElement, opts: SelectMenuOptions = 
     const maintenant = Date.now();
     frappe = maintenant - frappeAt > FRAPPE_MS ? e.key : frappe + e.key;
     frappeAt = maintenant;
-    const cible = pourFrappe(frappe);
+
+    // Une seule lettre, frappée une ou plusieurs fois : on PARCOURT les entrées qui
+    // commencent par elle, comme le fait un `<select>` natif. Sans cela, un corpus qui
+    // porte deux familles « Houellebecq » n'en laisse atteindre qu'une : la première.
+    // Chercher « hh » ne mène nulle part, et la seconde devient inatteignable au clavier.
+    const uneLettre = /^(.)\1*$/.test(frappe);
+    const cible = pourFrappe(uneLettre ? frappe[0] : frappe);
     const bs = boutons();
-    const trouve = bs.find((b) => pourFrappe(b.textContent ?? "").startsWith(cible))
-      // Repli : ce qu'on cherche peut être au milieu du nom d'un fichier.
-      ?? bs.find((b) => pourFrappe(b.textContent ?? "").includes(cible));
-    trouve?.focus();
+    const commence = (b: HTMLButtonElement) => pourFrappe(b.textContent ?? "").startsWith(cible);
+    // Repli : ce qu'on cherche peut être au milieu du nom d'un fichier.
+    const contient = (b: HTMLButtonElement) => pourFrappe(b.textContent ?? "").includes(cible);
+    const candidats = bs.some(commence) ? bs.filter(commence) : bs.filter(contient);
+    if (candidats.length === 0) return true;
+
+    let trouve = candidats[0];
+    if (uneLettre) {
+      // `indexOf` rend -1 quand le focus n'est pas encore sur une entrée qui correspond :
+      // le tour suivant est alors la première, ce qui est exactement le premier appui.
+      const rang = candidats.indexOf(doc.activeElement as HTMLButtonElement);
+      trouve = candidats[(rang + 1) % candidats.length];
+    }
+    trouve.focus();
     return true;
   }
 

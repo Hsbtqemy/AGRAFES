@@ -41,12 +41,22 @@ familles. Elles sont **fixes** exprès — un menu qui se redimensionne à chaqu
 bouger la barre autour de lui. Le libellé le plus long du corpus doit tenir sans être coupé
 (`#428 [1] hi rend=…​.txt (fr)`, 49 caractères).
 
+**Un point a changé sous la passe, en cours de lecture.** L'item de frappe disait, le
+4 septembre au matin, que retaper la même lettre ne passait pas à l'entrée suivante. C'était
+exact, et c'était une capacité perdue par rapport à la liste native qu'on remplaçait : sur les
+deux familles « Houellebecq » du corpus, la seconde n'était atteignable par aucune frappe. Le
+composant a été corrigé le jour même. L'item joué reste coché — il portait aussi le fait que
+l'identifiant est ignoré par la frappe, et cela a bien été vu — mais le parcours, que personne
+n'a encore vu tourner, est un item neuf et **décoché**.
+
 ### L'espace Alignement — la matrice
 
-- [ ] La liste des 20 familles s'ouvre vers le bas et défile, fenêtre placée bas sur l'écran court
-- [ ] Taper `h` mène à « Houellebecq » — l'identifiant en tête de libellé (`#366 …`) est ignoré par la frappe. Le corpus en porte deux, `#366 Houellebecq-Carte_FR.docx` et `#368 Houellebecq-Plateforme_FR.docx` : la frappe atteint le premier, retaper `h` ne passe pas au second (elle cherche un mot, pas un suivant)
-- [ ] Flèches haut/bas, Début/Fin, Échap qui referme et rend le focus au déclencheur
-- [ ] Le déclencheur ne change pas de largeur d'une famille à l'autre
+- [x] La liste des 20 familles s'ouvre vers le bas et défile, fenêtre placée bas sur l'écran court
+- [x] Taper `h` mène à « Houellebecq » — l'identifiant en tête de libellé (`#366 …`) est ignoré par la frappe
+- [ ] **Retaper `h` passe à la famille suivante**, et boucle. Le corpus en porte deux, `#366 Houellebecq-Carte_FR.docx` et `#368 Houellebecq-Plateforme_FR.docx` : la seconde n'était atteignable par aucune frappe
+- [ ] Taper `m` puis `o` reste une **recherche** et ne parcourt pas — « mo » mène à Modiano
+- [x] Flèches haut/bas, Début/Fin, Échap qui referme et rend le focus au déclencheur
+- [x] Le déclencheur ne change pas de largeur d'une famille à l'autre
 
 ### L'espace Alignement — le panneau de révision
 
