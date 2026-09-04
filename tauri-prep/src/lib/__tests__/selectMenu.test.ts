@@ -14,7 +14,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { enhanceSelect } from "../selectMenu.ts";
 
-/** Les libellés réels de la matrice : ils commencent par un identifiant, ce qui compte. */
+/**
+ * Des libellés préfixés d'un identifiant. Prep n'en compose plus depuis le 4 septembre 2026
+ * — le préfixe a été retiré des listes — mais la comparaison doit continuer de l'ignorer :
+ * c'est ce filet que ces cas tiennent, et deux entrées « Houellebecq » y servent au parcours.
+ */
 const FAMILLES = [
   ["", "— choisir —"],
   ["366", "#366 Houellebecq-Carte_FR.docx (2 docs)"],

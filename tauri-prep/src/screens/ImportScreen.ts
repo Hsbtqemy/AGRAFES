@@ -1471,11 +1471,11 @@ export class ImportScreen {
 
     const hasCandidates = candidates.length > 0;
     const candidateOptions = candidates.map(d => {
-      const label = [d.title ?? `#${d.doc_id}`, d.language ? `[${d.language}]` : ""].filter(Boolean).join(" ");
+      const label = [d.title ?? `#${d.doc_id}`, d.language ? `(${d.language})` : ""].filter(Boolean).join(" ");
       return `<option value="${d.doc_id}">${_escHtml(label)}</option>`;
     }).join("");
     const candidateCheckboxes = candidates.map(d => {
-      const label = [d.title ?? `#${d.doc_id}`, d.language ? `[${d.language}]` : ""].filter(Boolean).join(" ");
+      const label = [d.title ?? `#${d.doc_id}`, d.language ? `(${d.language})` : ""].filter(Boolean).join(" ");
       return `<label class="family-dialog-child-row">
         <input type="checkbox" class="family-dialog-child-cb" value="${d.doc_id}" />
         <span class="family-dialog-child-label">${_escHtml(label)}</span>

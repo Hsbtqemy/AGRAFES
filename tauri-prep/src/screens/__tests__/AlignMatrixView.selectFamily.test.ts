@@ -112,11 +112,15 @@ describe("AlignMatrixView.selectAndLoadFamily (D-P9-2b)", () => {
     const labels = Array.from(el.querySelectorAll<HTMLOptionElement>("#matrix-family option"))
       .filter((o) => o.value) // skip the "— choisir —" placeholder (value="")
       .map((o) => o.textContent);
+    // Le libellé ne porte plus d'identifiant : l'ordre reste lisible par le nombre de
+    // documents, qui départage ici les deux « Corpus ». Deux familles de même titre ET de
+    // même taille seraient en revanche indiscernables à l'œil — le corpus de travail n'en
+    // compte aucune (20 familles, 0 titre en double), c'est une limite assumée du retrait.
     expect(labels).toEqual([
-      "#3 Balzac (2 docs)",
-      "#2 Corpus (4 docs)", // Corpus tie → lower family_id first
-      "#5 Corpus (1 docs)",
-      "#1 Molière (2 docs)",
+      "Balzac (2 docs)",
+      "Corpus (4 docs)", // Corpus tie → lower family_id first
+      "Corpus (1 docs)",
+      "Molière (2 docs)",
     ]);
   });
 

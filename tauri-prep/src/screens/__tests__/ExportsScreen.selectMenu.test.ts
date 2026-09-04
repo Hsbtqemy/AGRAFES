@@ -96,8 +96,8 @@ describe("ExportsScreen — les listes peuplées par la base (SEL-01)", () => {
     // `value` est une propriété : rien ne l'observe. Sans repeinture, les deux déclencheurs
     // afficheraient encore « — tous — » pendant que l'export part sur la paire 1↔2.
     expect(el.querySelector<HTMLSelectElement>("#v2-align-pivot")!.value).toBe("1");
-    expect(affiche(el, "#v2-align-pivot")).toBe("#1 Le Livre");
-    expect(affiche(el, "#v2-align-target")).toBe("#2 The Book");
+    expect(affiche(el, "#v2-align-pivot")).toBe("Le Livre (fr)");
+    expect(affiche(el, "#v2-align-target")).toBe("The Book (en)");
   });
 
   it("choisir une famille en export bilingue repeint pivot et cible", () => {
@@ -108,8 +108,8 @@ describe("ExportsScreen — les listes peuplées par la base (SEL-01)", () => {
     fam.dispatchEvent(new Event("change", { bubbles: true }));
     // L'écran choisit lui-même le pivot (le parent) et la cible (le premier enfant).
     expect(el.querySelector<HTMLSelectElement>("#bil-pivot-sel")!.value).toBe("1");
-    expect(affiche(el, "#bil-pivot-sel")).toBe("#1 Le Livre (fr)");
-    expect(affiche(el, "#bil-target-sel")).toBe("#2 The Book (en)");
+    expect(affiche(el, "#bil-pivot-sel")).toBe("Le Livre (fr)");
+    expect(affiche(el, "#bil-target-sel")).toBe("The Book (en)");
   });
 
   it("le <select> reste le modèle, et dispose() rend l'écran à son état d'origine", () => {

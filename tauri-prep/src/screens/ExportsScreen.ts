@@ -334,7 +334,7 @@ export class ExportsScreen {
     for (const d of this._docs) {
       const opt = document.createElement("option");
       opt.value = String(d.doc_id);
-      opt.textContent = `#${d.doc_id} ${d.title} (${d.language})`;
+      opt.textContent = `${d.title} (${d.language})`;
       this._docSelEl.appendChild(opt);
     }
 
@@ -344,7 +344,7 @@ export class ExportsScreen {
     for (const d of this._docs) {
       const opt = document.createElement("option");
       opt.value = String(d.doc_id);
-      opt.textContent = `#${d.doc_id} ${d.title} (${d.language})`;
+      opt.textContent = `${d.title} (${d.language})`;
       this._pkgDocSelEl.appendChild(opt);
     }
 
@@ -354,7 +354,7 @@ export class ExportsScreen {
     for (const d of this._docs) {
       const opt = document.createElement("option");
       opt.value = String(d.doc_id);
-      opt.textContent = `#${d.doc_id} ${d.title} (${d.language})`;
+      opt.textContent = `${d.title} (${d.language})`;
       this._v2DocSelEl.appendChild(opt);
     }
 
@@ -370,7 +370,7 @@ export class ExportsScreen {
     this._targetSelEl.innerHTML = "";
     this._targetSelEl.appendChild(emptyOpt());
     for (const d of this._docs) {
-      const label = `#${d.doc_id} ${d.title}`;
+      const label = `${d.title} (${d.language})`;
       const op = document.createElement("option");
       op.value = String(d.doc_id);
       op.textContent = label;
@@ -384,7 +384,7 @@ export class ExportsScreen {
     this._v2TargetEl.innerHTML = "";
     this._v2TargetEl.appendChild(emptyOpt());
     for (const d of this._docs) {
-      const label = `#${d.doc_id} ${d.title}`;
+      const label = `${d.title} (${d.language})`;
       const op = document.createElement("option");
       op.value = String(d.doc_id);
       op.textContent = label;
@@ -399,7 +399,7 @@ export class ExportsScreen {
       if (!f.parent) continue;
       const opt = document.createElement("option");
       opt.value = String(f.family_id);
-      opt.textContent = `#${f.family_id} ${f.parent.title} (${f.stats.total_docs} docs)`;
+      opt.textContent = `${f.parent.title} (${f.stats.total_docs} docs)`;
       this._bilFamilySelEl.appendChild(opt);
     }
 
@@ -409,7 +409,7 @@ export class ExportsScreen {
       if (!f.parent) continue;
       const opt = document.createElement("option");
       opt.value = String(f.family_id);
-      opt.textContent = `#${f.family_id} ${f.parent.title} (${f.stats.total_docs} docs)`;
+      opt.textContent = `${f.parent.title} (${f.stats.total_docs} docs)`;
       this._matrixFamilySelEl.appendChild(opt);
     }
     this._syncMatrixBtn();
@@ -426,7 +426,7 @@ export class ExportsScreen {
     this._bilTargetSelEl.innerHTML = "";
     this._bilTargetSelEl.appendChild(chooseOpt());
     for (const d of this._docs) {
-      const label = `#${d.doc_id} ${d.title} (${d.language})`;
+      const label = `${d.title} (${d.language})`;
       const op = document.createElement("option");
       op.value = String(d.doc_id);
       op.textContent = label;
@@ -612,7 +612,7 @@ export class ExportsScreen {
       } else {
         const titles = this._docs
           .filter((doc) => selectedIds.includes(doc.doc_id))
-          .map((doc) => `#${doc.doc_id} ${doc.title}`);
+          .map((doc) => doc.title);
         const compact = titles.slice(0, 2).join(" · ");
         const suffix = titles.length > 2 ? ` +${titles.length - 2}` : "";
         this._v2DocSummaryEl.textContent = `Portée actuelle: ${selectedIds.length} document(s) (${compact}${suffix}).`;

@@ -42,10 +42,12 @@
  *
  * ## La frappe au clavier, et pourquoi elle est meilleure ici
  *
- * Un `<select>` natif saute à l'entrée dont le texte **commence** par ce qu'on tape. Or nos
- * libellés commencent par un identifiant : « #368 Houellebecq-Plateforme_FR.docx ». Taper
- * « h » n'y mène donc à rien, et il faudrait taper « #368 » — c'est-à-dire connaître déjà la
- * réponse. On retire ce préfixe avant de comparer : « h » mène à Houellebecq.
+ * Un `<select>` natif saute à l'entrée dont le texte **commence** par ce qu'on tape. Les
+ * libellés de prep commençaient par un identifiant — « #368 Houellebecq-Plateforme_FR.docx »
+ * — ce qui rendait « h » inopérant : il aurait fallu taper « #368 », c'est-à-dire connaître
+ * déjà la réponse. Le préfixe a depuis été retiré des libellés eux-mêmes (il n'était affiché
+ * que par la moitié des listes et ne désambiguïsait rien), mais la comparaison continue de
+ * l'ignorer : c'est un filet, pour un libellé qui en porterait un ailleurs.
  *
  * Mais le natif avait bel et bien quelque chose à offrir, et la première version l'avait
  * perdu : **retaper la même lettre parcourt** les entrées qui commencent par elle. Sans cela,

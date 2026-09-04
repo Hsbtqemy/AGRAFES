@@ -169,6 +169,21 @@ CHR-01, avec sa garde `ui/__tests__/actionsScreenOverrides.test.ts`. Ce n'est pa
 problème, mais les deux se sont manifestés sur le même écran et à la même heure : ne pas les
 confondre en relisant l'historique.
 
+**L'identifiant retiré des libellés (décidé en jouant la passe).** Un document se nomme
+désormais `titre (langue)` et une famille `titre (n docs)`, sur les quinze listes. Le `#428`
+en tête n'était affiché que par **la moitié** d'entre elles — les cinq listes d'Exports et la
+famille de la matrice l'avaient, les deux sélecteurs de paire de l'Alignement, la famille du
+panneau et la cible d'une relation ne l'avaient pas : le même document portait deux noms selon
+l'écran. Il ne désambiguïsait rien (58 documents et 20 familles, **aucun titre en double**),
+la frappe le sautait exprès, et il n'est affiché nulle part ailleurs dans l'interface — ni
+colonne dans la table Actions, ni dans l'arbre des métadonnées, où il vit en `data-doc-id`.
+Les largeurs retombent de 320/400 à **280/300 px**.
+
+Ce que le retrait coûte, et qu'un test existant a fait remonter : deux familles de même titre
+**et** de même taille seraient désormais indiscernables à l'œil. Le corpus de travail n'en
+compte aucune ; le cas est nommé dans `AlignMatrixView.selectFamily.test.ts`, qui construit
+deux « Corpus » et les départage par leur nombre de documents.
+
 **Deux choses relevées en passe adverse, hors périmètre, non traitées.**
 
 `.prep-selmenu-native` — la règle qui masque le `<select>` — perdait contre

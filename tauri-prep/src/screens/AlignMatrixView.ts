@@ -413,7 +413,7 @@ export class AlignMatrixView {
     for (const f of this._families) {
       const opt = document.createElement("option");
       opt.value = String(f.family_id);
-      opt.textContent = `#${f.family_id} ${f.parent!.title} (${f.stats.total_docs} docs)`;
+      opt.textContent = `${f.parent!.title} (${f.stats.total_docs} docs)`;
       sel.appendChild(opt);
     }
     if (prev !== null && this._families.some((f) => f.family_id === prev)) {
