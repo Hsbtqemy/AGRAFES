@@ -5,21 +5,36 @@ statut: interrompu
 
 # SEL-01 — les listes déroulantes cessent de se retourner
 
-**Arrêté sur** — 4 septembre 2026 : l'espace Alignement est converti en entier, **4 sur 11**.
-Le composant partagé porte 14 tests, le branchement de l'AlignPanel 8 de plus, dont **3 qui
-échouent si l'un des trois sites qui posent `value` par programme oublie de repeindre**.
-Reste sept sélecteurs, sur trois écrans — Exports (six), Documents, Import, Inspecteur.
+**Arrêté sur** — 4 septembre 2026 : Alignement et Exports sont convertis, **12 sur 15**.
+Reste trois sélecteurs, un par écran — Documents, Import, Inspecteur d'unités.
+
+**L'inventaire était faux, dans les deux sens.** La prose de cette fiche annonçait onze
+sélecteurs pendant que son propre tableau en listait treize, et le tableau oubliait
+`bil-pivot-sel` et `bil-target-sel` — qui reçoivent leurs `<option>` par la même fonction que
+leurs voisins. Refait au code : **44 `<select>` portent un identifiant**, trois autres n'en
+portent pas ; quinze sont peuplés par la base en liste déroulante, trois en `<select multiple>`,
+vingt-neuf sont des listes courtes et fixes. Un détecteur automatique ne suffit pas à trancher
+— il a manqué `align-pivot-sel` (peuplé dans une boucle sur des identifiants) et `rel-target-sel`
+(interpolé dans la même chaîne de gabarit), et il a compté `edit-role` et `rel-type` comme
+dynamiques alors qu'ils viennent de constantes. Le compte ci-dessous est lu, pas déduit.
 
 **Ce que la conversion coûte, et que la première tranche n'avait pas vu : la largeur.** Un
 `<select>` natif se dimensionne sur son option la **plus large** ; le déclencheur qui le
 remplace n'affiche qu'un texte, donc il se dimensionne sur l'entrée **choisie**. Mesuré au
-banc (Chrome sans tête, fenêtre 1500×760, titres et familles réels de la base) : les deux
-sélecteurs de paire faisaient 245 px quel que soit le document, et l'habillage sans règle de
-largeur oscillait entre **138 px** (« Modiano-Rue_ES ») et **249 px** (le plus long titre du
-corpus). La barre aurait changé de largeur à chaque choix — un défaut que le contrôle natif
-n'avait pas. D'où une largeur posée sur l'enveloppe, et la même vérification à faire pour
-chacun des sept sélecteurs restants : c'est la seule partie de la conversion qui ne se
-déduit pas.
+banc (Chrome sans tête, fenêtre 1500×760, libellés réels de la base) : le natif ne bougeait
+pas d'un pixel d'un document à l'autre, et l'habillage sans règle de largeur oscillait entre
+**138 px** (« Modiano-Rue_ES ») et **249 px** (le plus long titre du corpus). La barre aurait
+changé de largeur à chaque choix — un défaut que le contrôle natif n'avait pas.
+
+**Et le premier chiffrage était sous-estimé, faute d'avoir composé le libellé pour de vrai.**
+Le banc avait mesuré des titres nus, alors que le code affiche `titre (langue)` et
+`titre (n enfants · a/b paires)` : 243 et 303 px relevés, contre **266 et 407** une fois le
+suffixe remis. Les 240/300 posés au premier lot coupaient donc le libellé le plus long — ce
+que le natif ne fait jamais, puisqu'il se dimensionne sur son option la plus large. Corrigé à
+**280 px** pour une liste de documents et **400 px** pour une liste de familles, vérifié sans
+coupe et sans débordement horizontal à 1500, 1300, 1000 et 800 px de large. Deux classes
+posées à l'habillage (`prep-selmenu--doc`, `--famille`) plutôt qu'une règle par emplacement :
+la largeur dépend de ce que la liste contient, pas de l'écran qui la porte.
 
 Deuxième chose que le banc a démolie : `max-width: 420px` n'était pas décoratif. Le
 `<select>` de famille porte `flex:1` en style inline, et c'est la règle générique
@@ -62,10 +77,17 @@ onze, tous peuplés en TS :
 | Écran | Sélecteurs |
 |---|---|
 | Alignement | `matrix-family` ✔, `align-family-sel` ✔, `align-pivot-sel` ✔, `align-target-sel` ✔ |
-| Exports | `matrix-family-sel`, `bil-family-sel`, `v2-align-pivot`, `v2-align-target`, `align-csv-pivot`, `align-csv-target` |
+| Exports | `matrix-family-sel` ✔, `bil-family-sel` ✔, `bil-pivot-sel` ✔, `bil-target-sel` ✔, `v2-align-pivot` ✔, `v2-align-target` ✔, `align-csv-pivot` ✔, `align-csv-target` ✔ |
 | Documents | `rel-target-sel` |
 | Import | `fam-dlg-parent-sel` |
 | Inspecteur d'unités | `meta-token-unit` |
+
+Hors périmètre, et vérifié plutôt que supposé : les trois `<select multiple>` d'Exports
+(`v2-doc-sel`, `tei-doc-sel`, `pkg-doc-sel`) s'affichent en liste ouverte, pas en menu — ils
+n'ont rien à retourner. Et trois `<select>` sans identifiant sont peuplés par du code sans
+être bornés par le corpus : les étiquettes UPOS de l'annotation (liste fixe), le pivot d'un
+groupe détecté à l'import (les fichiers d'UNE famille, deux à cinq), les modèles spaCy
+installés. Le critère reste la longueur de la liste, pas l'uniformité visuelle.
 
 **Le parti pris qui rend la conversion peu chère : le `<select>` reste le modèle.** On ne
 remplace pas le contrôle, on l'habille. Le `<select>` reste dans le DOM, masqué : il porte
@@ -99,11 +121,11 @@ préfixe avant de comparer. Le natif ne perd rien ici : il n'avait rien à offri
 - [x] Câbler `matrix-family` dans `AlignMatrixView` : pose au rendu, `sync()` aux deux écritures de `value`, `destroy()` au démontage
 - [x] `lib/__tests__/selectMenu.test.ts`, 14 cas : le contrat du modèle (l'événement part du `<select>` et bouillonne), l'observateur, la frappe, le clavier, l'idempotence, le démontage
 - [x] Convertir les trois autres sélecteurs de l'Alignement : `align-family-sel`, `align-pivot-sel`, `align-target-sel` (`AlignPanel`) — les ~25 sites qui LISENT `value` n'ont pas bougé d'une ligne, seuls les **trois** qui l'écrivent demandent `_syncMenus()`
-- [ ] Convertir les six d'Exports : `matrix-family-sel`, `bil-family-sel`, `v2-align-pivot`/`-target`, `align-csv-pivot`/`-target`
+- [x] Convertir ceux d'Exports — **huit et non six** : `bil-pivot-sel` et `bil-target-sel` manquaient à l'inventaire, ils sont peuplés par la même fonction que leurs voisins
 - [ ] Convertir `rel-target-sel` (Documents — 58 documents dans le corpus de travail) et `fam-dlg-parent-sel` (Import)
 - [ ] Convertir `meta-token-unit` (inspecteur d'unités) — vérifier d'abord combien d'entrées il peut porter : c'est le seul dont la liste n'est pas bornée par le nombre de documents
-- [ ] Décider du sort des `<select multiple>` d'Exports (`v2-doc-sel`, `tei-doc-sel`, `pkg-doc-sel`) : ils s'affichent en liste, pas en menu déroulant, donc ils ne basculent pas — hors périmètre a priori, à confirmer à l'écran
-- [ ] Vérifier que les ~40 sélecteurs restants (formats, modes, rôles : listes courtes et fixes) restent natifs — la conversion serait une perte nette, pas un gain
+- [x] Décider du sort des `<select multiple>` d'Exports (`v2-doc-sel`, `tei-doc-sel`, `pkg-doc-sel`) : **hors périmètre**, confirmé — une liste ouverte n'a pas de fenêtre système à retourner, et un test nomme les trois pour que la conversion ne les prenne pas au passage
+- [x] Vérifier que les sélecteurs restants restent natifs — **29 listes courtes et fixes** sur les 44 identifiées, plus trois sans identifiant : rien à convertir, le natif y garde ses qualités pour zéro ligne
 - [ ] Écrire la passe de QA du chantier, ou étendre `qa/menus-flottants.md` qui porte déjà cette famille
 
 ## QA

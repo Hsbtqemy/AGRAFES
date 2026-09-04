@@ -53,6 +53,16 @@ import { clampAnchoredMenu } from "../../../shared/anchorMenu.ts";
 export interface SelectMenuOptions {
   /** Nom accessible de la liste. À défaut, celui que porte déjà le `<select>`. */
   label?: string;
+  /**
+   * Classe posée sur l'enveloppe, pour lui donner une largeur.
+   *
+   * Elle est nécessaire, et la mesure le dit : un `<select>` natif se dimensionne sur son
+   * option la **plus large**, le déclencheur qui le remplace sur l'entrée **choisie**. Une
+   * liste de documents mesurait ainsi 138px sur « Modiano-Rue_ES » et 249px sur le plus long
+   * titre du corpus, là où le contrôle natif ne bougeait pas. Le style de largeur que portait
+   * le `<select>` reste sur lui, masqué : il ne se transporte pas tout seul.
+   */
+  className?: string;
 }
 
 export interface SelectMenu {
@@ -100,6 +110,7 @@ export function enhanceSelect(sel: HTMLSelectElement, opts: SelectMenuOptions = 
   const doc = sel.ownerDocument;
   const enveloppe = doc.createElement("div");
   enveloppe.className = "prep-selmenu";
+  if (opts.className) enveloppe.classList.add(...opts.className.split(/\s+/).filter(Boolean));
 
   const declencheur = doc.createElement("button");
   declencheur.type = "button";

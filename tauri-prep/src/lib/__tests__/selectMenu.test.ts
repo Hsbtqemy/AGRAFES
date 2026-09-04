@@ -194,6 +194,18 @@ describe("poser et retirer l'habillage", () => {
     expect(document.querySelectorAll(".prep-selmenu-trigger")).toHaveLength(1);
   });
 
+  it("`className` habille l'enveloppe — c'est là que vit la largeur", () => {
+    // Le style de largeur que portait le `<select>` reste sur lui, masqué : il ne se
+    // transporte pas. Sans classe sur l'enveloppe, le déclencheur se dimensionne sur
+    // l'entrée choisie et la barre bouge à chaque sélection.
+    const sel = poser();
+    const menu = enhanceSelect(sel, { className: "prep-selmenu--doc" });
+    const enveloppe = document.querySelector(".prep-selmenu")!;
+    expect(enveloppe.classList.contains("prep-selmenu")).toBe(true);
+    expect(enveloppe.classList.contains("prep-selmenu--doc")).toBe(true);
+    menu.destroy();
+  });
+
   it("`destroy()` rend le `<select>` à son état d'origine", () => {
     const sel = poser();
     const menu = enhanceSelect(sel);

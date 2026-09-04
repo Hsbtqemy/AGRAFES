@@ -182,14 +182,15 @@ export class AlignPanel {
    * qui va le chercher par `#align-pivot-sel` dans le même sous-arbre.
    */
   private _enhanceSelects(el: HTMLElement): void {
-    const aHabiller: Array<[string, string]> = [
-      ["#align-pivot-sel", "Document pivot"],
-      ["#align-target-sel", "Document cible"],
-      ["#align-family-sel", "Famille à aligner"],
+    const aHabiller: Array<[string, string, string]> = [
+      ["#align-pivot-sel", "Document pivot", "prep-selmenu--doc"],
+      ["#align-target-sel", "Document cible", "prep-selmenu--doc"],
+      // Le seul des trois à qui on demande de remplir sa ligne : il garde sa règle de place.
+      ["#align-family-sel", "Famille à aligner", ""],
     ];
-    for (const [sel, label] of aHabiller) {
+    for (const [sel, label, className] of aHabiller) {
       const node = el.querySelector<HTMLSelectElement>(sel);
-      if (node) this._selectMenus.push(enhanceSelect(node, { label }));
+      if (node) this._selectMenus.push(enhanceSelect(node, { label, className }));
     }
   }
 

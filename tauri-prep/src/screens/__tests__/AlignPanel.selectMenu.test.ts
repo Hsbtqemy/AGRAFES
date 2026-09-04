@@ -110,6 +110,15 @@ describe("AlignPanel — les listes peuplées par la base (SEL-01)", () => {
       expect(sel, id).toBeTruthy();
       expect(sel!.closest(".prep-selmenu"), `${id} devrait être habillé`).toBeTruthy();
     }
+    // Les deux sélecteurs de paire portent des titres de documents : la largeur commune.
+    for (const id of ["#align-pivot-sel", "#align-target-sel"]) {
+      expect(el.querySelector(id)!.closest(".prep-selmenu")!
+        .classList.contains("prep-selmenu--doc"), id).toBe(true);
+    }
+    // Celui de famille est le seul à qui on demande de remplir sa ligne : pas de largeur
+    // posée, il garde la règle de place qui le borne à 420px.
+    expect(el.querySelector("#align-family-sel")!.closest(".prep-selmenu")!
+      .classList.contains("prep-selmenu--doc")).toBe(false);
     // La stratégie d'alignement est une liste de cinq entrées fixes : le contrôle natif y
     // garde ses qualités (clavier système, lecteurs d'écran) et ne peut pas déborder.
     const strat = el.querySelector<HTMLSelectElement>("#align-strategy-sel");

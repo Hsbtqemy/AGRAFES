@@ -23,6 +23,7 @@ import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { exportsScreenTemplate } from "../lib/exportsScreenTemplate.ts";
+import { enhanceSelect, type SelectMenu } from "../lib/selectMenu.ts";
 import { productsForStage, formatsForProduct, linkStatusFilter } from "../lib/exportV2Options.ts";
 import { buildExportDocTableRows } from "../lib/exportDocTable.ts";
 
@@ -48,6 +49,9 @@ export class ExportsScreen {
   private _isBusy = false;
   private _lastErrorMsg: string | null = null;
   private _pollTimerId: ReturnType<typeof setTimeout> | null = null;
+
+  /** SEL-01 — les habillages des huit listes de cet écran peuplées par la base. */
+  private _selectMenus: SelectMenu[] = [];
 
   // DOM refs
   private _root!: HTMLElement;
@@ -131,6 +135,7 @@ export class ExportsScreen {
     this._matrixFamilySelEl = root.querySelector<HTMLSelectElement>("#matrix-family-sel")!;
     this._matrixFmtEl = root.querySelector<HTMLSelectElement>("#matrix-fmt")!;
     this._matrixRunBtn = root.querySelector<HTMLButtonElement>("#matrix-export-btn")!;
+    this._enhanceSelects();
 
     // EXP-1: head card — run pill + back button
     const runPill = root.querySelector<HTMLElement>("#exp-run-pill");
@@ -253,6 +258,7 @@ export class ExportsScreen {
         this._v2TargetEl.value = targetValue;
       }
     }
+    this._syncMenus();
     if (typeof prefill.exceptionsOnly === "boolean") {
       const excEl = this._root.querySelector<HTMLInputElement>("#v2-align-exceptions-only");
       if (excEl) excEl.checked = prefill.exceptionsOnly;
@@ -1176,6 +1182,7 @@ export class ExportsScreen {
         if (firstChild?.doc) {
           this._bilTargetSelEl.value = String(firstChild.doc.doc_id);
         }
+        this._syncMenus();
       }
     }
     this._syncBilBtn();
@@ -1374,7 +1381,40 @@ export class ExportsScreen {
     this._setRuntimeState("ok", `${this._docs.length} document(s) disponibles pour export.`);
   }
 
+  /**
+   * SEL-01 — habille les huit listes de l'écran peuplées par la base. Les trois
+   * `<select multiple>` (documents TEI, paquet, export v2) restent natifs : ils s'affichent
+   * en liste ouverte, pas en menu déroulant, donc ils n'ont rien à retourner.
+   *
+   * `bil-pivot-sel` et `bil-target-sel` ne figuraient pas dans l'inventaire du chantier —
+   * relevés en relisant l'écran. Exports en compte huit, pas six.
+   */
+  private _enhanceSelects(): void {
+    const DOC = "prep-selmenu--doc";
+    const FAM = "prep-selmenu--famille";
+    const aHabiller: Array<[HTMLSelectElement, string, string]> = [
+      [this._pivotSelEl, "Document pivot (CSV)", DOC],
+      [this._targetSelEl, "Document cible (CSV)", DOC],
+      [this._v2PivotEl, "Document pivot", DOC],
+      [this._v2TargetEl, "Document cible", DOC],
+      [this._bilFamilySelEl, "Famille", FAM],
+      [this._bilPivotSelEl, "Document pivot (bilingue)", DOC],
+      [this._bilTargetSelEl, "Document cible (bilingue)", DOC],
+      [this._matrixFamilySelEl, "Famille (matrice)", FAM],
+    ];
+    for (const [sel, label, className] of aHabiller) {
+      if (sel) this._selectMenus.push(enhanceSelect(sel, { label, className }));
+    }
+  }
+
+  /** À appeler après avoir posé `value` par programme — voir `lib/selectMenu.ts`. */
+  private _syncMenus(): void {
+    for (const m of this._selectMenus) m.sync();
+  }
+
   dispose(): void {
+    for (const m of this._selectMenus) m.destroy();
+    this._selectMenus = [];
     if (this._pollTimerId !== null) {
       clearTimeout(this._pollTimerId);
       this._pollTimerId = null;

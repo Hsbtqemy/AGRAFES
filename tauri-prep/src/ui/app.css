@@ -2281,18 +2281,33 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
    suppositions (banc headless, fenêtre 1500x760, titres et familles réels de la base) :
 
    — un `<select>` natif se dimensionne sur son option la PLUS LARGE, pas sur celle qui est
-     choisie : les deux sélecteurs de paire faisaient 245px quel que soit le document. Le
-     déclencheur, lui, ne montre qu'un texte : sans largeur posée il mesurait 138px sur
-     « Modiano-Rue_ES » et 249px sur le plus long titre du corpus. La barre aurait changé de
-     largeur à chaque choix — ce que le natif ne faisait pas. D'où une largeur fixe, 240px,
-     à cinq pixels de ce que rendait le contrôle natif ;
+     choisie : les deux sélecteurs de paire ne bougeaient pas d'un pixel d'un document à
+     l'autre. Le déclencheur, lui, ne montre qu'un texte : sans largeur posée il mesurait
+     138px sur « Modiano-Rue_ES » et 249px sur le plus long titre du corpus. La barre aurait
+     changé de largeur à chaque choix — ce que le natif ne faisait pas ;
    — `max-width: 420px` n'est pas décoratif ici. Le `<select>` de famille porte `flex:1` en
      style inline, et c'est `.prep-actions-screen select` (0,1,1) qui le bornait à 420px.
      L'enveloppe reprend `flex:1` sans ce plafond : mesurée à 1167px, elle mangeait la ligne
      entière. (Au passage : la même règle générique écrasait déjà le `max-width: 220px` que
      `.prep-align-pair-sel` déclarait — quatrième occurrence du motif, sans conséquence
-     visible ici puisque le natif se bornait à son contenu.) */
-.prep-align-pair-label .prep-selmenu { display: block; width: 240px; }
+     visible ici puisque le natif se bornait à son contenu.)
+
+   La largeur ne dépend pas de l'écran mais de CE QUE LA LISTE CONTIENT. Deux classes,
+   posées à l'habillage, plutôt qu'une règle par emplacement — et deux nombres mesurés sur
+   les libellés que le code compose VRAIMENT, `titre (langue)` et
+   `titre (n enfants · a/b paires)`. Un premier relevé les avait pris sans leur suffixe et
+   sortait 243/303 : sous-estimé d'une trentaine puis d'une centaine de pixels, au point de
+   couper le libellé le plus long — ce que le contrôle natif ne faisait jamais, puisqu'il se
+   dimensionne sur son option la plus large.
+
+   Documents : le natif rend 266px ; il faut 280 au déclencheur pour ne pas couler le plus
+   long titre des 58 (« [1] hi rend=… .txt (fr) »).
+   Familles : le natif rend 407px — c'est-à-dire son plafond de 420 presque atteint ; 400
+   suffisent au plus long des 20 libellés. */
+.prep-selmenu--doc { display: block; width: 280px; }
+.prep-selmenu--famille { display: block; width: 400px; }
+/* Le seul de la famille à qui on demande de remplir sa ligne : il porte `flex:1` en style
+   inline, et c'était `.prep-actions-screen select` (0,1,1) qui le bornait à 420px. */
 .prep-align-run-options-family .prep-selmenu { flex: 1; min-width: 0; max-width: 420px; }
 /* R3.3 tranche 2c — read-only source-anchored matrix grid (DESIGN_alignment_workspace §6). */
 .prep-matrix { display: flex; flex-direction: column; gap: 10px; }
