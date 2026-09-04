@@ -42,6 +42,8 @@ import {
 } from "../lib/alignVisibleCols.ts";
 import type { MatrixColumn, AlignScope } from "../lib/alignVisibleCols.ts";
 import type { AlignStrategy } from "../lib/alignRunBar.ts";
+import { enhanceSelect } from "../lib/selectMenu.ts";
+import type { SelectMenu } from "../lib/selectMenu.ts";
 import {
   ALIGN_DEFAULTS, STRATEGY_LABELS, buildAlignAdvancedHtml, buildAlignRerunConfirmHtml,
   alignRunSummary,
@@ -141,6 +143,12 @@ export class AlignMatrixView {
    *  croit bornée à une colonne purgerait la famille entière. Sur la projection l'oubli
    *  est bénin (on reçoit trop de colonnes) ; sur un run il est destructeur. */
   private _scopeSupported = false;
+  /** Le menu maison posé sur `#matrix-family`. La liste native d'un `<select>` est une
+   *  fenêtre du système : elle bascule au-dessus du déclencheur quand la place manque en
+   *  dessous, ce qui dépend de l'ÉCRAN et non de la fenêtre — le même menu s'ouvrait donc
+   *  vers le bas sur un moniteur et vers le haut sur l'autre, en débordant. Le `<select>`
+   *  reste le modèle ; seul son habillage change. */
+  private _famMenu: SelectMenu | null = null;
 
   constructor(
     private _getConn: () => Conn | null,
@@ -183,6 +191,7 @@ export class AlignMatrixView {
     root.querySelector("#matrix-align-strip")?.after(this._undoBanner.element);
 
     const sel = root.querySelector<HTMLSelectElement>("#matrix-family")!;
+    this._famMenu = enhanceSelect(sel, { label: "Famille (moyeu)" });
     const loadBtn = root.querySelector<HTMLButtonElement>("#matrix-load")!;
     const alignBtn = root.querySelector<HTMLButtonElement>("#matrix-align")!;
     const advBtn = root.querySelector<HTMLButtonElement>("#matrix-align-adv-toggle")!;
@@ -412,6 +421,9 @@ export class AlignMatrixView {
     } else {
       this._selectedFamilyId = null;
     }
+    // `value` est une propriété : l'écrire ne produit aucune mutation, donc le menu ne
+    // peut pas s'en apercevoir seul (ses options et son `disabled`, si).
+    this._famMenu?.sync();
     // Re-sync EVERY button of the bar, not just « Charger » — a family that vanished from
     // the list (corpus switch, deletion) would otherwise leave « Aligner » armed on an id
     // that no longer exists (revue tranche 5).
@@ -951,6 +963,7 @@ export class AlignMatrixView {
       // THE family that was aligned.
       this._selectedFamilyId = familyId;
       if (famSel) famSel.value = String(familyId);
+      this._famMenu?.sync();
       await this._loadMatrix();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -2537,6 +2550,10 @@ export class AlignMatrixView {
   }
 
   dispose(): void {
+    // Rendre le `<select>` à son état d'origine : l'écran se remonte, et un habillage
+    // laissé derrière écouterait le document pour un menu qui n'existe plus.
+    this._famMenu?.destroy();
+    this._famMenu = null;
     // Force-close an open cut modal: its overlay lives on document.body and its
     // Escape handler on document — they must not outlive the view (F4).
     this._closeCutModal?.();

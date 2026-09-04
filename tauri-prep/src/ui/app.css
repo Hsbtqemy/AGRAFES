@@ -2211,6 +2211,67 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 .prep-align-summary-warn { color: #b45309; font-style: italic; font-size: 0.82rem; }
 .prep-align-row--highlight { animation: flash-row 1.2s ease; }
 
+/* ── Menu déroulant maison (lib/selectMenu.ts) ─────────────────────────────────
+   La liste d'un <select> natif est une fenêtre du système : elle bascule au-dessus du
+   déclencheur quand la place manque en dessous, et « en dessous » se mesure sur l'ÉCRAN.
+   Le même menu s'ouvrait donc vers le bas sur un moniteur et vers le haut sur l'autre.
+
+   Ces règles sont calquées sur `.prep-canvas-doc-menu`, seule liste du dépôt écrite
+   ainsi : ancrée SOUS son déclencheur, bornée en hauteur, et qui défile plutôt que de
+   se retourner. `shared/anchorMenu.ts` la ramène dans le cadre si elle en sort. */
+.prep-selmenu { position: relative; display: inline-block; max-width: 100%; }
+/* Le <select> reste le modèle : il porte `value`, il émet `change`, il garde ses
+   <option>. On le rend invisible sans le retirer — `display: none` le sortirait du
+   calcul de mise en page de certains conteneurs, et un `<select>` masqué ainsi cesse
+   d'être trouvable par les tests qui l'interrogent. */
+.prep-selmenu-native {
+  position: absolute; width: 1px; height: 1px;
+  opacity: 0; pointer-events: none; margin: 0; padding: 0; border: 0;
+}
+.prep-selmenu-trigger {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  font: inherit; font-size: 0.85rem; text-align: left;
+  padding: 0.3rem 0.5rem; border: 1px solid var(--color-border, #dee2e6);
+  border-radius: var(--radius, 6px); background: #fff; color: var(--prep-text, #1a1a2e);
+  cursor: pointer;
+}
+.prep-selmenu-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+.prep-selmenu-trigger:focus-visible {
+  outline: 2px solid var(--prep-accent, #0f766e); outline-offset: 1px;
+}
+.prep-selmenu-text {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* L'invite (« — choisir — ») n'est pas une valeur : elle se lit en atténué, comme le
+   « (aucune) » du déclencheur de base du shell. */
+.prep-selmenu-text--vide { color: var(--color-muted, #6c757d); font-style: italic; }
+.prep-selmenu-caret { flex-shrink: 0; opacity: 0.55; font-size: 0.7rem; }
+.prep-selmenu-list {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+  min-width: 100%; max-width: min(440px, 72vw);
+  max-height: min(50vh, 360px); overflow-y: auto;
+  background: #fff; border: 1px solid #cbd5e1; border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.14); padding: 0.25rem;
+}
+/* `[hidden]` de la feuille UA perd contre une règle de classe à spécificité égale :
+   la surcharge est posée d'avance, parce qu'ajouter un `display` ci-dessus est
+   exactement le geste qui rendrait la liste visible en permanence, sans un mot. */
+.prep-selmenu-list[hidden] { display: none; }
+.prep-selmenu-opt {
+  display: block; width: 100%; text-align: left;
+  padding: 0.35rem 0.55rem; border: none; background: transparent;
+  border-radius: 4px; cursor: pointer; font: inherit; font-size: 0.8rem; color: #334155;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.prep-selmenu-opt:hover, .prep-selmenu-opt:focus-visible { background: #f1f5f9; outline: none; }
+.prep-selmenu-opt--active { background: #ede9fe; color: #5b21b6; font-weight: 600; }
+.prep-selmenu-opt--vide { color: #94a3b8; font-style: italic; }
+
+/* Le sélecteur de famille de la matrice reprend l'enveloppe de largeur qu'avait son
+   <select> : plancher de 260px (règle du composant), plafond de 420px (règle d'écran
+   `.prep-actions-screen select`). Sans elle, le déclencheur se dimensionnerait sur le
+   texte courant et la barre changerait de largeur à chaque choix de famille. */
+.prep-matrix-fam-label .prep-selmenu { width: 100%; min-width: 260px; max-width: 420px; }
 /* R3.3 tranche 2c — read-only source-anchored matrix grid (DESIGN_alignment_workspace §6). */
 .prep-matrix { display: flex; flex-direction: column; gap: 10px; }
 .prep-matrix-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }

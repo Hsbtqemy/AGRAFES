@@ -145,3 +145,7 @@ tests ; seul l'œil les attrape.
 - [ ] Ouvrir « Avancé… » : « Mode » est **à côté** de son menu, pas au-dessus ; « Seuil »
       à côté de son champ ; et la case à cocher **devant** « Conserver les liens validés »,
       pas au-dessus. Le panneau tient sur deux lignes
+- [ ] Ouvrir le sélecteur de famille **sur l'écran du portable**, fenêtre placée assez bas
+      pour qu'il reste moins de 500 px sous lui : la liste s'ouvre **vers le bas**, se borne
+      et défile — elle ne se retourne plus au-dessus du bouton. Y taper « h » saute à
+      Houellebecq (ce que la liste native ne faisait pas, ses libellés commençant par `#366`)
