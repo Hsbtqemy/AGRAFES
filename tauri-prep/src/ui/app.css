@@ -2231,6 +2231,11 @@ code { font-family: monospace; background: var(--color-bg); padding: 0 3px; bord
 .prep-selmenu-trigger {
   display: flex; align-items: center; gap: 6px; width: 100%;
   font: inherit; font-size: 0.85rem; text-align: left;
+  /* Le declencheur doit faire la hauteur du <select> qu il remplace, sinon il depasse
+     ses voisins dans une barre alignee sur les bas. Sans cette ligne il montait a
+     29,6px contre 27 pour le controle natif ; a 1.2 il fait 27,9 (mesure). Les 7px qui
+     le separent encore des boutons btn-sm sont anterieurs : le <select> les avait deja. */
+  line-height: 1.2;
   padding: 0.3rem 0.5rem; border: 1px solid var(--color-border, #dee2e6);
   border-radius: var(--radius, 6px); background: #fff; color: var(--prep-text, #1a1a2e);
   cursor: pointer;

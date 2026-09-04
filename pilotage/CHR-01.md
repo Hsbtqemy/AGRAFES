@@ -1,6 +1,6 @@
 ---
 chantier: CHR-01
-statut: interrompu
+statut: clos
 ---
 
 # CHR-01 — la barre Constituer remonte d'un cran, et les presets tombent
@@ -31,13 +31,19 @@ fichier emporte le titre avec elle**, donc le titre étiquette et ne peut pas id
 lot livré ne restitue donc pas un affichage : il sépare l'étiquette de l'identité, et rend le
 nom de fichier visible aux quatre endroits où l'on risque de confondre deux copies.
 
-**Point de reprise, 4 septembre.** Le lot « identité de la base » est écrit, construit et
-testé — prep 1420 tests, shell 106 (dont 10 neufs, 5 prouvés au rouge), les deux lints au
-vert — et **rien n'est commité** : aux huit fichiers du 3 septembre s'ajoutent `shell.ts`,
-la fiche corpus dans `app.ts`, `app.css` et la garde neuve. Rien n'a encore été vu à l'écran,
-ni pour ce lot ni pour les deux précédents : le raccourci Documents, la purge CSS, et
-maintenant le déclencheur à deux lignes. Le prochain geste est donc de lancer le shell et de
-regarder — Documents d'abord, puis le déclencheur avec et sans titre.
+**Clos le 4 septembre 2026.** Tout est livré et poussé (`9e53ba9`), la passe est jouée
+**27 sur 27** — les trois derniers points sur l'écran court, ceux qu'aucun banc de mesure ne
+pouvait couvrir. Aucun item ouvert.
+
+Deux choses sont sorties du chantier plutôt que d'y rester. Le motif
+`.prep-actions-screen <élément>` contre la classe du composant, dont ce chantier a corrigé la
+troisième occurrence et posé la garde, mais qui en compte sûrement d'autres : la garde
+surveille désormais la règle générique elle-même, donc la prochaine se signalera. Et le
+sélecteur de famille, dont la **liste** se retournait selon l'écran — cause sans rapport avec
+le CSS, passée à **SEL-01** avec les dix autres sélecteurs de listes du même genre.
+
+`statut: clos` et non `livré` : l'outil mesure `livré` à la présence du dernier commit sur une
+ref d'intégration, et ces commits vivent sur `refonte`.
 
 ## Reste
 
@@ -94,7 +100,8 @@ regarder — Documents d'abord, puis le déclencheur avec et sans titre.
 - qa/chrome-constituer.md
 - qa/identite-base.md
 
-Écrite et jouée le 4 septembre 2026 — **24 sur 24**, et aucun défaut dans le lot lui-même :
+Écrite et jouée le 4 septembre 2026 — **27 sur 27** (24 au premier passage, puis les trois
+points de la zone ajoutée en cours de journée), et aucun défaut dans le lot lui-même :
 le déclencheur à deux lignes, la fiche qui nomme son fichier, les homonymes des récentes et
 le titre de fenêtre ont tous rendu ce qui était annoncé.
 
@@ -102,8 +109,9 @@ Ce qu'elle a fait remonter est venu d'ailleurs, et par une question plutôt que 
 « la boîte *Avancé…* a changé ? ». Elle n'avait pas changé — elle ne s'était **jamais**
 affichée comme elle est écrite, depuis le 13 juillet 2026. Troisième occurrence du motif
 `.prep-actions-screen <élément>` contre la classe du composant. Corrigé le jour même avec le
-sélecteur de famille, qui relevait de la même cause. D'où la zone ajoutée en fin de passe,
-seule non jouée à ce jour.
+sélecteur de famille, qui relevait de la même cause. D'où la zone ajoutée en fin de passe, et
+jouée le jour même. Son troisième point est le seul de toute la journée qu'aucun banc de
+mesure ne pouvait couvrir : une liste déroulante ouverte sur l'écran court, fenêtre descendue.
 
 Écrite le 1er septembre 2026, jouée le 2 — 35 sur 35. Elle porte moins sur ce qui disparaît que
 sur les trois réancrages : un bandeau d'erreur qui ne s'insère plus, un garde de sortie

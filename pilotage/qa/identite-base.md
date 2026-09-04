@@ -140,12 +140,12 @@ le composant n'a pas demandé. Trois surfaces en ont souffert, dont deux ici. Ce
 défauts qui ne cassent rien — ils déplacent — donc invisibles au build, au lint et aux
 tests ; seul l'œil les attrape.
 
-- [ ] Alignement : le sélecteur de famille est sur la même ligne de base que « Charger la
+- [x] Alignement : le sélecteur de famille est sur la même ligne de base que « Charger la
       matrice » — ni plus haut, ni plus bas
-- [ ] Ouvrir « Avancé… » : « Mode » est **à côté** de son menu, pas au-dessus ; « Seuil »
+- [x] Ouvrir « Avancé… » : « Mode » est **à côté** de son menu, pas au-dessus ; « Seuil »
       à côté de son champ ; et la case à cocher **devant** « Conserver les liens validés »,
       pas au-dessus. Le panneau tient sur deux lignes
-- [ ] Ouvrir le sélecteur de famille **sur l'écran du portable**, fenêtre placée assez bas
+- [x] Ouvrir le sélecteur de famille **sur l'écran du portable**, fenêtre placée assez bas
       pour qu'il reste moins de 500 px sous lui : la liste s'ouvre **vers le bas**, se borne
       et défile — elle ne se retourne plus au-dessus du bouton. Y taper « h » saute à
       Houellebecq (ce que la liste native ne faisait pas, ses libellés commençant par `#366`)
