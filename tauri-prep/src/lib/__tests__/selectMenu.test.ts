@@ -23,6 +23,8 @@ const FAMILLES = [
   ["", "— choisir —"],
   ["366", "#366 Houellebecq-Carte_FR.docx (2 docs)"],
   ["368", "#368 Houellebecq-Plateforme_FR.docx (2 docs)"],
+  ["380", "#380 LeClezio-Chercheur_FR.docx (2 docs)"],
+  ["381", "#381 Lodge-Nice_EN.docx (2 docs)"],
   ["373", "#373 Modiano-Rue_FR.docx (4 docs)"],
 ];
 
@@ -55,7 +57,7 @@ describe("le `<select>` reste le modèle", () => {
 
   it("il reste dans le DOM, avec ses options — c'est ce que les suites interrogent", () => {
     expect(document.getElementById("fam")).toBe(sel);
-    expect(sel.querySelectorAll("option")).toHaveLength(4);
+    expect(sel.querySelectorAll("option")).toHaveLength(6);
     expect(sel.querySelector('option[value="368"]')).not.toBeNull();
   });
 
@@ -189,40 +191,52 @@ describe("la liste ne se retourne pas, et le clavier la mène", () => {
   });
 
   it("retaper la même lettre parcourt les entrées, et boucle", () => {
-    // Ce que fait un `<select>` natif, et que le composant ne faisait pas : chercher « hh »
-    // ne mène nulle part, donc la SECONDE famille Houellebecq était inatteignable au clavier.
     declencheur().click();
-    const frapper = () =>
-      liste().dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
-    frapper();
+    const frapper = (touche: string) =>
+      liste().dispatchEvent(new KeyboardEvent("keydown", { key: touche, bubbles: true }));
+    frapper("h");
     expect((document.activeElement as HTMLElement).textContent)
       .toBe("#366 Houellebecq-Carte_FR.docx (2 docs)");
-    frapper();
+    frapper("h");
     expect((document.activeElement as HTMLElement).textContent)
       .toBe("#368 Houellebecq-Plateforme_FR.docx (2 docs)");
-    frapper();
+    frapper("h");
     expect((document.activeElement as HTMLElement).textContent,
       "après la dernière, on revient à la première").toBe("#366 Houellebecq-Carte_FR.docx (2 docs)");
   });
 
-  it("deux lettres qui forment un début de mot restent une recherche", () => {
+  it("changer de lettre change de groupe, et le parcours y reprend à zéro", () => {
+    // Le défaut signalé en jouant la passe, et le plus retors des trois : « h », « l », « l »
+    // ramenait sur Houellebecq. Le tampon valait « ll », qui n'ouvre aucun libellé — mais le
+    // repli par sous-chaîne le trouvait au milieu de « HoueLLebecq ». On alternait entre deux
+    // entrées sans pouvoir avancer. Chaque appui ne regarde plus qu'une lettre.
     declencheur().click();
-    liste().dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
-    liste().dispatchEvent(new KeyboardEvent("keydown", { key: "o", bubbles: true }));
-    // « mo » prolonge « m » : on cherche le mot, on ne se met pas à parcourir les « o ».
-    expect((document.activeElement as HTMLElement).textContent)
-      .toBe("#373 Modiano-Rue_FR.docx (4 docs)");
-  });
-
-  it("une lettre qui ne prolonge rien change de destination au lieu de ne rien faire", () => {
-    // Le défaut signalé en jouant la passe : « h » puis « m » cherchait « hm », ne trouvait
-    // rien, et laissait le focus sur Houellebecq. Une lettre qui ne prolonge pas le mot en
-    // cours n'est pas une faute de frappe, c'est un changement de destination.
-    declencheur().click();
-    liste().dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+    const frapper = (touche: string) =>
+      liste().dispatchEvent(new KeyboardEvent("keydown", { key: touche, bubbles: true }));
+    frapper("h");
     expect((document.activeElement as HTMLElement).textContent)
       .toBe("#366 Houellebecq-Carte_FR.docx (2 docs)");
+    frapper("l");
+    expect((document.activeElement as HTMLElement).textContent)
+      .toBe("#380 LeClezio-Chercheur_FR.docx (2 docs)");
+    frapper("l");
+    expect((document.activeElement as HTMLElement).textContent,
+      "le deuxième « l » doit avancer dans les L, pas retourner dans les H")
+      .toBe("#381 Lodge-Nice_EN.docx (2 docs)");
+    frapper("l");
+    expect((document.activeElement as HTMLElement).textContent)
+      .toBe("#380 LeClezio-Chercheur_FR.docx (2 docs)");
+  });
+
+  it("chaque appui est indépendant : « m » puis « o » ne cherche pas « mo »", () => {
+    // Contrepartie assumée du mono-lettre : on ne peut plus atteindre une entrée en tapant
+    // le début de son nom. Aucune entrée ne commence par « o », donc le second appui ne
+    // trouve rien et ne bouge pas — il ne renvoie pas non plus ailleurs.
+    declencheur().click();
     liste().dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
+    expect((document.activeElement as HTMLElement).textContent)
+      .toBe("#373 Modiano-Rue_FR.docx (4 docs)");
+    liste().dispatchEvent(new KeyboardEvent("keydown", { key: "o", bubbles: true }));
     expect((document.activeElement as HTMLElement).textContent)
       .toBe("#373 Modiano-Rue_FR.docx (4 docs)");
   });

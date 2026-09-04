@@ -52,8 +52,12 @@ lecture a soulevé.**
 L'item de frappe disait, le 4 septembre au matin, que retaper la même lettre ne passait pas à
 l'entrée suivante. C'était exact, et c'était une capacité perdue par rapport à la liste native
 qu'on remplaçait : sur les deux familles « Houellebecq » du corpus, la seconde n'était
-atteignable par aucune frappe. Le composant a été corrigé le jour même — le parcours est donc
-un item **neuf et décoché**, personne ne l'a encore vu tourner.
+atteignable par aucune frappe. Deux corrections ont suivi le même jour, chacune rattrapée par
+la lecture, avant que la règle se simplifie : **un appui parcourt les entrées qui commencent
+par cette lettre, et boucle.** Rien ne s'accumule d'un appui à l'autre. La contrepartie est
+assumée : on ne peut plus atteindre une entrée en tapant le début de son nom, et le plus gros
+groupe d'initiales du corpus en compte neuf — les flèches y vont plus vite. Les items de
+frappe sont donc neufs et **décochés**, personne n'a vu tourner cette règle-ci.
 
 Et l'identifiant en tête de libellé a été **retiré** des quinze listes. Il n'y était affiché
 que par la moitié d'entre elles, ne désambiguïsait rien, et la frappe le sautait. Les items
@@ -65,8 +69,8 @@ vérifié n'a pas changé.
 - [x] La liste des 20 familles s'ouvre vers le bas et défile, fenêtre placée bas sur l'écran court
 - [x] Taper `h` mène à « Houellebecq » — vu le 4 septembre, quand le libellé s'ouvrait encore sur un identifiant que la frappe devait sauter. Il n'y en a plus
 - [ ] **Retaper `h` passe à la famille suivante**, et boucle. Le corpus en porte deux, « Houellebecq-Carte_FR.docx » et « Houellebecq-Plateforme_FR.docx » : la seconde n'était atteignable par aucune frappe
-- [ ] Taper `m` puis `o` reste une **recherche** — « mo » prolonge « m », donc on cherche le mot au lieu de sauter aux « o »
-- [ ] Taper `h` puis `m` **change de destination** et mène à Modiano. C'est ce qui ne faisait rien du tout jusqu'au 4 septembre : « hm » ne correspondait à aucune entrée, et l'appui semblait perdu
+- [ ] Taper `h` puis `l` puis `l` **avance dans les L** — et ne revient pas sur Houellebecq, qui contient « ll » au milieu de son nom
+- [ ] Chaque appui ne regarde qu'une lettre : taper `m` puis `o` ne cherche pas « mo », le second appui ne trouve rien et ne bouge pas
 - [x] Flèches haut/bas, Début/Fin, Échap qui referme et rend le focus au déclencheur
 - [x] Le déclencheur ne change pas de largeur d'une famille à l'autre
 

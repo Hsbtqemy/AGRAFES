@@ -40,29 +40,17 @@
  * `sync()`. Ils sont deux dans la matrice, et le nom du défaut est explicite si on oublie :
  * le déclencheur affiche l'entrée précédente.
  *
- * ## La frappe au clavier, et pourquoi elle est meilleure ici
+ * ## La frappe au clavier : une lettre à la fois
  *
- * Un `<select>` natif saute à l'entrée dont le texte **commence** par ce qu'on tape. Les
- * libellés de prep commençaient par un identifiant — « #368 Houellebecq-Plateforme_FR.docx »
- * — ce qui rendait « h » inopérant : il aurait fallu taper « #368 », c'est-à-dire connaître
- * déjà la réponse. Le préfixe a depuis été retiré des libellés eux-mêmes (il n'était affiché
- * que par la moitié des listes et ne désambiguïsait rien), mais la comparaison continue de
- * l'ignorer : c'est un filet, pour un libellé qui en porterait un ailleurs.
+ * Un appui parcourt les entrées qui commencent par cette lettre, et boucle. Pas de mot
+ * accumulé : c'est la troisième règle essayée, et les deux premières ont chacune produit
+ * une surprise à l'usage — le détail est sur `versFrappe`, avec ce qui les a tuées.
  *
- * La règle tient en une phrase : **on prolonge tant que ça correspond, sinon on recommence à
- * la dernière lettre.**
- *
- * Elle règle deux défauts que la première version avait, et que jouer la QA a fait sortir.
- * Retaper la même lettre ne parcourait pas : « hh » ne correspond à rien, donc la seconde des
- * deux familles « Houellebecq » du corpus était inatteignable au clavier. Et taper une lettre
- * d'un autre mot ne faisait **rien du tout** : « h » puis « m » cherchait « hm », ne trouvait
- * rien, et laissait le focus sur Houellebecq — l'appui semblait perdu.
- *
- * Les deux passent maintenant par le même repli. « hh » ne correspond pas → on repart de
- * « h » → et comme le mot est d'une seule lettre, on parcourt et on boucle. « hm » ne
- * correspond pas → on repart de « m » → on change de destination. Tandis que « mo », qui
- * prolonge bien « m », reste une recherche : sans cela, atteindre le dernier des neuf
- * documents en « r » demanderait neuf appuis (mesuré sur le corpus de travail).
+ * La comparaison retire un identifiant en tête de libellé (« #368 Houellebecq… »). Les
+ * listes de prep n'en composent plus depuis le 4 septembre 2026 — il n'était affiché que
+ * par la moitié d'entre elles et ne désambiguïsait rien — mais le filet reste, pour un
+ * libellé qui en porterait un ailleurs : sans lui, « h » ne mène pas à Houellebecq, et il
+ * faudrait taper « #368 », c'est-à-dire connaître déjà la réponse.
  */
 import { clampAnchoredMenu } from "../../../shared/anchorMenu.ts";
 
@@ -92,9 +80,6 @@ export interface SelectMenu {
   /** Rend le `<select>` à son état d'origine et débranche tout. */
   destroy(): void;
 }
-
-/** Délai au bout duquel la frappe recommence un mot. Aligné sur l'usage des listes natives. */
-const FRAPPE_MS = 700;
 
 /**
  * Le texte sur lequel la frappe compare : sans le préfixe d'identifiant, sans accents,
@@ -162,8 +147,6 @@ export function enhanceSelect(sel: HTMLSelectElement, opts: SelectMenuOptions = 
   sel.tabIndex = -1;
 
   let ouvert = false;
-  let frappe = "";
-  let frappeAt = 0;
 
   const optionsDu = (): HTMLOptionElement[] => Array.from(sel.options);
   const boutons = (): HTMLButtonElement[] =>
@@ -228,7 +211,6 @@ export function enhanceSelect(sel: HTMLSelectElement, opts: SelectMenuOptions = 
     if (!ouvert) return;
     liste.hidden = true;
     ouvert = false;
-    frappe = "";
     declencheur.setAttribute("aria-expanded", "false");
     doc.removeEventListener("mousedown", surClicExterieur, true);
   }
@@ -237,43 +219,33 @@ export function enhanceSelect(sel: HTMLSelectElement, opts: SelectMenuOptions = 
     if (!enveloppe.contains(e.target as Node)) fermer();
   };
 
+  /**
+   * Un appui = une lettre. On parcourt les entrées qui commencent par elle, et on boucle.
+   *
+   * Deux versions plus savantes ont été essayées le 4 septembre 2026, et toutes deux ont
+   * produit une surprise à l'usage. La première accumulait les frappes : « h » puis « m »
+   * cherchait « hm », ne trouvait rien, et ne faisait RIEN — l'appui semblait perdu. La
+   * seconde recommençait à la dernière lettre quand le mot ne correspondait plus, mais le
+   * repli par sous-chaîne la trahissait : « ll » n'ouvre aucun libellé, or il est contenu
+   * dans « Houellebecq ». Taper « h », « l », « l » ramenait donc dans les H, et l'on
+   * alternait entre deux entrées sans pouvoir avancer.
+   *
+   * Le mono-lettre supprime la classe entière de ces défauts, et avec elle tout l'état :
+   * plus de tampon, plus de fenêtre de 700 ms, plus de repli par sous-chaîne. Le prix est
+   * connu et mesuré : sur les 58 documents du corpus de travail, le plus gros groupe
+   * d'initiales en compte neuf, qui demandent neuf appuis — les flèches y vont plus vite.
+   * Les listes de familles, elles, plafonnent à trois.
+   */
   function versFrappe(e: KeyboardEvent): boolean {
     if (e.key.length !== 1 || e.ctrlKey || e.altKey || e.metaKey) return false;
-    const maintenant = Date.now();
-    const expire = maintenant - frappeAt > FRAPPE_MS;
-    frappeAt = maintenant;
-
-    const bs = boutons();
-    const cherche = (motif: string): HTMLButtonElement[] => {
-      const cible = pourFrappe(motif);
-      const debut = bs.filter((b) => pourFrappe(b.textContent ?? "").startsWith(cible));
-      // Repli : ce qu'on cherche peut être au milieu du nom d'un fichier.
-      return debut.length > 0 ? debut : bs.filter((b) => pourFrappe(b.textContent ?? "").includes(cible));
-    };
-
-    let mot = expire ? e.key : frappe + e.key;
-    let candidats = cherche(mot);
-    // Une lettre qui ne prolonge rien n'est pas une faute de frappe, c'est un changement de
-    // destination : « h » puis « m » cherchait « hm », ne trouvait rien, et ne faisait RIEN —
-    // le focus restait sur Houellebecq. On recommence à cette lettre-là.
-    if (candidats.length === 0) {
-      mot = e.key;
-      candidats = cherche(mot);
-    }
-    frappe = mot;
+    const cible = pourFrappe(e.key);
+    const candidats = boutons()
+      .filter((b) => pourFrappe(b.textContent ?? "").startsWith(cible));
     if (candidats.length === 0) return true;
-
-    // Une lettre seule, répétée ou non, PARCOURT les entrées et boucle — comme le fait une
-    // liste native. La répétition passe d'ailleurs par la règle ci-dessus : « hh » ne
-    // correspond à rien, donc on retombe sur « h », et le tour suivant est le bon.
-    let trouve = candidats[0];
-    if (/^(.)\1*$/.test(mot)) {
-      // `indexOf` rend -1 quand le focus n'est pas sur une entrée qui correspond : le tour
-      // suivant est alors la première, ce qui est exactement le premier appui.
-      const rang = candidats.indexOf(doc.activeElement as HTMLButtonElement);
-      trouve = candidats[(rang + 1) % candidats.length];
-    }
-    trouve.focus();
+    // `indexOf` rend -1 quand le focus n'est pas sur une entrée de ce groupe : le tour
+    // suivant est alors la première, ce qui est exactement le premier appui.
+    const rang = candidats.indexOf(doc.activeElement as HTMLButtonElement);
+    candidats[(rang + 1) % candidats.length].focus();
     return true;
   }
 
