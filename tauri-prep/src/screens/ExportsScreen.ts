@@ -26,6 +26,7 @@ import { exportsScreenTemplate } from "../lib/exportsScreenTemplate.ts";
 import { enhanceSelect, type SelectMenu } from "../lib/selectMenu.ts";
 import { productsForStage, formatsForProduct, linkStatusFilter } from "../lib/exportV2Options.ts";
 import { buildExportDocTableRows } from "../lib/exportDocTable.ts";
+import { compareFamiliesByTitle } from "../../../shared/docSort.ts";
 
 
 export interface ExportWorkflowPrefill {
@@ -395,7 +396,8 @@ export class ExportsScreen {
 
     // Bilingue/TMX: family selector
     this._bilFamilySelEl.innerHTML = '<option value="">— paire directe —</option>';
-    for (const f of this._families) {
+    const famillesTriees = [...this._families].sort(compareFamiliesByTitle);
+    for (const f of famillesTriees) {
       if (!f.parent) continue;
       const opt = document.createElement("option");
       opt.value = String(f.family_id);
@@ -405,7 +407,7 @@ export class ExportsScreen {
 
     // Matrice multilingue: family selector (family_id === hub/parent doc_id === family_root_id)
     this._matrixFamilySelEl.innerHTML = '<option value="">— choisir une famille —</option>';
-    for (const f of this._families) {
+    for (const f of famillesTriees) {
       if (!f.parent) continue;
       const opt = document.createElement("option");
       opt.value = String(f.family_id);

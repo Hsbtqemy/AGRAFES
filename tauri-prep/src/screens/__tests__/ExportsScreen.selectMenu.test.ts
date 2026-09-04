@@ -112,6 +112,26 @@ describe("ExportsScreen — les listes peuplées par la base (SEL-01)", () => {
     expect(affiche(el, "#bil-target-sel")).toBe("The Book (en)");
   });
 
+  it("les deux listes de familles sont triées par titre", () => {
+    const fam = (family_id: number, title: string) => ({
+      family_id, parent: { doc_id: family_id, title, language: "fr" },
+      children: [], stats: { total_docs: 2 },
+    }) as unknown as FamilyRecord;
+    const { screen, el } = monter();
+    const s = screen as unknown as {
+      _docs: DocumentRecord[]; _families: FamilyRecord[]; _renderDocOptions: () => void;
+    };
+    s._docs = DOCS;
+    s._families = [fam(3, "Simenon"), fam(1, "Asimov"), fam(2, "Modiano")];
+    s._renderDocOptions();
+    for (const id of ["#bil-family-sel", "#matrix-family-sel"]) {
+      const titres = Array.from(el.querySelectorAll<HTMLOptionElement>(`${id} option`))
+        .filter((o) => o.value)
+        .map((o) => (o.textContent ?? "").split(" (")[0]);
+      expect(titres, id).toEqual(["Asimov", "Modiano", "Simenon"]);
+    }
+  });
+
   it("le <select> reste le modèle, et dispose() rend l'écran à son état d'origine", () => {
     const { screen, el } = monter();
     expect(el.querySelectorAll(".prep-selmenu-trigger").length).toBe(HABILLES.length);

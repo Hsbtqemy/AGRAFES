@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { compareDocsByTitle, compareLocale, type DocLike } from "../../../../shared/docSort.ts";
+import {
+  compareDocsByTitle, compareLocale, compareFamiliesByTitle, type DocLike,
+} from "../../../../shared/docSort.ts";
 
 const d = (doc_id: number, title: string | null | undefined): DocLike =>
   ({ doc_id, title });
@@ -116,5 +118,32 @@ describe("l'ordre rendu par /documents n'est pas un ordre d'affichage", () => {
     ];
     expect([...commeLApi].sort(compareDocsByTitle).map(d => d.doc_id))
       .toEqual([366, 411, 367, 364]);
+  });
+});
+
+describe("compareFamiliesByTitle", () => {
+  // Le serveur rend les familles dans l'ordre des `doc_id` de moyeu, c'est-à-dire dans
+  // l'ordre des imports. Mesuré sur la base de travail : alphabétique PAR LOT, donc les
+  // deux premières de l'alphabet arrivent en 14e et 15e position sur 20. Quatre écrans
+  // montrent cette liste ; ils trient tous avec ce comparateur.
+  const fam = (family_id: number, title: string | null) =>
+    ({ family_id, parent: title === null ? null : { title } });
+
+  it("trie par titre de moyeu, insensible casse et accents", () => {
+    const tri = [fam(1, "Zola"), fam(2, "élan"), fam(3, "Asimov"), fam(4, "ELAN")]
+      .sort(compareFamiliesByTitle).map((f) => f.family_id);
+    expect(tri).toEqual([3, 2, 4, 1]);
+  });
+
+  it("départage sur family_id, donc l'ordre est stable", () => {
+    const tri = [fam(9, "Corpus"), fam(2, "Corpus"), fam(5, "Corpus")]
+      .sort(compareFamiliesByTitle).map((f) => f.family_id);
+    expect(tri).toEqual([2, 5, 9]);
+  });
+
+  it("une famille sans moyeu compte comme titre vide, et vient en tête", () => {
+    const tri = [fam(1, "Asimov"), fam(2, null)]
+      .sort(compareFamiliesByTitle).map((f) => f.family_id);
+    expect(tri).toEqual([2, 1]);
   });
 });

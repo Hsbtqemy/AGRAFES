@@ -41,6 +41,26 @@ export function compareDocsByTitle<T extends DocLike>(a: T, b: T): number {
   return cmp !== 0 ? cmp : a.doc_id - b.doc_id;
 }
 
+export interface FamilyLike {
+  family_id: number;
+  parent?: { title?: string | null } | null;
+}
+
+/**
+ * Compare deux familles par le titre de leur moyeu, même convention que les documents.
+ * Tie-breaker stable : `family_id` ascendant.
+ *
+ * Le serveur rend les familles dans l'ordre des `doc_id` de moyeu, c'est-à-dire dans
+ * l'ordre des imports : alphabétique **par lot**, donc illisible à l'échelle du corpus —
+ * mesuré sur la base de travail, les deux premières familles de l'alphabet arrivent en
+ * quatorzième et quinzième position sur vingt. Chaque écran qui montre cette liste doit
+ * donc trier lui-même.
+ */
+export function compareFamiliesByTitle<T extends FamilyLike>(a: T, b: T): number {
+  const cmp = _COLLATOR.compare(a.parent?.title ?? "", b.parent?.title ?? "");
+  return cmp !== 0 ? cmp : a.family_id - b.family_id;
+}
+
 /**
  * Compare deux chaînes via le même Collator (locale FR, sensitivity base,
  * numeric:true). Utilisable pour trier n'importe quel champ string —

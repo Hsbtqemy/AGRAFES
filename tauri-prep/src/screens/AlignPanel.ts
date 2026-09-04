@@ -38,7 +38,7 @@ import {
 } from "../lib/sidecarClient.ts";
 import type { JobCenter } from "../components/JobCenter.ts";
 import { initCardAccordions } from "../lib/uiAccordions.ts";
-import { compareDocsByTitle } from "../../../shared/docSort.ts";
+import { compareDocsByTitle, compareFamiliesByTitle } from "../../../shared/docSort.ts";
 import { computeNextSteps, type PrepNavTarget } from "../lib/prepNextStep.ts";
 import { NextStepBanner } from "../components/NextStepBanner.ts";
 import { AlignCollisionPanel } from "../components/AlignCollisionPanel.ts";
@@ -527,7 +527,9 @@ export class AlignPanel {
     if (!sel) return;
     const prev = sel.value;
     sel.innerHTML = `<option value="">— choisir une famille —</option>`;
-    for (const fam of this._families) {
+    // Le serveur rend les familles dans l'ordre des `doc_id` de moyeu, donc dans l'ordre des
+    // imports : alphabétique par lot, illisible à l'échelle du corpus.
+    for (const fam of [...this._families].sort(compareFamiliesByTitle)) {
       const parentTitle = fam.parent?.title ?? `Famille #${fam.family_id}`;
       const n = fam.children.length;
       const { aligned_pairs, total_pairs } = fam.stats;

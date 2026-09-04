@@ -223,6 +223,22 @@ describe("AlignPanel — les listes peuplées par la base (SEL-01)", () => {
       "la famille doit apparaître sans qu'on touche à ↻").toBeTruthy();
   });
 
+  it("le Contrôle trie ses familles par titre, pas dans l'ordre du serveur", async () => {
+    // Le serveur les rend par `doc_id` de moyeu, donc dans l'ordre des imports : mesuré sur
+    // la base de travail, c'est alphabétique PAR LOT, et les deux premières de l'alphabet
+    // arrivent en 14e et 15e position sur 20. La matrice triait déjà ; pas celui-ci.
+    const fam = (family_id: number, title: string) => ({
+      family_id, parent: { doc_id: family_id, title, language: "fr" },
+      children: [], stats: { aligned_pairs: 0, total_pairs: 0 },
+    }) as unknown as FamilyRecord;
+    const { el } = mount([fam(3, "Simenon"), fam(1, "Asimov"), fam(2, "Modiano")]);
+    for (let i = 0; i < 4; i += 1) await laisserObserver();
+    const titres = Array.from(el.querySelectorAll<HTMLOptionElement>("#align-family-sel option"))
+      .filter((o) => o.value)
+      .map((o) => (o.textContent ?? "").split(" (")[0]);
+    expect(titres).toEqual(["Asimov", "Modiano", "Simenon"]);
+  });
+
   it("dispose() rend les trois <select> à leur état d'origine", () => {
     const { panel, el } = mount();
     panel.dispose();

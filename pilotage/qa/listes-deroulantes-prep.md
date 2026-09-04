@@ -79,6 +79,7 @@ vérifié n'a pas changé.
 - [x] `Pivot` et `Cible` : 58 entrées chacun, ouverture vers le bas, aucune ne dépasse
 - [x] `Par famille`, sous « Options d'alignement » : la liste s'ouvre sous le champ, qui remplit sa ligne
 - [ ] Créer une famille ailleurs (Documents ou Import), revenir sur l'Alignement : elle est **dans la liste sans qu'on touche à ↻**. Jusqu'au 4 septembre il fallait cliquer le bouton, que ce panneau était le seul à exiger — la matrice, sur le même écran, se rechargeait déjà toute seule
+- [ ] Les 20 familles y sont **par ordre alphabétique**. Le moteur les rend par identifiant de moyeu, c'est-à-dire par lot d'import : « Asimov » et « Beigbeder » arrivaient 14e et 15e
 - [x] Depuis la matrice, le bouton 🔎 d'une cellule bascule sur la révision fine **et les deux déclencheurs affichent la paire** — c'est le premier des trois endroits où le code pose la valeur lui-même
 - [ ] Depuis l'écran Documents, « à réviser » sur une famille ouvre la revue famille **et le déclencheur de famille l'affiche**
 - [ ] Après un « Aligner famille », la paire chargée d'office s'affiche dans les deux déclencheurs
@@ -90,6 +91,7 @@ vérifié n'a pas changé.
 - [ ] Carte « Export bilingue / TMX » : `Famille (optionnel)`, `Pivot (original)` et `Cible (traduction)`
 - [ ] Choisir une famille dans l'export bilingue **remplit pivot et cible**, et les deux déclencheurs le montrent
 - [ ] Carte « Matrice multilingue » : `Famille (original moyeu)`
+- [ ] Les deux listes de familles d'Exports sont elles aussi **par ordre alphabétique** — même défaut, même correctif, trois écrans concernés
 - [ ] Les listes de documents à cocher (TEI, paquet, export v2) sont **inchangées** — ce sont des listes ouvertes, pas des menus : elles n'ont jamais eu de fenêtre système à retourner
 
 ### Métadonnées — la relation documentaire

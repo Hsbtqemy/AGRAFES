@@ -43,6 +43,7 @@ import {
 import type { MatrixColumn, AlignScope } from "../lib/alignVisibleCols.ts";
 import type { AlignStrategy } from "../lib/alignRunBar.ts";
 import { enhanceSelect } from "../lib/selectMenu.ts";
+import { compareFamiliesByTitle } from "../../../shared/docSort.ts";
 import type { SelectMenu } from "../lib/selectMenu.ts";
 import {
   ALIGN_DEFAULTS, STRATEGY_LABELS, buildAlignAdvancedHtml, buildAlignRerunConfirmHtml,
@@ -391,11 +392,10 @@ export class AlignMatrixView {
     try {
       this._families = (await getFamilies(conn))
         .filter((f) => f.parent)
-        // Alphabetical by parent title (case/accent-insensitive), family_id as a stable
-        // tiebreak — the server order is insertion-ish and hard to scan.
-        .sort((a, b) =>
-          a.parent!.title.localeCompare(b.parent!.title, "fr", { sensitivity: "base" })
-          || a.family_id - b.family_id);
+        // Le comparateur vit dans `shared/docSort.ts` : il était écrit ici, ce qui en faisait
+        // une quatrième variante dans un dépôt qui a justement centralisé la règle après en
+        // avoir vu trois diverger. Les trois autres listes de familles l'utilisent aussi.
+        .sort(compareFamiliesByTitle);
     } catch {
       this._families = [];
     }
