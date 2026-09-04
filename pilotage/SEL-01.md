@@ -5,9 +5,29 @@ statut: interrompu
 
 # SEL-01 — les listes déroulantes cessent de se retourner
 
-**Arrêté sur** — le composant partagé est écrit et le sélecteur de famille de la matrice
-l'utilise (1 sur 11). 14 tests propres au composant, les 85 assertions des huit suites de la
-matrice passées sans retouche. Reste dix sélecteurs, sur quatre écrans.
+**Arrêté sur** — 4 septembre 2026 : l'espace Alignement est converti en entier, **4 sur 11**.
+Le composant partagé porte 14 tests, le branchement de l'AlignPanel 8 de plus, dont **3 qui
+échouent si l'un des trois sites qui posent `value` par programme oublie de repeindre**.
+Reste sept sélecteurs, sur trois écrans — Exports (six), Documents, Import, Inspecteur.
+
+**Ce que la conversion coûte, et que la première tranche n'avait pas vu : la largeur.** Un
+`<select>` natif se dimensionne sur son option la **plus large** ; le déclencheur qui le
+remplace n'affiche qu'un texte, donc il se dimensionne sur l'entrée **choisie**. Mesuré au
+banc (Chrome sans tête, fenêtre 1500×760, titres et familles réels de la base) : les deux
+sélecteurs de paire faisaient 245 px quel que soit le document, et l'habillage sans règle de
+largeur oscillait entre **138 px** (« Modiano-Rue_ES ») et **249 px** (le plus long titre du
+corpus). La barre aurait changé de largeur à chaque choix — un défaut que le contrôle natif
+n'avait pas. D'où une largeur posée sur l'enveloppe, et la même vérification à faire pour
+chacun des sept sélecteurs restants : c'est la seule partie de la conversion qui ne se
+déduit pas.
+
+Deuxième chose que le banc a démolie : `max-width: 420px` n'était pas décoratif. Le
+`<select>` de famille porte `flex:1` en style inline, et c'est la règle générique
+`.prep-actions-screen select` (0,1,1) qui le bornait. L'enveloppe reprenant `flex:1` sans ce
+plafond mesurait **1167 px** — elle mangeait la ligne entière. Au passage, la même règle
+générique écrasait déjà le `max-width: 220px` que `.prep-align-pair-sel` déclarait :
+quatrième occurrence du motif de spécificité, sans conséquence visible cette fois puisque le
+natif se bornait à son contenu.
 
 **L'origine, et pourquoi ce n'est pas du CSS.** La liste d'un `<select>` natif n'est pas du
 DOM : c'est une fenêtre du système. Aucune feuille de style ne l'atteint, et Chromium la
@@ -41,7 +61,7 @@ onze, tous peuplés en TS :
 
 | Écran | Sélecteurs |
 |---|---|
-| Alignement | `matrix-family` ✔, `align-family-sel`, `align-pivot-sel`, `align-target-sel` |
+| Alignement | `matrix-family` ✔, `align-family-sel` ✔, `align-pivot-sel` ✔, `align-target-sel` ✔ |
 | Exports | `matrix-family-sel`, `bil-family-sel`, `v2-align-pivot`, `v2-align-target`, `align-csv-pivot`, `align-csv-target` |
 | Documents | `rel-target-sel` |
 | Import | `fam-dlg-parent-sel` |
@@ -78,7 +98,7 @@ préfixe avant de comparer. Le natif ne perd rien ici : il n'avait rien à offri
 - [x] Le CSS `prep-selmenu-*`, calqué sur `.prep-canvas-doc-menu`, plus l'enveloppe de largeur du sélecteur de famille (260–420 px) pour que la barre ne change pas de largeur à chaque choix
 - [x] Câbler `matrix-family` dans `AlignMatrixView` : pose au rendu, `sync()` aux deux écritures de `value`, `destroy()` au démontage
 - [x] `lib/__tests__/selectMenu.test.ts`, 14 cas : le contrat du modèle (l'événement part du `<select>` et bouillonne), l'observateur, la frappe, le clavier, l'idempotence, le démontage
-- [ ] Convertir les trois autres sélecteurs de l'Alignement : `align-family-sel`, `align-pivot-sel`, `align-target-sel` (`AlignPanel`, 8 à 10 sites chacun — le plus gros des quatre écrans)
+- [x] Convertir les trois autres sélecteurs de l'Alignement : `align-family-sel`, `align-pivot-sel`, `align-target-sel` (`AlignPanel`) — les ~25 sites qui LISENT `value` n'ont pas bougé d'une ligne, seuls les **trois** qui l'écrivent demandent `_syncMenus()`
 - [ ] Convertir les six d'Exports : `matrix-family-sel`, `bil-family-sel`, `v2-align-pivot`/`-target`, `align-csv-pivot`/`-target`
 - [ ] Convertir `rel-target-sel` (Documents — 58 documents dans le corpus de travail) et `fam-dlg-parent-sel` (Import)
 - [ ] Convertir `meta-token-unit` (inspecteur d'unités) — vérifier d'abord combien d'entrées il peut porter : c'est le seul dont la liste n'est pas bornée par le nombre de documents

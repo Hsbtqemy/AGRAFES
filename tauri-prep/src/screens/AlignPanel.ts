@@ -51,6 +51,7 @@ import { segmentOf } from "../lib/segmentBadge.ts";
 import { buildCutPickerHtml } from "../lib/alignCutPicker.ts";
 import { setHtml, raw } from "../lib/safeHtml.ts";
 import { alignPanelTemplate } from "../lib/alignPanelTemplate.ts";
+import { enhanceSelect, type SelectMenu } from "../lib/selectMenu.ts";
 import type { RevisionFineScope } from "../lib/revisionFineScope.ts";
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
@@ -89,6 +90,10 @@ export class AlignPanel {
   private _families: FamilyRecord[] = [];
   private _pendingConfirm: (() => void) | null = null;
   private _el: HTMLElement | null = null;
+  /** SEL-01 — les habillages des trois listes peuplées par la base (pivot, cible, famille).
+   *  Anonymes exprès : aucun site n'a besoin d'en désigner un seul, et `_syncMenus()` les
+   *  repeint tous — se tromper de menu n'est pas un défaut qu'on peut écrire ici. */
+  private _selectMenus: SelectMenu[] = [];
 
   // Bitext state
   private _auditLinks: AlignLinkRecord[] = [];
@@ -156,6 +161,7 @@ export class AlignPanel {
     this._collisionPanel.mount();
     this._bindEvents(el);
     this._populatePairSelects(el);
+    this._enhanceSelects(el);
     initCardAccordions(el);
     void this._loadFamilies(el);
     void this._refreshSourceChangedBanner();
@@ -164,6 +170,40 @@ export class AlignPanel {
     this._nextStepBanner = new NextStepBanner((target) => this._navigateNextStep(target));
     el.querySelector("#align-source-changed-banner")?.after(this._nextStepBanner.element);
     return el;
+  }
+
+  /**
+   * SEL-01 — habille les trois listes peuplées par la base d'un menu qui s'ouvre vers le
+   * bas. Les trois autres `<select>` de l'écran (stratégie, portées, débogage) sont des
+   * listes courtes et fixes : le contrôle natif y reste le meilleur choix.
+   *
+   * Le `<select>` reste le modèle dans les trois cas — il garde `value`, `change` et ses
+   * `<option>` — donc rien de ce qui l'interroge ne change, y compris `AlignCollisionPanel`
+   * qui va le chercher par `#align-pivot-sel` dans le même sous-arbre.
+   */
+  private _enhanceSelects(el: HTMLElement): void {
+    const aHabiller: Array<[string, string]> = [
+      ["#align-pivot-sel", "Document pivot"],
+      ["#align-target-sel", "Document cible"],
+      ["#align-family-sel", "Famille à aligner"],
+    ];
+    for (const [sel, label] of aHabiller) {
+      const node = el.querySelector<HTMLSelectElement>(sel);
+      if (node) this._selectMenus.push(enhanceSelect(node, { label }));
+    }
+  }
+
+  /**
+   * À appeler après avoir posé `value` par programme : c'est une propriété, aucune mutation
+   * ne la signale, et le déclencheur afficherait sinon l'entrée précédente. Les options et
+   * `disabled` se suivent seuls (`MutationObserver`).
+   *
+   * Repeint les trois plutôt que celui qu'on vient d'écrire : les deux sélecteurs de paire
+   * s'écrivent toujours ensemble, la repeinture est un texte de bouton, et un site qui
+   * désignerait le mauvais menu serait un défaut silencieux.
+   */
+  private _syncMenus(): void {
+    for (const m of this._selectMenus) m.sync();
   }
 
   /** Cible du bandeau « étape suivante » → délègue aux callbacks de navigation. */
@@ -209,6 +249,7 @@ export class AlignPanel {
     if (!pivSel || !tgtSel) return false;
     pivSel.value = String(scope.pivotDocId);
     tgtSel.value = String(scope.targetDocId);
+    this._syncMenus();
     // Une option absente laisse SILENCIEUSEMENT value="" (HTMLSelectElement) → paire invalide :
     // le détecter plutôt que charger un audit vide sans explication.
     if (pivSel.value !== String(scope.pivotDocId) || tgtSel.value !== String(scope.targetDocId)) {
@@ -245,6 +286,7 @@ export class AlignPanel {
     const sel = el.querySelector<HTMLSelectElement>("#align-family-sel");
     if (!sel) return false;
     sel.value = String(familyId);
+    this._syncMenus();
     // Option absente → value reste "" (HTMLSelectElement) : le détecter plutôt que d'entrer
     // dans une revue famille vide sans explication.
     if (sel.value !== String(familyId)) {
@@ -1146,6 +1188,7 @@ export class AlignPanel {
     const tgtSel = el.querySelector<HTMLSelectElement>("#align-target-sel");
     if (pivSel) pivSel.value = String(pivotId);
     if (tgtSel) tgtSel.value = String(targetId);
+    this._syncMenus();
     this._auditQuickFilter = "unreviewed";
     el.querySelectorAll<HTMLElement>("[data-qf]").forEach(b =>
       b.classList.toggle("active", b.dataset.qf === "unreviewed"));
@@ -1940,6 +1983,8 @@ export class AlignPanel {
     this._familyAudits.clear();
     this._familyOffsets.clear();
     this._familyLoading = false;
+    for (const m of this._selectMenus) m.destroy();
+    this._selectMenus = [];
     this._el = null;
   }
 
